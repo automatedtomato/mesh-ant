@@ -15,7 +15,7 @@ The goal of this milestone is to define what a trace is in MeshAnt and demonstra
 
 ### Tasks
 
-- [ ] **M1.1 — Define the trace schema**
+- [x] **M1.1 — Define the trace schema**
   - Create `meshant/schema/trace.go`
   - A trace record must capture at minimum:
     - `id`: unique identifier
