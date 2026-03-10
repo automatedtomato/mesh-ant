@@ -45,11 +45,13 @@ const (
 
 // Trace is a record of something that made a difference in a network.
 //
-// Source, Target, and Observer are plain strings. The schema does not yet
-// decide what counts as an actor — that decision is deferred until enough
-// traces have been followed to warrant it. A source or target could be a
-// human, a rule, a threshold, a queue, a form, or anything else that
-// redirects, amplifies, blocks, or transforms action.
+// Source and Target are slices of strings. The schema does not yet decide
+// what counts as an actor — that decision is deferred until enough traces
+// have been followed to warrant it. A source or target could be a human,
+// a rule, a threshold, a queue, a form, or anything else that redirects,
+// amplifies, blocks, or transforms action. Using slices acknowledges that
+// agency is often distributed across a heterogeneous assemblage; forcing a
+// single name would perform a premature singularization of attribution.
 //
 // Fields with omitempty are optional. Their absence is meaningful:
 // a Trace without a Mediation means no intermediary was observed —
@@ -73,16 +75,16 @@ type Trace struct {
 	// Required.
 	WhatChanged string `json:"what_changed"`
 
-	// Source names what produced this trace.
-	// Intentionally open: could be a human, a rule, a queue, a sensor,
-	// a threshold, or anything else. May be empty when attribution is
-	// genuinely unknown or unattributable.
-	Source string `json:"source,omitempty"`
+	// Source names what produced this trace. A slice because the producer
+	// of a difference is often a heterogeneous assemblage of elements
+	// acting together. May be nil when attribution is genuinely unknown
+	// or unattributable.
+	Source []string `json:"source,omitempty"`
 
-	// Target names what was affected.
-	// Same openness as Source. May be empty when the effect is diffuse
-	// or not yet observable.
-	Target string `json:"target,omitempty"`
+	// Target names what was affected. A slice for the same reason as
+	// Source: effects are often distributed. May be nil when the effect
+	// is diffuse or not yet observable.
+	Target []string `json:"target,omitempty"`
 
 	// Mediation names what transformed, redirected, or relayed the action
 	// between source and target. Its absence means no intermediary was

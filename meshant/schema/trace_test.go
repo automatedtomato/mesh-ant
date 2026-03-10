@@ -10,13 +10,15 @@ import (
 )
 
 // validTrace returns a fully populated Trace for use in tests.
+// Source and Target are slices to reflect that a difference can be
+// produced by and directed at a heterogeneous assemblage of elements.
 func validTrace() schema.Trace {
 	return schema.Trace{
 		ID:          "a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5",
 		Timestamp:   time.Date(2026, 3, 10, 12, 0, 0, 123456789, time.UTC),
 		WhatChanged: "message was delayed at the queue threshold",
-		Source:      "rate-limiter",
-		Target:      "outgoing-message",
+		Source:      []string{"rate-limiter", "queue-policy-v3"},
+		Target:      []string{"outgoing-message"},
 		Mediation:   "queue-policy-v3",
 		Tags:        []string{string(schema.TagDelay), string(schema.TagThreshold)},
 		Observer:    "system-monitor/position-A",
@@ -47,11 +49,21 @@ func TestTraceJSONRoundTrip_FullRecord(t *testing.T) {
 	if got.WhatChanged != original.WhatChanged {
 		t.Errorf("WhatChanged: got %q, want %q", got.WhatChanged, original.WhatChanged)
 	}
-	if got.Source != original.Source {
-		t.Errorf("Source: got %q, want %q", got.Source, original.Source)
+	if len(got.Source) != len(original.Source) {
+		t.Fatalf("Source length: got %d, want %d", len(got.Source), len(original.Source))
 	}
-	if got.Target != original.Target {
-		t.Errorf("Target: got %q, want %q", got.Target, original.Target)
+	for i := range original.Source {
+		if got.Source[i] != original.Source[i] {
+			t.Errorf("Source[%d]: got %q, want %q", i, got.Source[i], original.Source[i])
+		}
+	}
+	if len(got.Target) != len(original.Target) {
+		t.Fatalf("Target length: got %d, want %d", len(got.Target), len(original.Target))
+	}
+	for i := range original.Target {
+		if got.Target[i] != original.Target[i] {
+			t.Errorf("Target[%d]: got %q, want %q", i, got.Target[i], original.Target[i])
+		}
 	}
 	if got.Mediation != original.Mediation {
 		t.Errorf("Mediation: got %q, want %q", got.Mediation, original.Mediation)
@@ -256,19 +268,19 @@ func TestTraceValidate_MissingObserver(t *testing.T) {
 	}
 }
 
-func TestTraceValidate_EmptySourceIsPermitted(t *testing.T) {
+func TestTraceValidate_NilSourceIsPermitted(t *testing.T) {
 	tr := validTrace()
-	tr.Source = ""
+	tr.Source = nil
 	if err := tr.Validate(); err != nil {
-		t.Errorf("empty Source should be permitted, got: %v", err)
+		t.Errorf("nil Source should be permitted, got: %v", err)
 	}
 }
 
-func TestTraceValidate_EmptyTargetIsPermitted(t *testing.T) {
+func TestTraceValidate_NilTargetIsPermitted(t *testing.T) {
 	tr := validTrace()
-	tr.Target = ""
+	tr.Target = nil
 	if err := tr.Validate(); err != nil {
-		t.Errorf("empty Target should be permitted, got: %v", err)
+		t.Errorf("nil Target should be permitted, got: %v", err)
 	}
 }
 
@@ -309,6 +321,48 @@ func TestTraceZeroValue_TagsIsNil(t *testing.T) {
 	var tr schema.Trace
 	if tr.Tags != nil {
 		t.Errorf("expected Tags to be nil on zero-value Trace, got %v", tr.Tags)
+	}
+}
+
+func TestTraceZeroValue_SourceIsNil(t *testing.T) {
+	var tr schema.Trace
+	if tr.Source != nil {
+		t.Errorf("expected Source to be nil on zero-value Trace, got %v", tr.Source)
+	}
+}
+
+func TestTraceZeroValue_TargetIsNil(t *testing.T) {
+	var tr schema.Trace
+	if tr.Target != nil {
+		t.Errorf("expected Target to be nil on zero-value Trace, got %v", tr.Target)
+	}
+}
+
+// --- Group 4b: Multi-element Source and Target ---
+
+func TestTraceWithMultipleSources_RoundTrips(t *testing.T) {
+	tr := validTrace()
+	tr.Source = []string{"rate-limiter", "queue-policy-v3", "system-clock"}
+	tr.Target = []string{"outgoing-message", "downstream-service"}
+
+	data, err := json.Marshal(tr)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	var got schema.Trace
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+	if len(got.Source) != 3 {
+		t.Fatalf("Source length: got %d, want 3", len(got.Source))
+	}
+	if len(got.Target) != 2 {
+		t.Fatalf("Target length: got %d, want 2", len(got.Target))
+	}
+	for i, s := range tr.Source {
+		if got.Source[i] != s {
+			t.Errorf("Source[%d]: got %q, want %q", i, got.Source[i], s)
+		}
 	}
 }
 
@@ -357,6 +411,8 @@ func TestTraceFromJSON_UnknownFieldsIgnored(t *testing.T) {
 		"id": "a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5",
 		"timestamp": "2026-03-10T12:00:00Z",
 		"what_changed": "something shifted",
+		"source": ["rule-engine", "threshold-gate"],
+		"target": ["downstream-queue"],
 		"observer": "monitor-1",
 		"foo": "bar",
 		"unknown_future_field": 42
