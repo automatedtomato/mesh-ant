@@ -27,18 +27,13 @@ The goal of this milestone is to define what a trace is in MeshAnt and demonstra
   - `docs/decisions/trace-schema-v1.md` — design decision record
   - Key decisions: source/target as []string, observer required, tags open vocabulary
 
-- [ ] **M1.2 — Write a small example trace dataset**
-  - Branch: `feat/m1-trace-dataset` (cut from develop) — **IN PROGRESS**
-  - Plan: `tasks/plan_m1_2.md`
-  - Create `data/examples/traces.json`
-  - Scenario: vendor registration application through a government procurement office
-    (submitted → validated → rate-limited → classified → threshold-escalated → compliance review → approved)
-  - 10 traces covering: delay ×2, threshold ×3, redirection ×2, blockage ×1, translation ×2
+- [x] **M1.2 — Write a small example trace dataset**
+  - `data/examples/traces.json` — 10 traces, all passing Validate()
+  - Scenario: vendor registration through a government procurement office
+  - Covers: delay ×2, threshold ×3, redirection ×2, blockage ×1, translation ×2
   - Non-human mediators: form-validator, queue-policy, classification-ruleset,
     approval-threshold-rule, routing-matrix, background-check-webhook, approval-checklist
-  - Multi-source traces: #1 (vendor+form), #4 (rate-limiter+policy), #10 (reviewer+checklist)
   - Absent-source traces: #3 (automated resubmission), #9 (webhook with no system id)
-  - All traces must pass meshant/schema/trace.go Validate()
 
 - [ ] **M1.3 — Write a minimal trace loader**
   - Create `meshant/loader/loader.go`
