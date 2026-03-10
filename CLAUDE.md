@@ -35,12 +35,21 @@ Reference implementation / inspiration:
 
 Skills documentation:
 - `.claude/skills/`  
-  Skills-related documents live here.
+  Workflow definitions and domain knowledge.
+
+Rules documentation:
+- `.claude/rules/`
+  Always-follow guidelines (security, coding style, testing requirements)
+
+Agents documentation:
+- `.claude/agents/`
+  Specialized subagents for delegation (planner, code-reviewer, tdd-guide, etc.)
 
 ## Task tracking
 
-For concrete work instructions, active tasks, and ongoing implementation notes, use:
+For concrete work instructions, active tasks, and ongoing implementation notes and plans, use:
 - `tasks/todo.md`
+- `tasks/plan_m*_*.md`
 
 When new work is requested, record the actionable task in `tasks/todo.md` rather than expanding this file.
 
