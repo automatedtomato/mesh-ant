@@ -36,14 +36,12 @@ The goal of this milestone is to define what a trace is in MeshAnt and demonstra
   - Absent-source traces: #3 (automated resubmission), #9 (webhook with no system id)
 
 - [ ] **M1.3 — Write a minimal trace loader**
-  - Create `meshant/loader/loader.go`
-  - Load dataset from JSON file
-  - Output provisional mesh summary to stdout:
-    - all sources and targets that appear
-    - frequency of each element
-    - observed mediations
-    - traces tagged with delay or threshold
-  - No LLM, no simulation
+  - Branch: `feat/m1-loader` (cut from develop) — **IN PROGRESS**
+  - Plan: `tasks/plan_m1_3.md`
+  - Create `meshant/loader/loader.go` — Load(), Summarise(), PrintSummary()
+  - Create `meshant/loader/loader_test.go` — 4 groups, ~20 tests
+  - Output provisional mesh summary: elements (freq), mediations, delay/threshold flagged traces
+  - No LLM, no simulation — stdlib only
 
 - [x] **M1.4 — Record the schema cut**
   - Done: `docs/decisions/trace-schema-v1.md` (completed alongside M1.1)
