@@ -7,6 +7,12 @@
 - **JSON/YAML** — trace data format (language-agnostic, inspectable)
 - **Form factor** — deliberately left open. Do not force a shape (CLI / web app / agent) before the project has followed enough traces to warrant it. Let the form emerge from the work.
 
+## Branch strategy
+
+- `main` — stable
+- `develop` — primary development branch (cut from main)
+- `feat/*` — feature branches cut from **develop**
+
 ---
 
 ## Milestone 1: Trace Schema and Minimal Loader
@@ -16,45 +22,31 @@ The goal of this milestone is to define what a trace is in MeshAnt and demonstra
 ### Tasks
 
 - [x] **M1.1 — Define the trace schema**
-  - Create `meshant/schema/trace.go`
-  - A trace record must capture at minimum:
-    - `id`: unique identifier
-    - `timestamp`: when the trace was recorded
-    - `what_changed`: a short description of what difference was made
-    - `source`: what produced the trace (left intentionally loose — could be a human, a rule, a threshold, a queue)
-    - `target`: what was affected (also loose)
-    - `mediation`: optional — what transformed, redirected, or relayed the action
-    - `tags`: optional list of descriptors (e.g. `delay`, `threshold`, `blockage`, `amplification`)
-    - `observer`: who or what recorded this trace, and from what position
-  - Use Go structs with JSON tags for serialization
-  - Do not pre-specify what `source` or `target` must be — keep them as strings or open structures
-  - Record the design rationale briefly (what cut was made and why) in a comment or `docs/decisions/`
+  - `meshant/schema/trace.go` — Trace struct, TagValue constants, Validate()
+  - `meshant/schema/trace_test.go` — 27 tests, all passing
+  - `docs/decisions/trace-schema-v1.md` — design decision record
+  - Key decisions: source/target as []string, observer required, tags open vocabulary
 
-- [ ] **M1.2 — Write a small example trace dataset**
-  - Create `data/examples/traces.json`
-  - Write 8–12 hand-crafted traces representing a simple scenario
-  - Suggested scenario: a message passing through a bureaucratic queue (submitted → routed → delayed → re-routed → approved/rejected)
-  - Ensure the traces include: at least one delay, one threshold crossing, one redirection, one non-human mediator (e.g. a rule, a form, a rate-limiter)
-  - Do not assign fixed actor roles — let source/target be descriptive but open
+- [x] **M1.2 — Write a small example trace dataset**
+  - `data/examples/traces.json` — 10 traces, all passing Validate()
+  - Scenario: vendor registration through a government procurement office
+  - Covers: delay ×2, threshold ×3, redirection ×2, blockage ×1, translation ×2
+  - Non-human mediators: form-validator, queue-policy, classification-ruleset,
+    approval-threshold-rule, routing-matrix, background-check-webhook, approval-checklist
+  - Absent-source traces: #3 (automated resubmission), #9 (webhook with no system id)
 
 - [ ] **M1.3 — Write a minimal trace loader**
   - Create `meshant/loader/loader.go`
-  - Load the trace dataset from a JSON file
-  - Output a simple provisional mesh summary:
-    - list of all sources and targets that appear
-    - frequency of each element across traces
-    - list of observed mediations
-    - list of traces with delays or thresholds tagged
-  - Print as a readable plain-text report to stdout
-  - No LLM, no persona generation, no simulation engine
+  - Load dataset from JSON file
+  - Output provisional mesh summary to stdout:
+    - all sources and targets that appear
+    - frequency of each element
+    - observed mediations
+    - traces tagged with delay or threshold
+  - No LLM, no simulation
 
-- [ ] **M1.4 — Record the schema cut**
-  - Create `docs/decisions/trace-schema-v1.md`
-  - Explain briefly:
-    - what was included in the schema and why
-    - what was deliberately excluded
-    - what assumptions the schema makes about what counts as a trace
-  - This is a first-class MeshAnt design principle: the designer is inside the mesh
+- [x] **M1.4 — Record the schema cut**
+  - Done: `docs/decisions/trace-schema-v1.md` (completed alongside M1.1)
 
 ---
 
