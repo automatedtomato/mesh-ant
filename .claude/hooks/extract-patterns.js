@@ -16,21 +16,32 @@
  *   - New open questions or deferred decisions
  */
 
-const fs   = require('fs');
-const os   = require('os');
-const path = require('path');
+const fs            = require('fs');
+const os            = require('os');
+const path          = require('path');
+const { execSync }  = require('child_process');
 
 // Reset the tool-call counter for the next session
 const counterFile = path.join(os.tmpdir(), 'mesh-ant-tool-calls');
 try { fs.unlinkSync(counterFile); } catch (_) {}
 
-// Derive the project memory path
-const homeDir     = os.homedir();
-const memoryDir   = path.join(
-  homeDir,
-  '.claude/projects/-home-automatedtomato-github-com-automatedtomato-mesh-ant/memory'
-);
-const memoryFile  = path.join(memoryDir, 'MEMORY.md');
+// Derive the project root — prefer CLAUDE_PROJECT_DIR, fall back to git, then cwd
+let projectRoot;
+try {
+  projectRoot =
+    process.env.CLAUDE_PROJECT_DIR ||
+    execSync('git rev-parse --show-toplevel', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+} catch (_) {
+  projectRoot = process.cwd();
+}
+
+// Claude Code's memory path convention:
+//   ~/.claude/projects/<slug>/memory/MEMORY.md
+// where <slug> is the absolute project path with '/' and '.' replaced by '-'
+//   e.g. /home/user/github.com/org/repo  →  -home-user-github-com-org-repo
+const slug       = projectRoot.replace(/[/.]/g, '-');
+const homeDir    = os.homedir();
+const memoryFile = path.join(homeDir, '.claude', 'projects', slug, 'memory', 'MEMORY.md');
 
 const prompt = `
 [session-end: pattern-extraction]
