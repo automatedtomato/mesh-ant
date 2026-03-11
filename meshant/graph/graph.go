@@ -248,109 +248,28 @@ type ShadowElement struct {
 	Reasons []ShadowReason
 }
 
-// Articulate builds a MeshGraph from a slice of already-validated traces and
-// the given ArticulationOptions. It does not call schema.Validate() —
-// that is the loader's responsibility.
-//
-// If opts.ObserverPositions is empty, all traces are included (full cut).
-// The Cut.ShadowElements field is always populated relative to the chosen
-// filter, even when no filter is applied (in which case it will be empty,
-// since no traces are excluded).
-//
-// Nodes contains only elements from included traces. ShadowElements contains
-// elements that appear exclusively in excluded traces. Elements that appear in
-// both included and excluded traces are in Nodes (with a non-zero ShadowCount)
-// but not in ShadowElements.
-//
-// Edges are in dataset order, preserving the temporal sequence of the input.
-// Edge.Tags, Edge.Sources, Edge.Targets, and Cut.ObserverPositions are always
-// copies — mutating them does not affect subsequent calls, the original trace
-// data, or the ArticulationOptions passed in.
-func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
-	// Copy ObserverPositions so the caller cannot affect the returned Cut
-	// by mutating opts after the call. Consistent with the copy treatment
-	// applied to Edge.Tags, Edge.Sources, and Edge.Targets below.
-	positionsCopy := make([]string, len(opts.ObserverPositions))
-	copy(positionsCopy, opts.ObserverPositions)
+// excludedTrace pairs a trace with the filter(s) it failed, for shadow reason tracking.
+type excludedTrace struct {
+	trace           schema.Trace
+	failsObserver   bool
+	failsTimeWindow bool
+}
 
-	// TimeWindow is a value type (struct with two time.Time fields) — copying
-	// opts copies it automatically. No additional deep-copy is needed.
-	tw := opts.TimeWindow
+// shadowInfo accumulates data about an element that appears in excluded traces.
+// Reasons are accumulated across all excluded traces that mention the element:
+// if any such trace fails the observer filter, failsObserver is set true;
+// if any fails the time-window filter, failsTimeWindow is set true.
+// An element can have both reasons even if no single trace fails both filters.
+type shadowInfo struct {
+	seenFrom        map[string]bool
+	count           int  // number of excluded traces that mention this element
+	failsObserver   bool // at least one excluding trace failed the observer filter
+	failsTimeWindow bool // at least one excluding trace failed the time-window filter
+}
 
-	// Build observer filter set for O(1) lookup.
-	filterSet := make(map[string]bool, len(positionsCopy))
-	for _, op := range positionsCopy {
-		filterSet[op] = true
-	}
-	observerFiltered := len(filterSet) > 0
-	timeFiltered := !tw.IsZero()
-
-	// Count distinct observers across ALL traces before any filtering.
-	allObservers := make(map[string]bool)
-	for _, t := range traces {
-		allObservers[t.Observer] = true
-	}
-
-	// passesObserver reports whether a trace passes the observer filter.
-	// If no observer filter is set, all traces pass.
-	passesObserver := func(t schema.Trace) bool {
-		return !observerFiltered || filterSet[t.Observer]
-	}
-
-	// passesTimeWindow reports whether a trace passes the time-window filter.
-	// Both bounds are inclusive. A zero Start means no lower bound; a zero
-	// End means no upper bound. If no time window is set, all traces pass.
-	passesTimeWindow := func(t schema.Trace) bool {
-		if !timeFiltered {
-			return true
-		}
-		if !tw.Start.IsZero() && t.Timestamp.Before(tw.Start) {
-			return false
-		}
-		if !tw.End.IsZero() && t.Timestamp.After(tw.End) {
-			return false
-		}
-		return true
-	}
-
-	// Split traces into included (pass both filters) and excluded (fail either).
-	// For each excluded trace, record which filter(s) it failed so we can
-	// populate ShadowElement.Reasons accurately.
-	type excludedTrace struct {
-		trace          schema.Trace
-		failsObserver  bool
-		failsTimeWindow bool
-	}
-	var included []schema.Trace
-	var excludedList []excludedTrace
-	for _, t := range traces {
-		obs := passesObserver(t)
-		win := passesTimeWindow(t)
-		if obs && win {
-			included = append(included, t)
-		} else {
-			excludedList = append(excludedList, excludedTrace{
-				trace:          t,
-				failsObserver:  !obs,
-				failsTimeWindow: !win,
-			})
-		}
-	}
-
-	// Count element appearances across included traces.
-	// AppearanceCount is total appearances (source + target), not unique traces.
-	includedElements := make(map[string]int)
-	for _, t := range included {
-		for _, s := range t.Source {
-			includedElements[s]++
-		}
-		for _, tg := range t.Target {
-			includedElements[tg]++
-		}
-	}
-
-	// Build edges in dataset order. Each slice field is a copy so callers
-	// cannot affect the input or subsequent Articulate calls.
+// buildEdges constructs one Edge per included trace in dataset order.
+// Each slice field (Tags, Sources, Targets) is a defensive copy.
+func buildEdges(included []schema.Trace) []Edge {
 	edges := make([]Edge, 0, len(included))
 	for _, t := range included {
 		tags := make([]string, len(t.Tags))
@@ -369,51 +288,47 @@ func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
 			Tags:        tags,
 		})
 	}
+	return edges
+}
 
-	// Build shadow data from excluded traces.
-	// For each element in excluded traces, track: how many excluded traces
-	// mention it (count), from which observer positions (seenFrom), and
-	// which exclusion reasons apply (failsObserver, failsTimeWindow).
-	// Count is per-trace, not per-appearance: if a trace has X in both
-	// source and target, it counts as one mention.
-	type shadowInfo struct {
-		seenFrom        map[string]bool
-		count           int  // number of excluded traces that mention this element
-		failsObserver   bool // at least one excluding trace failed the observer filter
-		failsTimeWindow bool // at least one excluding trace failed the time-window filter
-	}
-	shadowData := make(map[string]*shadowInfo)
-	for _, ex := range excludedList {
-		t := ex.trace
-		// Collect this trace's elements, deduplicating within the trace.
-		traceElems := make(map[string]bool)
-		for _, s := range t.Source {
-			traceElems[s] = true
+// buildShadowData builds per-element shadow information from excluded traces.
+// Count is per-trace (not per-appearance): an element in both source and target
+// of the same trace counts as one mention.
+func buildShadowData(excluded []excludedTrace) map[string]*shadowInfo {
+	data := make(map[string]*shadowInfo)
+	for _, ex := range excluded {
+		// Deduplicate elements within this trace before counting.
+		elems := make(map[string]bool)
+		for _, s := range ex.trace.Source {
+			elems[s] = true
 		}
-		for _, tg := range t.Target {
-			traceElems[tg] = true
+		for _, tg := range ex.trace.Target {
+			elems[tg] = true
 		}
-		for e := range traceElems {
-			if shadowData[e] == nil {
-				shadowData[e] = &shadowInfo{seenFrom: make(map[string]bool)}
+		for e := range elems {
+			if data[e] == nil {
+				data[e] = &shadowInfo{seenFrom: make(map[string]bool)}
 			}
-			shadowData[e].count++
-			shadowData[e].seenFrom[t.Observer] = true
+			data[e].count++
+			data[e].seenFrom[ex.trace.Observer] = true
 			if ex.failsObserver {
-				shadowData[e].failsObserver = true
+				data[e].failsObserver = true
 			}
 			if ex.failsTimeWindow {
-				shadowData[e].failsTimeWindow = true
+				data[e].failsTimeWindow = true
 			}
 		}
 	}
+	return data
+}
 
-	// Build Nodes from included elements, adding ShadowCount for elements
-	// that also appear in excluded traces.
+// buildNodes constructs the Nodes map from included element counts, annotating
+// each node with a ShadowCount from the shadow data where applicable.
+func buildNodes(includedElements map[string]int, shadow map[string]*shadowInfo) map[string]Node {
 	nodes := make(map[string]Node, len(includedElements))
 	for name, count := range includedElements {
 		shadowCount := 0
-		if sd, ok := shadowData[name]; ok {
+		if sd, ok := shadow[name]; ok {
 			shadowCount = sd.count
 		}
 		nodes[name] = Node{
@@ -422,12 +337,15 @@ func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
 			ShadowCount:     shadowCount,
 		}
 	}
+	return nodes
+}
 
-	// Build ShadowElements: elements that appear ONLY in excluded traces.
-	// Elements present in both included and excluded traces are in Nodes
-	// (with ShadowCount > 0) but do not appear in ShadowElements.
-	var shadowElems []ShadowElement
-	for name, sd := range shadowData {
+// buildShadowElements constructs the sorted ShadowElements slice. Elements that
+// appear in both included and excluded traces are in Nodes (not here). Only
+// elements that appear EXCLUSIVELY in excluded traces enter ShadowElements.
+func buildShadowElements(shadow map[string]*shadowInfo, includedElements map[string]int) []ShadowElement {
+	var elems []ShadowElement
+	for name, sd := range shadow {
 		if _, inIncluded := includedElements[name]; inIncluded {
 			continue // visible from included traces → Nodes, not shadow
 		}
@@ -437,9 +355,7 @@ func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
 		}
 		sort.Strings(seenFrom)
 
-		// Build reasons slice in sorted order: observer before time-window.
-		// This ordering is stable and deterministic regardless of which
-		// excluded traces were encountered first.
+		// Reasons are in stable sorted order: observer before time-window.
 		var reasons []ShadowReason
 		if sd.failsObserver {
 			reasons = append(reasons, ShadowReasonObserver)
@@ -448,21 +364,99 @@ func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
 			reasons = append(reasons, ShadowReasonTimeWindow)
 		}
 
-		shadowElems = append(shadowElems, ShadowElement{
+		elems = append(elems, ShadowElement{
 			Name:     name,
 			SeenFrom: seenFrom,
 			Reasons:  reasons,
 		})
 	}
-	// Sort shadow elements alphabetically — order must not imply ranking.
-	sort.Slice(shadowElems, func(i, j int) bool {
-		return shadowElems[i].Name < shadowElems[j].Name
+	// Alphabetical sort — order must not imply ranking.
+	sort.Slice(elems, func(i, j int) bool {
+		return elems[i].Name < elems[j].Name
 	})
+	return elems
+}
 
-	// Compute excluded observer positions now, while the full observer set is
-	// available. Stored in Cut so PrintArticulation does not need to reconstruct
-	// it from graph structure (which would miss observers whose traces are
-	// entirely in the shadow-count zone, not in ShadowElements).
+// Articulate builds a MeshGraph from a slice of already-validated traces and
+// the given ArticulationOptions. It does not call schema.Validate() —
+// that is the loader's responsibility.
+//
+// If opts.ObserverPositions is empty, all traces are included (full cut).
+// The Cut.ShadowElements field is always populated relative to the chosen
+// filter, even when no filter is applied (in which case it will be empty,
+// since no traces are excluded).
+//
+// Nodes contains only elements from included traces. ShadowElements contains
+// elements that appear exclusively in excluded traces. Elements that appear in
+// both included and excluded traces are in Nodes (with a non-zero ShadowCount)
+// but not in ShadowElements.
+//
+// Edges are in dataset order, preserving the temporal sequence of the input.
+// Edge.Tags, Edge.Sources, Edge.Targets, and Cut.ObserverPositions are always
+// copies — mutating them does not affect subsequent calls, the original trace
+// data, or the ArticulationOptions passed in.
+//
+// Callers should validate opts.TimeWindow with TimeWindow.Validate() before
+// calling Articulate. An inverted window (Start after End) is a programming
+// error that produces zero included traces with no further signal.
+func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
+	// Copy ObserverPositions so caller mutations after the call cannot affect
+	// the returned Cut. Consistent with the copy discipline on Edge slices.
+	positionsCopy := make([]string, len(opts.ObserverPositions))
+	copy(positionsCopy, opts.ObserverPositions)
+
+	// TimeWindow is a value type — opts copy is automatic. No deep-copy needed.
+	tw := opts.TimeWindow
+
+	// Build observer filter set for O(1) lookup.
+	filterSet := make(map[string]bool, len(positionsCopy))
+	for _, op := range positionsCopy {
+		filterSet[op] = true
+	}
+	observerFiltered := len(filterSet) > 0
+	timeFiltered := !tw.IsZero()
+
+	// Count distinct observers across ALL traces before filtering.
+	allObservers := make(map[string]bool)
+	for _, t := range traces {
+		allObservers[t.Observer] = true
+	}
+
+	// Split traces: a trace is included only if it passes BOTH filters.
+	var included []schema.Trace
+	var excluded []excludedTrace
+	for _, t := range traces {
+		passesObs := !observerFiltered || filterSet[t.Observer]
+		passesTime := !timeFiltered ||
+			(tw.Start.IsZero() || !t.Timestamp.Before(tw.Start)) &&
+				(tw.End.IsZero() || !t.Timestamp.After(tw.End))
+		if passesObs && passesTime {
+			included = append(included, t)
+		} else {
+			excluded = append(excluded, excludedTrace{
+				trace:           t,
+				failsObserver:   !passesObs,
+				failsTimeWindow: !passesTime,
+			})
+		}
+	}
+
+	// Count element appearances across included traces.
+	includedElements := make(map[string]int)
+	for _, t := range included {
+		for _, s := range t.Source {
+			includedElements[s]++
+		}
+		for _, tg := range t.Target {
+			includedElements[tg]++
+		}
+	}
+
+	shadow := buildShadowData(excluded)
+
+	// Compute excluded observer positions while the full set is available.
+	// Stored in Cut so PrintArticulation does not reconstruct it from graph
+	// structure (which would miss observers entirely in the shadow-count zone).
 	var excludedObsPositions []string
 	if observerFiltered {
 		for obs := range allObservers {
@@ -474,18 +468,62 @@ func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
 	}
 
 	return MeshGraph{
-		Nodes: nodes,
-		Edges: edges,
+		Nodes: buildNodes(includedElements, shadow),
+		Edges: buildEdges(included),
 		Cut: Cut{
 			ObserverPositions:         positionsCopy,
-			TimeWindow:                tw, // value copy — safe, no pointer aliasing
+			TimeWindow:                tw,
 			TracesIncluded:            len(included),
 			TracesTotal:               len(traces),
 			DistinctObserversTotal:    len(allObservers),
-			ShadowElements:            shadowElems,
+			ShadowElements:            buildShadowElements(shadow, includedElements),
 			ExcludedObserverPositions: excludedObsPositions,
 		},
 	}
+}
+
+// timeWindowLabel returns a human-readable string for the time window stored in
+// a Cut. The label is always emitted in PrintArticulation so readers know the
+// temporal scope of the cut even when no filter was applied.
+func timeWindowLabel(tw TimeWindow) string {
+	if tw.IsZero() {
+		return "(none — no time filter)"
+	}
+	// Format both bounds in RFC3339 for unambiguous machine-readable output.
+	// A zero bound means unbounded; render it as "(unbounded)" so that
+	// half-open windows are legible (e.g. "(unbounded) – 2026-03-14T23:59:59Z").
+	startStr := "(unbounded)"
+	if !tw.Start.IsZero() {
+		startStr = tw.Start.UTC().Format(time.RFC3339)
+	}
+	endStr := "(unbounded)"
+	if !tw.End.IsZero() {
+		endStr = tw.End.UTC().Format(time.RFC3339)
+	}
+	return fmt.Sprintf("%s – %s", startStr, endStr)
+}
+
+// shadowElementLine formats a single ShadowElement into a printable line.
+// The reason annotation ([observer], [time-window], or [observer, time-window])
+// is appended inline on the same line for compactness. Reasons are in the
+// sorted order guaranteed by Articulate (observer before time-window).
+func shadowElementLine(se ShadowElement) string {
+	reasonStrs := make([]string, len(se.Reasons))
+	for i, r := range se.Reasons {
+		reasonStrs[i] = string(r)
+	}
+	reasonAnnotation := fmt.Sprintf("  [%s]", strings.Join(reasonStrs, ", "))
+
+	// When SeenFrom is empty (time-window-only exclusion with no observer filter
+	// context), show a placeholder rather than an empty "also seen from:" line.
+	var mainLine string
+	if len(se.SeenFrom) == 0 {
+		mainLine = fmt.Sprintf("  %s → (no observer data)", se.Name)
+	} else {
+		mainLine = fmt.Sprintf("  %s → also seen from: %s",
+			se.Name, strings.Join(se.SeenFrom, ", "))
+	}
+	return mainLine + reasonAnnotation
 }
 
 // PrintArticulation writes a provisional mesh graph to w. The shadow section
@@ -533,23 +571,7 @@ func PrintArticulation(w io.Writer, g MeshGraph) error {
 
 	// Time-window label. Shown on every articulation output regardless of
 	// whether a window was set, so readers always know the temporal scope.
-	var twLabel string
-	if g.Cut.TimeWindow.IsZero() {
-		twLabel = "(none — no time filter)"
-	} else {
-		// Format both bounds in RFC3339 for unambiguous machine-readable output.
-		// A zero bound means unbounded; render it as "(unbounded)" so that
-		// half-open windows are legible (e.g. "(unbounded) – 2026-03-14T23:59:59Z").
-		startStr := "(unbounded)"
-		if !g.Cut.TimeWindow.Start.IsZero() {
-			startStr = g.Cut.TimeWindow.Start.UTC().Format(time.RFC3339)
-		}
-		endStr := "(unbounded)"
-		if !g.Cut.TimeWindow.End.IsZero() {
-			endStr = g.Cut.TimeWindow.End.UTC().Format(time.RFC3339)
-		}
-		twLabel = fmt.Sprintf("%s – %s", startStr, endStr)
-	}
+	twLabel := timeWindowLabel(g.Cut.TimeWindow)
 
 	// Excluded observer positions are pre-computed in Articulate where the full
 	// observer set is known. Use them directly rather than approximating from
@@ -587,28 +609,7 @@ func PrintArticulation(w io.Writer, g MeshGraph) error {
 		lines = append(lines, "  (none — full cut taken)")
 	}
 	for _, se := range g.Cut.ShadowElements {
-		// Format the reason annotation: [observer], [time-window], or
-		// [observer, time-window]. Reasons are always in sorted order
-		// (observer before time-window) as guaranteed by Articulate.
-		reasonStrs := make([]string, len(se.Reasons))
-		for i, r := range se.Reasons {
-			reasonStrs[i] = string(r)
-		}
-		reasonAnnotation := fmt.Sprintf("  [%s]", strings.Join(reasonStrs, ", "))
-
-		// Format the main shadow line. When SeenFrom is empty (time-window-only
-		// exclusion with no observer filter context), show a placeholder rather
-		// than an empty "also seen from:" line.
-		var mainLine string
-		if len(se.SeenFrom) == 0 {
-			mainLine = fmt.Sprintf("  %s → (no observer data)", se.Name)
-		} else {
-			mainLine = fmt.Sprintf("  %s → also seen from: %s",
-				se.Name, strings.Join(se.SeenFrom, ", "))
-		}
-
-		// Append reason annotation inline on the same line for compactness.
-		lines = append(lines, mainLine+reasonAnnotation)
+		lines = append(lines, shadowElementLine(se))
 	}
 
 	lines = append(lines,

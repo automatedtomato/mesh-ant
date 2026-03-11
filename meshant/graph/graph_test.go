@@ -740,23 +740,13 @@ func traceAtTime(id, observer string, ts time.Time) schema.Trace {
 	}
 }
 
-// mustParseTime parses an RFC3339 string and panics on failure.
-// Panic is appropriate in test helpers: a parse failure is a test authoring
-// error, not a runtime failure under test.
-func mustParseTime(s string) time.Time {
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		panic("mustParseTime: " + err.Error())
-	}
-	return t
-}
 
 // TestArticulate_TimeWindow_Start_ExcludesEarlierTraces verifies that a trace
 // with a timestamp before TimeWindow.Start is excluded from the graph.
 func TestArticulate_TimeWindow_Start_ExcludesEarlierTraces(t *testing.T) {
-	start := mustParseTime("2026-03-11T10:00:00Z")
-	before := mustParseTime("2026-03-11T09:00:00Z")
-	after := mustParseTime("2026-03-11T11:00:00Z")
+	start := mustParseTime(t, "2026-03-11T10:00:00Z")
+	before := mustParseTime(t, "2026-03-11T09:00:00Z")
+	after := mustParseTime(t, "2026-03-11T11:00:00Z")
 
 	traces := []schema.Trace{
 		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", before),
@@ -778,9 +768,9 @@ func TestArticulate_TimeWindow_Start_ExcludesEarlierTraces(t *testing.T) {
 // TestArticulate_TimeWindow_End_ExcludesLaterTraces verifies that a trace
 // with a timestamp after TimeWindow.End is excluded from the graph.
 func TestArticulate_TimeWindow_End_ExcludesLaterTraces(t *testing.T) {
-	end := mustParseTime("2026-03-11T10:00:00Z")
-	before := mustParseTime("2026-03-11T09:00:00Z")
-	after := mustParseTime("2026-03-11T11:00:00Z")
+	end := mustParseTime(t, "2026-03-11T10:00:00Z")
+	before := mustParseTime(t, "2026-03-11T09:00:00Z")
+	after := mustParseTime(t, "2026-03-11T11:00:00Z")
 
 	traces := []schema.Trace{
 		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", before),
@@ -802,13 +792,13 @@ func TestArticulate_TimeWindow_End_ExcludesLaterTraces(t *testing.T) {
 // TestArticulate_TimeWindow_BothBounds_IncludesOnly_WithinWindow verifies that
 // only traces whose timestamps fall within [Start, End] are included.
 func TestArticulate_TimeWindow_BothBounds_IncludesOnly_WithinWindow(t *testing.T) {
-	start := mustParseTime("2026-03-11T09:00:00Z")
-	end := mustParseTime("2026-03-11T11:00:00Z")
+	start := mustParseTime(t, "2026-03-11T09:00:00Z")
+	end := mustParseTime(t, "2026-03-11T11:00:00Z")
 
 	traces := []schema.Trace{
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime("2026-03-11T08:00:00Z")), // before
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", mustParseTime("2026-03-11T10:00:00Z")), // within
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", "obs-a", mustParseTime("2026-03-11T12:00:00Z")), // after
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime(t, "2026-03-11T08:00:00Z")), // before
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", mustParseTime(t, "2026-03-11T10:00:00Z")), // within
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", "obs-a", mustParseTime(t, "2026-03-11T12:00:00Z")), // after
 	}
 	opts := graph.ArticulationOptions{
 		TimeWindow: graph.TimeWindow{Start: start, End: end},
@@ -826,7 +816,7 @@ func TestArticulate_TimeWindow_BothBounds_IncludesOnly_WithinWindow(t *testing.T
 // TestArticulate_TimeWindow_StartAtTimestamp_InclusiveLowerBound verifies
 // that a trace with timestamp exactly equal to Start is included (inclusive bound).
 func TestArticulate_TimeWindow_StartAtTimestamp_InclusiveLowerBound(t *testing.T) {
-	ts := mustParseTime("2026-03-11T10:00:00Z")
+	ts := mustParseTime(t, "2026-03-11T10:00:00Z")
 
 	traces := []schema.Trace{
 		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", ts),
@@ -844,7 +834,7 @@ func TestArticulate_TimeWindow_StartAtTimestamp_InclusiveLowerBound(t *testing.T
 // TestArticulate_TimeWindow_EndAtTimestamp_InclusiveUpperBound verifies
 // that a trace with timestamp exactly equal to End is included (inclusive bound).
 func TestArticulate_TimeWindow_EndAtTimestamp_InclusiveUpperBound(t *testing.T) {
-	ts := mustParseTime("2026-03-11T10:00:00Z")
+	ts := mustParseTime(t, "2026-03-11T10:00:00Z")
 
 	traces := []schema.Trace{
 		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", ts),
@@ -862,8 +852,8 @@ func TestArticulate_TimeWindow_EndAtTimestamp_InclusiveUpperBound(t *testing.T) 
 // TestArticulate_TimeWindow_ZeroStart_NoLowerBound verifies that a zero Start
 // means no lower bound: even very old traces are included.
 func TestArticulate_TimeWindow_ZeroStart_NoLowerBound(t *testing.T) {
-	end := mustParseTime("2026-03-11T10:00:00Z")
-	ancient := mustParseTime("1970-01-01T00:00:00Z")
+	end := mustParseTime(t, "2026-03-11T10:00:00Z")
+	ancient := mustParseTime(t, "1970-01-01T00:00:00Z")
 
 	traces := []schema.Trace{
 		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", ancient),
@@ -881,8 +871,8 @@ func TestArticulate_TimeWindow_ZeroStart_NoLowerBound(t *testing.T) {
 // TestArticulate_TimeWindow_ZeroEnd_NoUpperBound verifies that a zero End
 // means no upper bound: even far-future traces are included.
 func TestArticulate_TimeWindow_ZeroEnd_NoUpperBound(t *testing.T) {
-	start := mustParseTime("2026-03-11T10:00:00Z")
-	future := mustParseTime("2099-12-31T23:59:59Z")
+	start := mustParseTime(t, "2026-03-11T10:00:00Z")
+	future := mustParseTime(t, "2099-12-31T23:59:59Z")
 
 	traces := []schema.Trace{
 		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", future),
@@ -901,9 +891,9 @@ func TestArticulate_TimeWindow_ZeroEnd_NoUpperBound(t *testing.T) {
 // (both Start and End zero) produces the same result as having no filter at all.
 func TestArticulate_TimeWindow_IsZero_FullCut(t *testing.T) {
 	traces := []schema.Trace{
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime("2020-01-01T00:00:00Z")),
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", mustParseTime("2025-06-15T12:00:00Z")),
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", "obs-a", mustParseTime("2030-12-31T23:59:59Z")),
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime(t, "2020-01-01T00:00:00Z")),
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", mustParseTime(t, "2025-06-15T12:00:00Z")),
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", "obs-a", mustParseTime(t, "2030-12-31T23:59:59Z")),
 	}
 	opts := graph.ArticulationOptions{
 		TimeWindow: graph.TimeWindow{}, // zero — no filter
@@ -918,12 +908,12 @@ func TestArticulate_TimeWindow_IsZero_FullCut(t *testing.T) {
 // TestArticulate_TimeWindow_ZeroTracesInWindow verifies that when the window
 // matches no traces, TracesIncluded is 0 and all elements appear in shadow.
 func TestArticulate_TimeWindow_ZeroTracesInWindow(t *testing.T) {
-	start := mustParseTime("2026-06-01T00:00:00Z")
-	end := mustParseTime("2026-06-30T23:59:59Z")
+	start := mustParseTime(t, "2026-06-01T00:00:00Z")
+	end := mustParseTime(t, "2026-06-30T23:59:59Z")
 
 	traces := []schema.Trace{
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime("2026-03-11T10:00:00Z")),
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", mustParseTime("2026-07-01T00:00:00Z")),
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime(t, "2026-03-11T10:00:00Z")),
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", mustParseTime(t, "2026-07-01T00:00:00Z")),
 	}
 	opts := graph.ArticulationOptions{
 		TimeWindow: graph.TimeWindow{Start: start, End: end},
@@ -942,16 +932,16 @@ func TestArticulate_TimeWindow_ZeroTracesInWindow(t *testing.T) {
 // the observer and time-window filters use AND semantics: a trace must pass
 // BOTH filters to be included.
 func TestArticulate_TimeWindow_CombinedWithObserver_AND_Semantics(t *testing.T) {
-	start := mustParseTime("2026-03-11T09:00:00Z")
-	end := mustParseTime("2026-03-11T11:00:00Z")
+	start := mustParseTime(t, "2026-03-11T09:00:00Z")
+	end := mustParseTime(t, "2026-03-11T11:00:00Z")
 
 	traces := []schema.Trace{
 		// passes observer but fails time window (too early)
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime("2026-03-11T07:00:00Z")),
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime(t, "2026-03-11T07:00:00Z")),
 		// passes time window but fails observer
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-b", mustParseTime("2026-03-11T10:00:00Z")),
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-b", mustParseTime(t, "2026-03-11T10:00:00Z")),
 		// passes both observer and time window
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", "obs-a", mustParseTime("2026-03-11T10:00:00Z")),
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", "obs-a", mustParseTime(t, "2026-03-11T10:00:00Z")),
 	}
 	opts := graph.ArticulationOptions{
 		ObserverPositions: []string{"obs-a"},
@@ -970,8 +960,8 @@ func TestArticulate_TimeWindow_CombinedWithObserver_AND_Semantics(t *testing.T) 
 // TestArticulate_TimeWindow_StoredInCut verifies that Cut.TimeWindow reflects
 // the Start and End values passed in ArticulationOptions.
 func TestArticulate_TimeWindow_StoredInCut(t *testing.T) {
-	start := mustParseTime("2026-03-11T00:00:00Z")
-	end := mustParseTime("2026-03-11T23:59:59Z")
+	start := mustParseTime(t, "2026-03-11T00:00:00Z")
+	end := mustParseTime(t, "2026-03-11T23:59:59Z")
 
 	traces := []schema.Trace{
 		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", start),
@@ -993,7 +983,7 @@ func TestArticulate_TimeWindow_StoredInCut(t *testing.T) {
 // window filter is set, Cut.TimeWindow.IsZero() returns true.
 func TestArticulate_TimeWindow_FullCut_StoredAsZero(t *testing.T) {
 	traces := []schema.Trace{
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime("2026-03-11T10:00:00Z")),
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime(t, "2026-03-11T10:00:00Z")),
 	}
 	opts := graph.ArticulationOptions{} // no TimeWindow
 	g := graph.Articulate(traces, opts)
@@ -1008,7 +998,7 @@ func TestArticulate_TimeWindow_FullCut_StoredAsZero(t *testing.T) {
 // TestArticulate_ShadowReason_ObserverOnly verifies that an element excluded
 // solely because of the observer filter has Reasons == [ShadowReasonObserver].
 func TestArticulate_ShadowReason_ObserverOnly(t *testing.T) {
-	ts := mustParseTime("2026-03-11T10:00:00Z")
+	ts := mustParseTime(t, "2026-03-11T10:00:00Z")
 
 	t1 := traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", ts)
 	t1.Source = []string{"visible-elem"}
@@ -1039,9 +1029,9 @@ func TestArticulate_ShadowReason_ObserverOnly(t *testing.T) {
 // TestArticulate_ShadowReason_TimeWindowOnly verifies that an element excluded
 // solely because of the time-window filter has Reasons == [ShadowReasonTimeWindow].
 func TestArticulate_ShadowReason_TimeWindowOnly(t *testing.T) {
-	start := mustParseTime("2026-03-11T12:00:00Z")
-	inWindow := mustParseTime("2026-03-11T13:00:00Z")
-	outOfWindow := mustParseTime("2026-03-11T08:00:00Z")
+	start := mustParseTime(t, "2026-03-11T12:00:00Z")
+	inWindow := mustParseTime(t, "2026-03-11T13:00:00Z")
+	outOfWindow := mustParseTime(t, "2026-03-11T08:00:00Z")
 
 	t1 := traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", inWindow)
 	t1.Source = []string{"visible-elem"}
@@ -1072,9 +1062,9 @@ func TestArticulate_ShadowReason_TimeWindowOnly(t *testing.T) {
 // TestArticulate_ShadowReason_Both verifies that an element excluded by both
 // observer filter and time-window filter has both reasons in sorted order.
 func TestArticulate_ShadowReason_Both(t *testing.T) {
-	start := mustParseTime("2026-03-11T12:00:00Z")
-	inWindow := mustParseTime("2026-03-11T13:00:00Z")
-	outOfWindow := mustParseTime("2026-03-11T08:00:00Z")
+	start := mustParseTime(t, "2026-03-11T12:00:00Z")
+	inWindow := mustParseTime(t, "2026-03-11T13:00:00Z")
+	outOfWindow := mustParseTime(t, "2026-03-11T08:00:00Z")
 
 	t1 := traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", inWindow)
 	t1.Source = []string{"visible-elem"}
@@ -1111,7 +1101,7 @@ func TestArticulate_ShadowReason_Both(t *testing.T) {
 // (no filters) produces no shadow elements, so the Reasons question is moot.
 func TestArticulate_ShadowReason_FullCut_NoReasons(t *testing.T) {
 	traces := []schema.Trace{
-		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime("2026-03-11T10:00:00Z")),
+		traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", mustParseTime(t, "2026-03-11T10:00:00Z")),
 	}
 	g := graph.Articulate(traces, graph.ArticulationOptions{})
 
@@ -1124,7 +1114,7 @@ func TestArticulate_ShadowReason_FullCut_NoReasons(t *testing.T) {
 // that when only an observer filter is set, every shadow element has exactly
 // Reasons == [ShadowReasonObserver].
 func TestArticulate_ShadowReason_ObserverCutOnly_AllReasonsAreObserver(t *testing.T) {
-	ts := mustParseTime("2026-03-11T10:00:00Z")
+	ts := mustParseTime(t, "2026-03-11T10:00:00Z")
 
 	t1 := traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", ts)
 	t1.Source = []string{"included-elem"}
@@ -1151,9 +1141,9 @@ func TestArticulate_ShadowReason_ObserverCutOnly_AllReasonsAreObserver(t *testin
 // that when only a time-window filter is set, every shadow element has exactly
 // Reasons == [ShadowReasonTimeWindow].
 func TestArticulate_ShadowReason_TimeWindowCutOnly_AllReasonsAreTimeWindow(t *testing.T) {
-	start := mustParseTime("2026-03-11T12:00:00Z")
-	inWindow := mustParseTime("2026-03-11T13:00:00Z")
-	outOfWindow := mustParseTime("2026-03-11T08:00:00Z")
+	start := mustParseTime(t, "2026-03-11T12:00:00Z")
+	inWindow := mustParseTime(t, "2026-03-11T13:00:00Z")
+	outOfWindow := mustParseTime(t, "2026-03-11T08:00:00Z")
 
 	t1 := traceAtTime("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", inWindow)
 	t1.Source = []string{"included-elem"}
@@ -1190,7 +1180,7 @@ func TestTimeWindow_IsZero_BothZero(t *testing.T) {
 // TestTimeWindow_IsZero_StartSet verifies that a TimeWindow with only Start
 // set returns false from IsZero.
 func TestTimeWindow_IsZero_StartSet(t *testing.T) {
-	tw := graph.TimeWindow{Start: mustParseTime("2026-03-11T00:00:00Z")}
+	tw := graph.TimeWindow{Start: mustParseTime(t, "2026-03-11T00:00:00Z")}
 	if tw.IsZero() {
 		t.Error("IsZero: want false when Start is set")
 	}
@@ -1199,7 +1189,7 @@ func TestTimeWindow_IsZero_StartSet(t *testing.T) {
 // TestTimeWindow_IsZero_EndSet verifies that a TimeWindow with only End
 // set returns false from IsZero.
 func TestTimeWindow_IsZero_EndSet(t *testing.T) {
-	tw := graph.TimeWindow{End: mustParseTime("2026-03-11T23:59:59Z")}
+	tw := graph.TimeWindow{End: mustParseTime(t, "2026-03-11T23:59:59Z")}
 	if tw.IsZero() {
 		t.Error("IsZero: want false when End is set")
 	}
@@ -1209,8 +1199,8 @@ func TestTimeWindow_IsZero_EndSet(t *testing.T) {
 // End set returns false from IsZero.
 func TestTimeWindow_IsZero_BothSet(t *testing.T) {
 	tw := graph.TimeWindow{
-		Start: mustParseTime("2026-03-11T00:00:00Z"),
-		End:   mustParseTime("2026-03-11T23:59:59Z"),
+		Start: mustParseTime(t, "2026-03-11T00:00:00Z"),
+		End:   mustParseTime(t, "2026-03-11T23:59:59Z"),
 	}
 	if tw.IsZero() {
 		t.Error("IsZero: want false when both Start and End are set")
@@ -1222,8 +1212,8 @@ func TestTimeWindow_IsZero_BothSet(t *testing.T) {
 // newGraphForPrintWithTimeWindow builds a MeshGraph with a time-window-filtered
 // cut for PrintArticulation tests that need a window set.
 func newGraphForPrintWithTimeWindow() graph.MeshGraph {
-	start := mustParseTime("2026-03-11T00:00:00Z")
-	end := mustParseTime("2026-03-14T23:59:59Z")
+	start := time.Date(2026, 3, 11, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 3, 14, 23, 59, 59, 0, time.UTC)
 	return graph.MeshGraph{
 		Nodes: map[string]graph.Node{
 			"element-alpha": {Name: "element-alpha", AppearanceCount: 1},
@@ -1257,8 +1247,8 @@ func newGraphForPrintWithTimeWindow() graph.MeshGraph {
 // newGraphForPrintWithObserverAndTimeWindowShadow builds a graph where one
 // shadow element has both observer and time-window reasons, for annotation tests.
 func newGraphForPrintWithObserverAndTimeWindowShadow() graph.MeshGraph {
-	start := mustParseTime("2026-03-11T00:00:00Z")
-	end := mustParseTime("2026-03-14T23:59:59Z")
+	start := time.Date(2026, 3, 11, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 3, 14, 23, 59, 59, 0, time.UTC)
 	return graph.MeshGraph{
 		Nodes: map[string]graph.Node{
 			"element-alpha": {Name: "element-alpha", AppearanceCount: 1},

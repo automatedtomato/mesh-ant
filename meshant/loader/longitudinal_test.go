@@ -443,29 +443,3 @@ func TestLongitudinal_Summarise_MediatedTraceCount(t *testing.T) {
 	}
 }
 
-// --- internal helpers ---
-
-// sortedKeys extracts the keys of a map[string]bool for use in error
-// messages, sorted alphabetically so the output is deterministic across runs.
-// Map iteration in Go is randomised; sorting here prevents non-deterministic
-// error messages that would be confusing when comparing test output.
-//
-// This function is intentionally separate from the observerKeys helper in
-// deforestation_test.go because both files are in the same package and the
-// name would conflict. The implementation is identical; the different name
-// avoids a compile error.
-func sortedKeys(m map[string]bool) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	// Sort in place. sort.Strings sorts ascending lexicographically.
-	for i := 0; i < len(keys)-1; i++ {
-		for j := i + 1; j < len(keys); j++ {
-			if keys[i] > keys[j] {
-				keys[i], keys[j] = keys[j], keys[i]
-			}
-		}
-	}
-	return keys
-}

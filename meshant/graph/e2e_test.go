@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/automatedtomato/mesh-ant/meshant/graph"
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
@@ -219,17 +218,6 @@ func TestE2E_PrintArticulation_FullCut(t *testing.T) {
 // the longitudinal deforestation example dataset (40 traces across 3 days).
 const longitudinalPath = "../../data/examples/deforestation_longitudinal.json"
 
-// mustParseTimeE2E parses an RFC3339 string and fatals the test on failure.
-// Named to avoid collision with the mustParseTime helper in graph_test.go
-// (both are in package graph_test, but test files share the package namespace).
-func mustParseTimeE2E(t *testing.T, s string) time.Time {
-	t.Helper()
-	ts, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		t.Fatalf("mustParseTimeE2E: parse %q: %v", s, err)
-	}
-	return ts
-}
 
 // TestE2E_LongitudinalDataset_FullCut loads all 40 longitudinal traces and
 // verifies that a full cut includes all of them and reports the correct total
@@ -266,8 +254,8 @@ func TestE2E_LongitudinalDataset_Day1Window(t *testing.T) {
 
 	opts := graph.ArticulationOptions{
 		TimeWindow: graph.TimeWindow{
-			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
-			End:   mustParseTimeE2E(t, "2026-03-11T23:59:59Z"),
+			Start: mustParseTime(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTime(t, "2026-03-11T23:59:59Z"),
 		},
 	}
 	g := graph.Articulate(traces, opts)
@@ -287,8 +275,8 @@ func TestE2E_LongitudinalDataset_Day2Window(t *testing.T) {
 
 	opts := graph.ArticulationOptions{
 		TimeWindow: graph.TimeWindow{
-			Start: mustParseTimeE2E(t, "2026-03-14T00:00:00Z"),
-			End:   mustParseTimeE2E(t, "2026-03-14T23:59:59Z"),
+			Start: mustParseTime(t, "2026-03-14T00:00:00Z"),
+			End:   mustParseTime(t, "2026-03-14T23:59:59Z"),
 		},
 	}
 	g := graph.Articulate(traces, opts)
@@ -308,8 +296,8 @@ func TestE2E_LongitudinalDataset_Day3Window(t *testing.T) {
 
 	opts := graph.ArticulationOptions{
 		TimeWindow: graph.TimeWindow{
-			Start: mustParseTimeE2E(t, "2026-03-18T00:00:00Z"),
-			End:   mustParseTimeE2E(t, "2026-03-18T23:59:59Z"),
+			Start: mustParseTime(t, "2026-03-18T00:00:00Z"),
+			End:   mustParseTime(t, "2026-03-18T23:59:59Z"),
 		},
 	}
 	g := graph.Articulate(traces, opts)
@@ -329,8 +317,8 @@ func TestE2E_LongitudinalDataset_Days1And2Window(t *testing.T) {
 
 	opts := graph.ArticulationOptions{
 		TimeWindow: graph.TimeWindow{
-			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
-			End:   mustParseTimeE2E(t, "2026-03-14T23:59:59Z"),
+			Start: mustParseTime(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTime(t, "2026-03-14T23:59:59Z"),
 		},
 	}
 	g := graph.Articulate(traces, opts)
@@ -351,8 +339,8 @@ func TestE2E_LongitudinalDataset_ShadowContainsDay3Elements(t *testing.T) {
 
 	opts := graph.ArticulationOptions{
 		TimeWindow: graph.TimeWindow{
-			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
-			End:   mustParseTimeE2E(t, "2026-03-14T23:59:59Z"),
+			Start: mustParseTime(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTime(t, "2026-03-14T23:59:59Z"),
 		},
 	}
 	g := graph.Articulate(traces, opts)
@@ -374,8 +362,8 @@ func TestE2E_LongitudinalDataset_ObserverAndTimeWindow_Combined(t *testing.T) {
 	opts := graph.ArticulationOptions{
 		ObserverPositions: []string{"satellite-operator"},
 		TimeWindow: graph.TimeWindow{
-			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
-			End:   mustParseTimeE2E(t, "2026-03-11T23:59:59Z"),
+			Start: mustParseTime(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTime(t, "2026-03-11T23:59:59Z"),
 		},
 	}
 	g := graph.Articulate(traces, opts)
@@ -400,8 +388,8 @@ func TestE2E_LongitudinalDataset_ShadowReason_TimeWindow_Day3Element(t *testing.
 
 	opts := graph.ArticulationOptions{
 		TimeWindow: graph.TimeWindow{
-			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
-			End:   mustParseTimeE2E(t, "2026-03-14T23:59:59Z"),
+			Start: mustParseTime(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTime(t, "2026-03-14T23:59:59Z"),
 		},
 	}
 	g := graph.Articulate(traces, opts)
@@ -434,8 +422,8 @@ func TestE2E_LongitudinalDataset_PrintArticulation_TimeWindowLine(t *testing.T) 
 
 	opts := graph.ArticulationOptions{
 		TimeWindow: graph.TimeWindow{
-			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
-			End:   mustParseTimeE2E(t, "2026-03-14T23:59:59Z"),
+			Start: mustParseTime(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTime(t, "2026-03-14T23:59:59Z"),
 		},
 	}
 	g := graph.Articulate(traces, opts)
