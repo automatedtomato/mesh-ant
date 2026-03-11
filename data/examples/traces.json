@@ -1,0 +1,95 @@
+[
+  {
+    "id": "b3d7e1a2-4f09-4c8e-9a1b-c2d3e4f5a6b7",
+    "timestamp": "2026-03-10T09:14:00Z",
+    "what_changed": "Vendor registration application submitted and received by intake queue",
+    "source": ["vendor-web-portal", "vendor-registration-form-v4"],
+    "target": ["intake-queue"],
+    "observer": "portal-ingestion-log/position-intake"
+  },
+  {
+    "id": "c4e8f2b3-5a10-4d9f-ab2c-d3e4f5a6b7c8",
+    "timestamp": "2026-03-10T09:16:00Z",
+    "what_changed": "Application held in pending-correction state: DUNS number field missing from submission",
+    "source": ["intake-form-validator-v4"],
+    "target": ["vendor-registration-application-00142"],
+    "mediation": "intake-form-validator-v4",
+    "tags": ["blockage"],
+    "observer": "form-validator-service/process-log"
+  },
+  {
+    "id": "d5f9a3c4-6b21-4eaf-bc3d-e4f5a6b7c8d9",
+    "timestamp": "2026-03-10T09:41:00Z",
+    "what_changed": "Application re-entered intake queue after vendor submitted DUNS correction",
+    "target": ["intake-queue"],
+    "observer": "portal-ingestion-log/position-intake"
+  },
+  {
+    "id": "e6a0b4d5-7c32-4fbf-cd4e-f5a6b7c8d9e0",
+    "timestamp": "2026-03-10T09:42:00Z",
+    "what_changed": "Application buffered 38 minutes by rate-limiter: queue throughput exceeded 50 submissions per hour",
+    "source": ["rate-limiter", "queue-throughput-policy-v2"],
+    "target": ["vendor-registration-application-00142"],
+    "mediation": "queue-throughput-policy-v2",
+    "tags": ["delay", "threshold"],
+    "observer": "queue-monitor/ops-dashboard"
+  },
+  {
+    "id": "f7b1c5e6-8d43-4acf-de5f-a6b7c8d9e0f1",
+    "timestamp": "2026-03-10T10:20:00Z",
+    "what_changed": "Application classified as Tier 2 Regional Vendor by classification ruleset",
+    "source": ["classification-ruleset-v7"],
+    "target": ["vendor-registration-application-00142"],
+    "mediation": "classification-ruleset-v7",
+    "tags": ["translation"],
+    "observer": "classification-service/event-log"
+  },
+  {
+    "id": "a8c2d6f7-9e54-4bdf-ef6a-b7c8d9e0f1a2",
+    "timestamp": "2026-03-10T10:22:00Z",
+    "what_changed": "Contract value $340,000 exceeds $250,000 Tier 2 approval ceiling — escalation triggered",
+    "source": ["approval-threshold-rule-tier2"],
+    "target": ["vendor-registration-application-00142"],
+    "mediation": "approval-threshold-rule-tier2",
+    "tags": ["threshold", "redirection"],
+    "observer": "approval-engine/threshold-monitor"
+  },
+  {
+    "id": "b9d3e7a8-af65-4cef-f07b-c8d9e0f1a2b3",
+    "timestamp": "2026-03-10T10:24:00Z",
+    "what_changed": "Application redirected from standard approval queue to compliance sub-queue",
+    "source": ["escalation-routing-matrix-v3"],
+    "target": ["vendor-registration-application-00142"],
+    "mediation": "escalation-routing-matrix-v3",
+    "tags": ["redirection"],
+    "observer": "routing-engine/event-stream"
+  },
+  {
+    "id": "c0e4f8b9-b076-4def-017c-d9e0f1a2b3c4",
+    "timestamp": "2026-03-10T11:27:00Z",
+    "what_changed": "Application entered 72-hour hold: mandatory background check initiated by compliance queue",
+    "source": ["background-check-service"],
+    "target": ["vendor-registration-application-00142"],
+    "tags": ["delay"],
+    "observer": "compliance-queue/wait-monitor"
+  },
+  {
+    "id": "d1f5a9c0-c187-4eff-128d-e0f1a2b3c4d5",
+    "timestamp": "2026-03-13T11:27:00Z",
+    "what_changed": "Background check result received via inbound webhook — check cleared with no adverse findings",
+    "target": ["vendor-registration-application-00142"],
+    "mediation": "background-check-webhook-endpoint",
+    "tags": ["translation"],
+    "observer": "compliance-queue/inbound-webhook"
+  },
+  {
+    "id": "e2a6b0d1-d298-4fff-239e-f1a2b3c4d5e6",
+    "timestamp": "2026-03-13T14:03:00Z",
+    "what_changed": "Application approved by compliance reviewer after all checklist criteria satisfied",
+    "source": ["compliance-reviewer", "compliance-approval-checklist-v2"],
+    "target": ["vendor-registration-application-00142"],
+    "mediation": "compliance-approval-checklist-v2",
+    "tags": ["threshold"],
+    "observer": "compliance-review-ui/audit-log"
+  }
+]
