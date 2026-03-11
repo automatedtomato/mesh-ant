@@ -112,14 +112,47 @@ this observer see?" but "what did this observer see within this window?"
 
 ---
 
-## Provisional: M4
+## Milestone 4: Graph Diff
 
-Not scoped. Two candidate directions, to be confirmed after M3 is complete:
+Situated comparison of two articulations — recording what became visible or invisible between
+two cuts. A diff is not a neutral changelog; it names both positions it compares.
 
-- **M4-A: Graph diff** — `Diff(g1, g2 MeshGraph) GraphDiff` comparing two articulations
-  (natural use case: diff day-1 vs day-3 from same observer position)
-- **M4-B: Graph-as-actor** — produced graph gets a trace ID and can appear as source/target
-  in subsequent traces; requires schema convention for graph-reference IDs
+**Full plan:** `tasks/plan_m4.md`
+
+### Tasks
+
+- [ ] **M4.1 — `Diff()` function and unit tests (groups 10–14, ~25 tests)**
+  - New types: `ShadowShiftKind`, `ShadowShift`, `PersistedNode`, `GraphDiff`
+  - `Diff(g1, g2 MeshGraph) GraphDiff` in `meshant/graph/graph.go`
+  - `validTraceWithElements` helper in `meshant/graph/testhelpers_test.go`
+  - Branch: `feat/m4-diff`
+
+- [ ] **M4.2 — `PrintDiff()` and output tests (group 15, ~14 tests)**
+  - `PrintDiff(w io.Writer, d GraphDiff) error` in `meshant/graph/graph.go`
+  - Branch: `feat/m4-diff`
+
+- [ ] **M4.3 — E2E tests (group 16, ~8 tests)**
+  - `meshant/graph/e2e_test.go` — day-1 vs day-3 diffs from longitudinal dataset
+  - Branch: `feat/m4-diff`
+
+- [ ] **M4.4 — Decision record**
+  - `docs/decisions/graph-diff-v1.md`
+  - 10 decisions covering: directionality, edge/node identity, ShadowShiftKind, From/To verbatim
+    copy, sort discipline, unconditional PrintDiff sections, deferred items
+
+---
+
+## Provisional: M5 — Graph-as-Actor
+
+Not scoped. Core requirement: a produced `MeshGraph` or `GraphDiff` can be assigned a stable
+identifier and appear as a `Source` or `Target` in subsequent traces. Once a graph is itself
+traceable, MeshAnt can record its own observation apparatus as part of the mesh it observes.
+
+Key open questions documented in `tasks/plan_m4.md` (Provisional M5 Note):
+- Schema convention for graph-reference IDs (URI scheme vs structural prefix vs new convention)
+- ID assignment for MeshGraph and GraphDiff (deterministic vs random UUID)
+- schema.Validate() treatment for graph-reference strings
+- loader.Load / MeshSummary treatment
 
 ---
 
@@ -129,5 +162,5 @@ Not scoped. Two candidate directions, to be confirmed after M3 is complete:
 - Do not copy the Miro Fish schema or pipeline. Use it only as a reference for structural patterns.
 - The trace schema should feel provisional and revisable — not like a finished ontology.
 - Do not lock in a form factor (CLI / web app / agent framework). Let it emerge.
-- M3 adds the time-window axis. Do not implement tag-filter axis in M3 — defer to M4+.
-- Graph-as-actor and graph-diff are noted provisionally for M4 but not committed.
+- Tag-filter axis deferred to M4+ (not implemented in M3 or M4).
+- Graph-as-actor deferred to M5 (after graph-diff lands in M4).
