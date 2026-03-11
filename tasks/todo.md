@@ -77,13 +77,57 @@ its shadow.
 
 ---
 
+## Milestone 3: Longitudinal Dataset and Time-Window Cut Axis
+
+The goal of this milestone is to introduce temporal depth: a dataset that spans multiple
+days and a second cut axis (time-window) that lets an articulation ask not just "what did
+this observer see?" but "what did this observer see within this window?"
+
+**Full plan:** `tasks/plan_m3.md`
+
+### Tasks
+
+- [ ] **M3.1 — Write the longitudinal dataset**
+  - `data/examples/deforestation_longitudinal.json` — 40 traces, 3 days
+  - Extends the deforestation scenario: 2026-03-11 (20 existing) + 2026-03-14 (10) + 2026-03-18 (10)
+  - All 8 observer positions; all 6 tag types per day; cross-day element persistence
+  - `meshant/loader/longitudinal_test.go` — 19 tests
+  - Branch: `feat/m3-dataset`
+
+- [ ] **M3.2 — Extend the graph articulation package with time-window axis**
+  - New types: `TimeWindow`, `ShadowReason`
+  - `ShadowElement` gains `Reasons []ShadowReason`
+  - `ArticulationOptions` and `Cut` gain `TimeWindow`
+  - `Articulate`: AND semantics, inclusive bounds, reason tracking per shadow element
+  - `PrintArticulation`: time-window line + reason annotations in shadow section
+  - `meshant/graph/graph_test.go` — new groups 6–9 (~26 tests)
+  - `meshant/graph/e2e_test.go` — 9 new longitudinal e2e tests
+  - Branch: `feat/m3-time-window`
+
+- [ ] **M3.3 — Record the time-window cut**
+  - `docs/decisions/time-window-v1.md`
+  - 8 decisions: TimeWindow in graph package, zero=full-cut, AND semantics, inclusive bounds,
+    ShadowReason per element, Cut.TimeWindow stored verbatim, deferred items, relation to
+    articulation-v1.md Decision 6
+
+---
+
+## Provisional: M4
+
+Not scoped. Two candidate directions, to be confirmed after M3 is complete:
+
+- **M4-A: Graph diff** — `Diff(g1, g2 MeshGraph) GraphDiff` comparing two articulations
+  (natural use case: diff day-1 vs day-3 from same observer position)
+- **M4-B: Graph-as-actor** — produced graph gets a trace ID and can appear as source/target
+  in subsequent traces; requires schema convention for graph-reference IDs
+
+---
+
 ## Notes
 
 - Do not begin simulation, persona generation, or LLM integration before M1 is complete.
 - Do not copy the Miro Fish schema or pipeline. Use it only as a reference for structural patterns.
 - The trace schema should feel provisional and revisable — not like a finished ontology.
 - Do not lock in a form factor (CLI / web app / agent framework). Let it emerge.
-- M2 introduces observer-positioned articulation. Do not implement time-window or
-  tag-filter cut axes in M2 — defer to M3+.
-- Graph-as-actor (the produced graph entering the mesh as a force) is noted
-  architecturally but deferred to a later milestone.
+- M3 adds the time-window axis. Do not implement tag-filter axis in M3 — defer to M4+.
+- Graph-as-actor and graph-diff are noted provisionally for M4 but not committed.
