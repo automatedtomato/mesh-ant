@@ -128,7 +128,7 @@ both positions it compares and what became visible or invisible between them.
 
 ---
 
-## Milestone 5: Graph-as-Actor
+## Milestone 5: Graph-as-Actor — COMPLETE (merged to develop)
 
 The observation apparatus enters the mesh it observes. A produced `MeshGraph` or
 `GraphDiff` can be assigned a stable identifier and appear as a `Source` or `Target`
@@ -136,28 +136,25 @@ in subsequent traces. Reflexivity: the framework can observe its own action in t
 
 **Full plan:** `tasks/plan_m5.md`
 
-### Tasks
+- [x] **M5.1 — Schema additions**
+  - `IsGraphRef`, `GraphRefKind`, `GraphRefID` in `meshant/schema/graphref.go`
+  - `parseGraphRef` private helper using `strings.Cut`; 14 tests, 100% coverage
+  - Branch: `feat/m5-schema` (merged to develop)
 
-- [ ] **M5.1 — Schema additions**
-  - `IsGraphRef`, `GraphRefKind`, `GraphRefID` in `meshant/schema/`
-  - Verify `Validate()` accepts graph-ref strings in Source/Target
-  - 13 tests; branch: `feat/m5-schema`
-
-- [ ] **M5.2 — Graph actor additions**
-  - `ID string` on `MeshGraph` and `GraphDiff`
+- [x] **M5.2 — Graph actor additions**
+  - `ID string` on `MeshGraph` and `GraphDiff` (zero = not an actor)
   - `meshant/graph/actor.go`: `IdentifyGraph`, `IdentifyDiff`, `GraphRef`, `DiffRef`, `newUUID4`
-  - 15 tests; branch: `feat/m5-actor`
+  - 15 tests (groups 17–21); branch: `feat/m5-actor` (merged to develop)
 
-- [ ] **M5.3 — Loader addition and new dataset**
+- [x] **M5.3 — Loader addition and new dataset**
   - `GraphRefs []string` on `MeshSummary`; `Summarise` populates from source/target
-  - `data/examples/graph_ref_traces.json` — 6 traces with graph-ref strings
-  - 9 unit tests + 5 E2E tests; branch: `feat/m5-loader`
+  - `data/examples/graph_ref_traces.json` — 6 traces with 3 distinct graph-refs
+  - 14 unit tests (groups 5–6) + 5 E2E tests (group 7), loader 100% coverage
+  - Branch: `feat/m5-loader` (merged to develop)
 
-- [ ] **M5.4 — Decision record**
+- [x] **M5.4 — Decision record**
   - `docs/decisions/graph-as-actor-v1.md`
-  - 10 decisions: symmetry, prefix convention, `[]string` placement, pure functions,
-    no registry, no auto-recording, schema predicates, UUID4, encounter-order GraphRefs,
-    Validate() permissiveness
+  - 10 decisions; ideological grounding (ANT/Strathern/Haraway/Principle 8)
 
 ---
 
