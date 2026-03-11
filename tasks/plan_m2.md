@@ -271,7 +271,7 @@ Absent-source traces: A04, B04, C04 (3 traces — automated systems, collective 
 Multi-source traces: A05, B06, C05, X01 (4 traces)
 Multi-target traces: X02 (1 trace — international-treaty-body → 2 targets)
 
-Observer positions (9 distinct):
+Observer positions (8 distinct):
 `satellite-operator`, `deforestation-detection-algorithm`, `national-forest-agency`,
 `ngo-field-coordinator`, `carbon-registry-auditor`, `carbon-credit-broker`,
 `policy-enforcement-officer`, `international-treaty-body`
@@ -497,7 +497,7 @@ Observer position(s) not included: deforestation-detection-algorithm,
 **File:** `meshant/graph/e2e_test.go` — package `graph_test`
 
 - `TestE2E_FullCut` — Load deforestation.json → Articulate(all) → PrintArticulation: 20 traces, no shadow
-- `TestE2E_CarbonRegistryAuditorCut` — filter to carbon-registry-auditor: 4 traces included, shadow non-empty
+- `TestE2E_CarbonRegistryAuditorCut` — filter to carbon-registry-auditor: 3 traces included (d901, d902, d904), shadow non-empty
 - `TestE2E_NGOCut` — filter to ngo-field-coordinator: 5 traces, shadow elements visible from other positions
 - `TestE2E_CrossThreadCut` — filter to policy-enforcement-officer: 3 traces (A05, A06, X01), shadow covers B+C threads
 
