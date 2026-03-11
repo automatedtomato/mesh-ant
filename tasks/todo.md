@@ -57,26 +57,23 @@ its shadow.
 
 ### Tasks
 
-- [ ] **M2.1 — Write the deforestation example dataset**
+- [x] **M2.1 — Write the deforestation example dataset**
   - `data/examples/deforestation.json` — 20 traces, 3 crossing threads
-  - Branch: `feat/m2-dataset`
-  - Scenario: 73ha deforestation event tracked across satellite-to-policy,
-    community-observation, and carbon-market threads
-  - 9 observer positions; absent-source ×3; multi-source ×4; multi-target ×1
-  - All 6 tag types covered: translation ×6, threshold ×4, delay ×3,
-    redirection ×3, blockage ×2, amplification ×2
+  - Branch: `feat/m2-dataset` (merged to develop)
+  - 8 observer positions; absent-source ×3; multi-source ×4; multi-target ×1
+  - All 6 tag types; 19 validation tests, 100% coverage
 
-- [ ] **M2.2 — Write the graph articulation package**
+- [x] **M2.2 — Write the graph articulation package**
   - `meshant/graph/graph.go` — Articulate(), PrintArticulation(), MeshGraph with shadow
-  - `meshant/graph/graph_test.go` + `e2e_test.go` — ~29 tests, ≥80% coverage
+  - `meshant/graph/graph_test.go` + `e2e_test.go` — 42 tests, 100% coverage
   - Branch: `feat/m2-graph`
-  - Observer position as primary cut axis; shadow section is mandatory output
-  - Empty filter = full cut (named, not error)
+  - Observer position as primary cut axis; shadow mandatory; full cut named
+  - Code + security reviews passed; all HIGH/MEDIUM findings resolved
 
-- [ ] **M2.3 — Record the articulation cut**
+- [x] **M2.3 — Record the articulation cut**
   - `docs/decisions/articulation-v1.md`
-  - Documents: observer position as primary axis, shadow as mandatory output,
-    deferred axes (time window, tag filter), graph-as-actor noted for M3+
+  - 6 decisions: observer axis, shadow mandatory, empty=full-cut, ExcludedObserverPositions,
+    graph-as-actor noted, time/tag axes deferred
 
 ---
 
