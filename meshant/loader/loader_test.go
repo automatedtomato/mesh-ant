@@ -526,6 +526,135 @@ func TestPrintSummary_EmptySummary_DoesNotPanic(t *testing.T) {
 	_ = loader.PrintSummary(&buf, loader.MeshSummary{})
 }
 
+// --- Group 5: Summarise — GraphRefs ---
+
+// traceWithSource builds a validTrace with the given Source slice set.
+func traceWithSource(id string, sources []string) schema.Trace {
+	t := validTrace(id, "something changed")
+	t.Source = sources
+	return t
+}
+
+// traceWithTarget builds a validTrace with the given Target slice set.
+func traceWithTarget(id string, targets []string) schema.Trace {
+	t := validTrace(id, "something changed")
+	t.Target = targets
+	return t
+}
+
+func TestSummarise_GraphRefs_Empty_WhenNonePresent(t *testing.T) {
+	traces := []schema.Trace{
+		traceWithSource("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", []string{"landsat-9-satellite"}),
+	}
+	s := loader.Summarise(traces)
+	if len(s.GraphRefs) != 0 {
+		t.Errorf("GraphRefs = %v; want empty", s.GraphRefs)
+	}
+}
+
+func TestSummarise_GraphRefs_SingleRef(t *testing.T) {
+	ref := "meshgraph:a1b2c3d4-bbbb-4ccc-8ddd-eeeeeeeeee01"
+	traces := []schema.Trace{
+		traceWithSource("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", []string{ref}),
+	}
+	s := loader.Summarise(traces)
+	if len(s.GraphRefs) != 1 || s.GraphRefs[0] != ref {
+		t.Errorf("GraphRefs = %v; want [%q]", s.GraphRefs, ref)
+	}
+}
+
+func TestSummarise_GraphRefs_Deduplication(t *testing.T) {
+	ref := "meshgraph:a1b2c3d4-bbbb-4ccc-8ddd-eeeeeeeeee01"
+	traces := []schema.Trace{
+		traceWithSource("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", []string{ref}),
+		traceWithTarget("b2c3d4e5-e5f6-4a7b-8c9d-e0f1a2b3c4d5", []string{ref}),
+	}
+	s := loader.Summarise(traces)
+	if len(s.GraphRefs) != 1 {
+		t.Errorf("GraphRefs = %v; want exactly one entry (dedup)", s.GraphRefs)
+	}
+}
+
+func TestSummarise_GraphRefs_EncounterOrder(t *testing.T) {
+	ref1 := "meshgraph:a1b2c3d4-bbbb-4ccc-8ddd-eeeeeeeeee01"
+	ref2 := "meshdiff:b2c3d4e5-bbbb-4ccc-8ddd-eeeeeeeeee02"
+	traces := []schema.Trace{
+		traceWithSource("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", []string{ref1}),
+		traceWithSource("b2c3d4e5-e5f6-4a7b-8c9d-e0f1a2b3c4d5", []string{ref2}),
+	}
+	s := loader.Summarise(traces)
+	if len(s.GraphRefs) != 2 || s.GraphRefs[0] != ref1 || s.GraphRefs[1] != ref2 {
+		t.Errorf("GraphRefs = %v; want [%q, %q] (encounter order)", s.GraphRefs, ref1, ref2)
+	}
+}
+
+func TestSummarise_GraphRefs_MixedWithElements(t *testing.T) {
+	ref := "meshgraph:a1b2c3d4-bbbb-4ccc-8ddd-eeeeeeeeee01"
+	plain := "landsat-9-satellite"
+	traces := []schema.Trace{
+		traceWithSource("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", []string{ref, plain}),
+	}
+	s := loader.Summarise(traces)
+	// Graph-ref is extracted into GraphRefs.
+	if len(s.GraphRefs) != 1 || s.GraphRefs[0] != ref {
+		t.Errorf("GraphRefs = %v; want [%q]", s.GraphRefs, ref)
+	}
+	// Plain element is still counted in Elements.
+	if s.Elements[plain] == 0 {
+		t.Errorf("Elements[%q] = 0; want > 0", plain)
+	}
+}
+
+func TestSummarise_GraphRefs_BothPrefixes(t *testing.T) {
+	graphRef := "meshgraph:a1b2c3d4-bbbb-4ccc-8ddd-eeeeeeeeee01"
+	diffRef := "meshdiff:b2c3d4e5-bbbb-4ccc-8ddd-eeeeeeeeee02"
+	traces := []schema.Trace{
+		traceWithSource("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", []string{graphRef}),
+		traceWithSource("b2c3d4e5-e5f6-4a7b-8c9d-e0f1a2b3c4d5", []string{diffRef}),
+	}
+	s := loader.Summarise(traces)
+	if len(s.GraphRefs) != 2 {
+		t.Errorf("GraphRefs = %v; want 2 entries (one per prefix)", s.GraphRefs)
+	}
+}
+
+// --- Group 6: PrintSummary — GraphRefs section ---
+
+func TestPrintSummary_GraphRefs_Section_Present(t *testing.T) {
+	var buf bytes.Buffer
+	s := loader.MeshSummary{}
+	if err := loader.PrintSummary(&buf, s); err != nil {
+		t.Fatalf("PrintSummary error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Graph references") {
+		t.Errorf("PrintSummary output missing GraphRefs section header; got:\n%s", buf.String())
+	}
+}
+
+func TestPrintSummary_GraphRefs_Empty_ShowsNone(t *testing.T) {
+	var buf bytes.Buffer
+	s := loader.MeshSummary{}
+	if err := loader.PrintSummary(&buf, s); err != nil {
+		t.Fatalf("PrintSummary error: %v", err)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "(none)") {
+		t.Errorf("PrintSummary: expected '(none)' for empty GraphRefs; got:\n%s", output)
+	}
+}
+
+func TestPrintSummary_GraphRefs_ShowsRef(t *testing.T) {
+	ref := "meshgraph:a1b2c3d4-bbbb-4ccc-8ddd-eeeeeeeeee01"
+	var buf bytes.Buffer
+	s := loader.MeshSummary{GraphRefs: []string{ref}}
+	if err := loader.PrintSummary(&buf, s); err != nil {
+		t.Fatalf("PrintSummary error: %v", err)
+	}
+	if !strings.Contains(buf.String(), ref) {
+		t.Errorf("PrintSummary: ref %q not found in output:\n%s", ref, buf.String())
+	}
+}
+
 // failWriter is an io.Writer that always returns an error.
 // Used to test that PrintSummary propagates writer errors.
 type failWriter struct{}
