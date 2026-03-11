@@ -55,6 +55,14 @@ func TestIsGraphRef_PartialPrefix_False(t *testing.T) {
 	}
 }
 
+func TestIsGraphRef_UnknownKindWithColon_False(t *testing.T) {
+	// A colon-containing string whose prefix is not a known kind.
+	s := "http:something"
+	if schema.IsGraphRef(s) {
+		t.Errorf("IsGraphRef(%q) = true; want false", s)
+	}
+}
+
 // --- Group 2: GraphRefKind ---
 
 func TestGraphRefKind_MeshgraphPrefix(t *testing.T) {

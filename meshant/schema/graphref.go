@@ -27,10 +27,29 @@ const (
 	graphRefPrefixDiff  = "meshdiff:"
 )
 
+// parseGraphRef splits a string on its first colon and checks whether the
+// part before the colon is a known graph-reference kind. Returns (kind, id)
+// where kind is "meshgraph" or "meshdiff" and id is the portion after the colon.
+// Returns ("", "") if s is not a graph-reference.
+//
+// Using strings.Cut avoids the paired HasPrefix+TrimPrefix pattern and ensures
+// that both kind and id are extracted in a single pass.
+func parseGraphRef(s string) (kind, id string) {
+	before, after, ok := strings.Cut(s, ":")
+	if !ok {
+		return "", ""
+	}
+	if before != "meshgraph" && before != "meshdiff" {
+		return "", ""
+	}
+	return before, after
+}
+
 // IsGraphRef reports whether s is a graph-reference string — i.e., whether it
 // begins with "meshgraph:" or "meshdiff:". It does not validate the UUID portion.
 func IsGraphRef(s string) bool {
-	return strings.HasPrefix(s, graphRefPrefixGraph) || strings.HasPrefix(s, graphRefPrefixDiff)
+	kind, _ := parseGraphRef(s)
+	return kind != ""
 }
 
 // GraphRefKind returns the kind prefix of a graph-reference string:
@@ -38,14 +57,8 @@ func IsGraphRef(s string) bool {
 //   - "meshdiff"  if s begins with "meshdiff:"
 //   - ""          if s is not a graph-reference
 func GraphRefKind(s string) string {
-	switch {
-	case strings.HasPrefix(s, graphRefPrefixGraph):
-		return "meshgraph"
-	case strings.HasPrefix(s, graphRefPrefixDiff):
-		return "meshdiff"
-	default:
-		return ""
-	}
+	kind, _ := parseGraphRef(s)
+	return kind
 }
 
 // GraphRefID returns the UUID portion of a graph-reference string — the part
@@ -56,12 +69,6 @@ func GraphRefKind(s string) string {
 // Note: both cases return "". Callers who need to distinguish "not a graph-ref"
 // from "graph-ref with empty ID" should call [IsGraphRef] first.
 func GraphRefID(s string) string {
-	var id string
-	switch {
-	case strings.HasPrefix(s, graphRefPrefixGraph):
-		id = strings.TrimPrefix(s, graphRefPrefixGraph)
-	case strings.HasPrefix(s, graphRefPrefixDiff):
-		id = strings.TrimPrefix(s, graphRefPrefixDiff)
-	}
+	_, id := parseGraphRef(s)
 	return id
 }
