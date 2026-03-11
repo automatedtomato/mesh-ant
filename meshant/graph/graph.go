@@ -146,10 +146,12 @@ type Node struct {
 	// accumulate count from both source and target roles.
 	AppearanceCount int
 
-	// ShadowCount is the number of shadow traces in which this element appears.
-	// Zero for nodes that are not also shadow elements. A non-zero ShadowCount
-	// indicates this element has a larger presence in the mesh than is visible
-	// from the current observer position.
+	// ShadowCount is the number of excluded traces in which this element appears.
+	// Zero for nodes that exist only in included traces. A non-zero ShadowCount
+	// means this element crosses the cut boundary: it is visible here (included
+	// traces) AND present in excluded traces (shadow). Methodologically, it
+	// participates in more observational positions than this cut can see —
+	// a partial connection rather than a clean inclusion or exclusion.
 	ShadowCount int
 }
 
@@ -569,7 +571,9 @@ func PrintArticulation(w io.Writer, g MeshGraph) error {
 	})
 
 	// Observer positions label.
-	obsLabel := "(all — no filter)"
+	// "(all — full cut)" names the full-cut position as a deliberate choice,
+	// not as the absence of a filter (per articulation-v1.md Decision 3).
+	obsLabel := "(all — full cut)"
 	if len(g.Cut.ObserverPositions) > 0 {
 		obsLabel = strings.Join(g.Cut.ObserverPositions, ", ")
 	}

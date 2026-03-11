@@ -298,7 +298,9 @@ func Diff(g1, g2 MeshGraph) GraphDiff {
 // cutSummaryLines returns the lines describing a single cut for the PrintDiff
 // From/To sections.
 func cutSummaryLines(label string, c Cut) []string {
-	obsLabel := "(all — no filter)"
+	// "(all — full cut)" names the full-cut position as a deliberate choice,
+	// consistent with PrintArticulation and articulation-v1.md Decision 3.
+	obsLabel := "(all — full cut)"
 	if len(c.ObserverPositions) > 0 {
 		obsLabel = strings.Join(c.ObserverPositions, ", ")
 	}
