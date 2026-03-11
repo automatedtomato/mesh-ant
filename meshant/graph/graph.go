@@ -109,6 +109,11 @@ type ArticulationOptions struct {
 // reads and writes to the same MeshGraph from multiple goroutines require
 // external synchronisation.
 type MeshGraph struct {
+	// ID is the stable actor identifier for this graph. Empty string means the
+	// graph has not been identified as an actor — it is an articulation output,
+	// not yet a participant in the mesh. Assign via graph.IdentifyGraph.
+	ID string
+
 	// Nodes maps element names to their node data. An element enters the graph
 	// if it appeared in the Source or Target of any included trace.
 	Nodes map[string]Node

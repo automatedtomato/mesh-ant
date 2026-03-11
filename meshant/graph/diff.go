@@ -80,6 +80,10 @@ type PersistedNode struct {
 //   - EdgesAdded, EdgesRemoved: alphabetical by TraceID
 //   - ShadowShifts: alphabetical by Name field
 type GraphDiff struct {
+	// ID is the stable actor identifier for this diff. Empty string means the
+	// diff has not been identified as an actor. Assign via graph.IdentifyDiff.
+	ID string
+
 	// NodesAdded contains element names in g2.Nodes but not g1.Nodes.
 	NodesAdded []string
 
