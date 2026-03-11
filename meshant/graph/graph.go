@@ -631,3 +631,4 @@ func PrintArticulation(w io.Writer, g MeshGraph) error {
 	}
 	return nil
 }
+
