@@ -14,7 +14,6 @@
 package loader_test
 
 import (
-	"sort"
 	"testing"
 
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
@@ -194,7 +193,7 @@ func TestDeforestation_Observers_DistinctCount(t *testing.T) {
 	const minDistinctObservers = 8
 	if len(observers) < minDistinctObservers {
 		t.Errorf("distinct observers: want >= %d, got %d (found: %v)",
-			minDistinctObservers, len(observers), observerKeys(observers))
+			minDistinctObservers, len(observers), sortedKeys(observers))
 	}
 }
 
@@ -418,17 +417,3 @@ func TestDeforestation_Summarise_FlaggedTraceCount(t *testing.T) {
 	}
 }
 
-// --- internal helpers ---
-
-// observerKeys extracts the keys of a map[string]bool for use in error
-// messages, sorted alphabetically so the output is deterministic across runs.
-// Map iteration in Go is randomised; sorting here prevents non-deterministic
-// error messages that would be confusing when comparing test output.
-func observerKeys(m map[string]bool) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
