@@ -46,9 +46,47 @@ The goal of this milestone is to define what a trace is in MeshAnt and demonstra
 
 ---
 
+## Milestone 2: Deforestation Dataset and Graph Articulation
+
+The goal of this milestone is to introduce a richer, multi-threaded dataset and a first
+articulation layer: a way to render a provisional graph from traces taken from a
+particular observer position. A graph is a cut — not a god's-eye view. Every cut names
+its shadow.
+
+**Full plan:** `tasks/plan_m2.md`
+
+### Tasks
+
+- [ ] **M2.1 — Write the deforestation example dataset**
+  - `data/examples/deforestation.json` — 20 traces, 3 crossing threads
+  - Branch: `feat/m2-dataset`
+  - Scenario: 73ha deforestation event tracked across satellite-to-policy,
+    community-observation, and carbon-market threads
+  - 9 observer positions; absent-source ×3; multi-source ×4; multi-target ×1
+  - All 6 tag types covered: translation ×6, threshold ×4, delay ×3,
+    redirection ×3, blockage ×2, amplification ×2
+
+- [ ] **M2.2 — Write the graph articulation package**
+  - `meshant/graph/graph.go` — Articulate(), PrintArticulation(), MeshGraph with shadow
+  - `meshant/graph/graph_test.go` + `e2e_test.go` — ~29 tests, ≥80% coverage
+  - Branch: `feat/m2-graph`
+  - Observer position as primary cut axis; shadow section is mandatory output
+  - Empty filter = full cut (named, not error)
+
+- [ ] **M2.3 — Record the articulation cut**
+  - `docs/decisions/articulation-v1.md`
+  - Documents: observer position as primary axis, shadow as mandatory output,
+    deferred axes (time window, tag filter), graph-as-actor noted for M3+
+
+---
+
 ## Notes
 
 - Do not begin simulation, persona generation, or LLM integration before M1 is complete.
 - Do not copy the Miro Fish schema or pipeline. Use it only as a reference for structural patterns.
 - The trace schema should feel provisional and revisable — not like a finished ontology.
 - Do not lock in a form factor (CLI / web app / agent framework). Let it emerge.
+- M2 introduces observer-positioned articulation. Do not implement time-window or
+  tag-filter cut axes in M2 — defer to M3+.
+- Graph-as-actor (the produced graph entering the mesh as a force) is noted
+  architecturally but deferred to a later milestone.

@@ -1,0 +1,197 @@
+[
+  {
+    "id": "3a1f2b4c-d5e6-4f70-8091-a2b3c4d5e601",
+    "timestamp": "2026-03-11T02:14:00Z",
+    "what_changed": "Multispectral imagery band ratio translated into a raw spectral anomaly report flagging 73ha NDVI deviation in sector BR-AM-441",
+    "source": ["landsat-9-overpass-3147"],
+    "target": ["raw-spectral-anomaly-report-20260311"],
+    "mediation": "deforestation-detection-algorithm-v3",
+    "tags": ["translation"],
+    "observer": "satellite-operator"
+  },
+  {
+    "id": "3a1f2b4c-d5e6-4f70-8091-a2b3c4d5e602",
+    "timestamp": "2026-03-11T03:07:00Z",
+    "what_changed": "Spectral anomaly of 73ha exceeds 50ha alert threshold; agency notification triggered via anomaly-threshold-ruleset-v2",
+    "source": ["raw-spectral-anomaly-report-20260311"],
+    "target": ["national-forest-agency-alert-0312"],
+    "mediation": "anomaly-threshold-ruleset-v2",
+    "tags": ["threshold"],
+    "observer": "deforestation-detection-algorithm"
+  },
+  {
+    "id": "3a1f2b4c-d5e6-4f70-8091-a2b3c4d5e603",
+    "timestamp": "2026-03-11T08:22:00Z",
+    "what_changed": "Inspection request entered 14-day scheduling backlog; field visit deferred to 2026-03-25 by inspection-scheduling-queue",
+    "source": ["national-forest-agency-alert-0312"],
+    "target": ["field-inspection-request-br-am-441"],
+    "mediation": "inspection-scheduling-queue",
+    "tags": ["delay"],
+    "observer": "national-forest-agency"
+  },
+  {
+    "id": "3a1f2b4c-d5e6-4f70-8091-a2b3c4d5e604",
+    "timestamp": "2026-03-11T09:15:00Z",
+    "what_changed": "Autonomous ground sensor array generated structured deforestation report without human attribution; source unidentifiable by observing system",
+    "target": ["field-sensor-report-br-am-441-auto"],
+    "mediation": "autonomous-sensor-array-protocol",
+    "tags": ["translation"],
+    "observer": "national-forest-agency"
+  },
+  {
+    "id": "3a1f2b4c-d5e6-4f70-8091-a2b3c4d5e605",
+    "timestamp": "2026-03-11T11:45:00Z",
+    "what_changed": "Joint signature of agency officer and field inspector required by enforcement-authorization-protocol-v4 to issue enforcement order above 60ha threshold",
+    "source": ["national-forest-agency", "field-inspector-ramirez"],
+    "target": ["enforcement-order-br-am-441"],
+    "mediation": "enforcement-authorization-protocol-v4",
+    "tags": ["threshold"],
+    "observer": "policy-enforcement-officer"
+  },
+  {
+    "id": "3a1f2b4c-d5e6-4f70-8091-a2b3c4d5e606",
+    "timestamp": "2026-03-11T13:10:00Z",
+    "what_changed": "Logging operation cerrado-timber-operations-4412 suspended by enforcement order; equipment access revoked pending investigation",
+    "source": ["enforcement-order-br-am-441"],
+    "target": ["cerrado-timber-operations-4412"],
+    "tags": ["blockage"],
+    "observer": "policy-enforcement-officer"
+  },
+  {
+    "id": "3a1f2b4c-d5e6-4f70-8091-a2b3c4d5e607",
+    "timestamp": "2026-03-11T14:30:00Z",
+    "what_changed": "Enforcement case exceeds regional agency jurisdiction (>60ha); redirected to Ministry of Environment via inter-agency-escalation-protocol",
+    "source": ["enforcement-order-br-am-441"],
+    "target": ["ministry-of-environment-case-2026-0087"],
+    "mediation": "inter-agency-escalation-protocol",
+    "tags": ["redirection"],
+    "observer": "national-forest-agency"
+  },
+  {
+    "id": "b3c4d5e6-f7a8-4901-b2c3-d4e5f6a7b801",
+    "timestamp": "2026-03-11T07:30:00Z",
+    "what_changed": "Oral testimony from community monitor translated to written documented report by ngo-documentation-protocol-v2; spatial coordinates added, identity anonymized on request",
+    "source": ["local-community-monitor-tupinamba"],
+    "target": ["community-deforestation-report-20260311"],
+    "mediation": "ngo-documentation-protocol-v2",
+    "tags": ["translation"],
+    "observer": "ngo-field-coordinator"
+  },
+  {
+    "id": "b3c4d5e6-f7a8-4901-b2c3-d4e5f6a7b802",
+    "timestamp": "2026-03-11T09:00:00Z",
+    "what_changed": "Community report amplified into formal satellite re-task request; alert-routing-protocol matched report to active satellite pass schedule for 2026-03-12 window",
+    "source": ["community-deforestation-report-20260311"],
+    "target": ["landsat-9-retask-request-20260312"],
+    "mediation": "alert-routing-protocol",
+    "tags": ["amplification"],
+    "observer": "ngo-field-coordinator"
+  },
+  {
+    "id": "b3c4d5e6-f7a8-4901-b2c3-d4e5f6a7b803",
+    "timestamp": "2026-03-11T10:15:00Z",
+    "what_changed": "Legal challenge filed but entered 45-day docket queue; federal-court-filing-registry assigned hearing date 2026-04-25",
+    "source": ["community-deforestation-report-20260311"],
+    "target": ["legal-challenge-filing-2026-0041"],
+    "mediation": "federal-court-filing-registry",
+    "tags": ["delay"],
+    "observer": "ngo-field-coordinator"
+  },
+  {
+    "id": "b3c4d5e6-f7a8-4901-b2c3-d4e5f6a7b804",
+    "timestamp": "2026-03-11T10:45:00Z",
+    "what_changed": "Multiple community accounts aggregated into structured impact assessment by testimony-aggregation-protocol-v3; no single source attributable — testimony is collective",
+    "target": ["community-impact-assessment-20260311"],
+    "mediation": "testimony-aggregation-protocol-v3",
+    "tags": ["translation"],
+    "observer": "ngo-field-coordinator"
+  },
+  {
+    "id": "b3c4d5e6-f7a8-4901-b2c3-d4e5f6a7b805",
+    "timestamp": "2026-03-11T13:50:00Z",
+    "what_changed": "Legal challenge admitted by tribunal-admissibility-framework; documented 73ha loss meets 50ha standing threshold for expedited hearing",
+    "source": ["legal-challenge-filing-2026-0041"],
+    "target": ["forest-protection-tribunal-case-2026-0041"],
+    "mediation": "tribunal-admissibility-framework",
+    "tags": ["threshold"],
+    "observer": "ngo-field-coordinator"
+  },
+  {
+    "id": "b3c4d5e6-f7a8-4901-b2c3-d4e5f6a7b806",
+    "timestamp": "2026-03-11T15:00:00Z",
+    "what_changed": "Community complaint escalated from national tribunal to UNFF complaint mechanism; national legal remedy deemed insufficient by un-forest-complaint-mechanism",
+    "source": ["local-community-monitor-tupinamba", "ngo-field-coordinator"],
+    "target": ["international-treaty-body-complaint-2026-0018"],
+    "mediation": "un-forest-complaint-mechanism",
+    "tags": ["redirection"],
+    "observer": "international-treaty-body"
+  },
+  {
+    "id": "c5d6e7f8-a9b0-4c12-d3e4-f5a6b7c8d901",
+    "timestamp": "2026-03-11T08:00:00Z",
+    "what_changed": "73ha deforestation triggers invalidation of 14,600 carbon credits in VCS project 2847; credit loss exceeds 5% buffer-pool threshold in vcs-permanence-buffer-protocol",
+    "source": ["raw-spectral-anomaly-report-20260311"],
+    "target": ["carbon-credit-invalidation-notice-vcs-2847"],
+    "mediation": "vcs-permanence-buffer-protocol",
+    "tags": ["threshold"],
+    "observer": "carbon-registry-auditor"
+  },
+  {
+    "id": "c5d6e7f8-a9b0-4c12-d3e4-f5a6b7c8d902",
+    "timestamp": "2026-03-11T10:00:00Z",
+    "what_changed": "Broker notification entered 48-hour reconciliation cycle; registry-reconciliation-scheduler queues batched notifications — broker verde-carbon-ltd not notified until 2026-03-13",
+    "source": ["carbon-credit-invalidation-notice-vcs-2847"],
+    "target": ["broker-notification-verde-carbon-ltd"],
+    "mediation": "registry-reconciliation-scheduler",
+    "tags": ["delay"],
+    "observer": "carbon-registry-auditor"
+  },
+  {
+    "id": "c5d6e7f8-a9b0-4c12-d3e4-f5a6b7c8d903",
+    "timestamp": "2026-03-11T11:00:00Z",
+    "what_changed": "Trading in VCS-2847 credits suspended; market temporarily blocked pending confirmation of deforestation extent and buffer-pool recalculation",
+    "source": ["carbon-credit-invalidation-notice-vcs-2847"],
+    "target": ["voluntary-carbon-market-trading-vcs-2847"],
+    "tags": ["blockage"],
+    "observer": "carbon-credit-broker"
+  },
+  {
+    "id": "c5d6e7f8-a9b0-4c12-d3e4-f5a6b7c8d904",
+    "timestamp": "2026-03-11T12:30:00Z",
+    "what_changed": "Automated reconciliation engine generated market-correction-report without human attribution; source is the registry system itself, not a named actor",
+    "target": ["market-correction-report-vcs-2847-20260311"],
+    "mediation": "registry-automated-reconciliation-engine",
+    "tags": ["translation"],
+    "observer": "carbon-registry-auditor"
+  },
+  {
+    "id": "c5d6e7f8-a9b0-4c12-d3e4-f5a6b7c8d905",
+    "timestamp": "2026-03-11T14:00:00Z",
+    "what_changed": "Invalidated VCS-2847 credits redirected to verified reforestation project mata-viva-0031 via buffer-pool-replacement-protocol; buyer contracts reissued with new project reference",
+    "source": ["carbon-credit-broker", "carbon-registry-auditor"],
+    "target": ["reforestation-replacement-credits-mata-viva-0031"],
+    "mediation": "buffer-pool-replacement-protocol",
+    "tags": ["redirection"],
+    "observer": "carbon-credit-broker"
+  },
+  {
+    "id": "d7e8f9a0-b1c2-4d34-e5f6-a7b8c9d0e101",
+    "timestamp": "2026-03-11T16:00:00Z",
+    "what_changed": "Satellite deforestation data and carbon-registry invalidation data jointly amplified through inter-agency-data-fusion-protocol into verified enforcement report; two independent threads converge as corroborating evidence",
+    "source": ["national-forest-agency", "carbon-registry-auditor"],
+    "target": ["joint-verification-report-br-am-441-20260311"],
+    "mediation": "inter-agency-data-fusion-protocol",
+    "tags": ["amplification"],
+    "observer": "policy-enforcement-officer"
+  },
+  {
+    "id": "d7e8f9a0-b1c2-4d34-e5f6-a7b8c9d0e102",
+    "timestamp": "2026-03-11T17:30:00Z",
+    "what_changed": "UNFF article-5 obligation translated into dual mandate: national-forest-agency must report under REDD+ protocol; carbon-registry-auditor must verify credit removals under Paris Agreement article-5-implementation-guide",
+    "source": ["international-treaty-body"],
+    "target": ["national-forest-agency", "carbon-registry-auditor"],
+    "mediation": "paris-agreement-article-5-implementation-guide",
+    "tags": ["translation"],
+    "observer": "international-treaty-body"
+  }
+]
