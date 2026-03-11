@@ -5,6 +5,8 @@ package graph_test
 import (
 	"testing"
 	"time"
+
+	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
 // mustParseTime parses an RFC3339 string and fatals the test on failure.
@@ -18,4 +20,20 @@ func mustParseTime(t *testing.T, s string) time.Time {
 		t.Fatalf("mustParseTime: parse %q: %v", s, err)
 	}
 	return ts
+}
+
+// validTraceWithElements builds a valid schema.Trace with the given id,
+// observer, source, and target slices. Used in Diff tests that need traces
+// which produce graph nodes, without repeating construction inline.
+// The id must be a lowercase hyphenated UUID string.
+func validTraceWithElements(id, observer string, sources, targets []string) schema.Trace {
+	t := schema.Trace{
+		ID:          id,
+		Timestamp:   time.Date(2026, 3, 11, 0, 0, 0, 0, time.UTC),
+		WhatChanged: "something changed",
+		Observer:    observer,
+		Source:      sources,
+		Target:      targets,
+	}
+	return t
 }

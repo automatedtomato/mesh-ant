@@ -18,6 +18,7 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
+
 // maxFileBytes caps the size of a JSON file accepted by Load.
 // This prevents accidental memory exhaustion from an unexpectedly large file.
 // 50 MB is generous for any realistic trace dataset at this stage.
@@ -54,6 +55,16 @@ type MeshSummary struct {
 	// boundaries in the mesh — places where time was taken or limits were
 	// tested.
 	FlaggedTraces []FlaggedTrace
+
+	// GraphRefs is the deduplicated list of graph-reference strings found
+	// across all Source and Target slices, in the order they were first
+	// encountered. A graph-reference is a string of the form "meshgraph:<uuid>"
+	// or "meshdiff:<uuid>" — it indicates that an identified MeshGraph or
+	// GraphDiff appeared as an actor in the recorded traces.
+	//
+	// Encounter order is preserved intentionally: the first appearance of a
+	// graph-reference marks when that graph became an actor in the mesh.
+	GraphRefs []string
 }
 
 // FlaggedTrace is a minimal projection of a Trace that carries a delay or
@@ -121,14 +132,25 @@ func Summarise(traces []schema.Trace) MeshSummary {
 	mediationSeen := make(map[string]bool)
 	mediatedCount := 0
 	var flagged []FlaggedTrace
+	var graphRefs []string
+	graphRefSeen := make(map[string]bool)
 
 	for _, t := range traces {
-		// Count element appearances from Source and Target slices.
+		// Count element appearances from Source and Target slices, and extract
+		// any graph-reference strings (meshgraph:/meshdiff:) into GraphRefs.
 		for _, s := range t.Source {
 			elements[s]++
+			if schema.IsGraphRef(s) && !graphRefSeen[s] {
+				graphRefs = append(graphRefs, s)
+				graphRefSeen[s] = true
+			}
 		}
 		for _, tg := range t.Target {
 			elements[tg]++
+			if schema.IsGraphRef(tg) && !graphRefSeen[tg] {
+				graphRefs = append(graphRefs, tg)
+				graphRefSeen[tg] = true
+			}
 		}
 
 		// Track mediation presence and deduplicate in encounter order.
@@ -162,6 +184,7 @@ func Summarise(traces []schema.Trace) MeshSummary {
 		Mediations:         mediations,
 		MediatedTraceCount: mediatedCount,
 		FlaggedTraces:      flagged,
+		GraphRefs:          graphRefs,
 	}
 }
 
@@ -220,6 +243,15 @@ func PrintSummary(w io.Writer, s MeshSummary) error {
 	lines = append(lines, fmt.Sprintf("Traces tagged delay or threshold (%d):", len(s.FlaggedTraces)))
 	for _, ft := range s.FlaggedTraces {
 		lines = append(lines, fmt.Sprintf("  %s  %v  %s", ft.ID, ft.Tags, ft.WhatChanged))
+	}
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("Graph references (%d):", len(s.GraphRefs)))
+	if len(s.GraphRefs) == 0 {
+		lines = append(lines, "  (none)")
+	} else {
+		for _, ref := range s.GraphRefs {
+			lines = append(lines, "  "+ref)
+		}
 	}
 	lines = append(lines,
 		"",

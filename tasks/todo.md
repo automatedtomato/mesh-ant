@@ -112,55 +112,68 @@ this observer see?" but "what did this observer see within this window?"
 
 ---
 
-## Milestone 4: Graph Diff
+## Milestone 4: Graph Diff — COMPLETE (merged to develop)
 
-Situated comparison of two articulations — recording what became visible or invisible between
-two cuts. A diff is not a neutral changelog; it names both positions it compares.
+Situated comparison of two articulations. A diff is not a neutral changelog; it records
+both positions it compares and what became visible or invisible between them.
 
 **Full plan:** `tasks/plan_m4.md`
 
-### Tasks
+- [x] **M4.1** — `Diff()` + `GraphDiff`, `PersistedNode`, `ShadowShift`, `ShadowShiftKind` types; 47 unit tests (groups 10–15)
+- [x] **M4.2** — `PrintDiff()` + output tests
+- [x] **M4.3** — E2E tests against longitudinal dataset (group 16, 8 tests)
+- [x] **M4.4** — `docs/decisions/graph-diff-v1.md`; `docs/potential-forms.md`
 
-- [ ] **M4.1 — `Diff()` function and unit tests (groups 10–14, ~25 tests)**
-  - New types: `ShadowShiftKind`, `ShadowShift`, `PersistedNode`, `GraphDiff`
-  - `Diff(g1, g2 MeshGraph) GraphDiff` in `meshant/graph/graph.go`
-  - `validTraceWithElements` helper in `meshant/graph/testhelpers_test.go`
-  - Branch: `feat/m4-diff`
-
-- [ ] **M4.2 — `PrintDiff()` and output tests (group 15, ~14 tests)**
-  - `PrintDiff(w io.Writer, d GraphDiff) error` in `meshant/graph/graph.go`
-  - Branch: `feat/m4-diff`
-
-- [ ] **M4.3 — E2E tests (group 16, ~8 tests)**
-  - `meshant/graph/e2e_test.go` — day-1 vs day-3 diffs from longitudinal dataset
-  - Branch: `feat/m4-diff`
-
-- [ ] **M4.4 — Decision record**
-  - `docs/decisions/graph-diff-v1.md`
-  - 10 decisions covering: directionality, edge/node identity, ShadowShiftKind, From/To verbatim
-    copy, sort discipline, unconditional PrintDiff sections, deferred items
+125 tests total; 99% graph coverage, 100% loader + schema.
 
 ---
 
-## Provisional: M5 — Graph-as-Actor
+## Milestone 5: Graph-as-Actor — COMPLETE (merged to develop)
 
-Not scoped. Core requirement: a produced `MeshGraph` or `GraphDiff` can be assigned a stable
-identifier and appear as a `Source` or `Target` in subsequent traces. Once a graph is itself
-traceable, MeshAnt can record its own observation apparatus as part of the mesh it observes.
+The observation apparatus enters the mesh it observes. A produced `MeshGraph` or
+`GraphDiff` can be assigned a stable identifier and appear as a `Source` or `Target`
+in subsequent traces. Reflexivity: the framework can observe its own action in the network.
 
-Key open questions documented in `tasks/plan_m4.md` (Provisional M5 Note):
-- Schema convention for graph-reference IDs (URI scheme vs structural prefix vs new convention)
-- ID assignment for MeshGraph and GraphDiff (deterministic vs random UUID)
-- schema.Validate() treatment for graph-reference strings
-- loader.Load / MeshSummary treatment
+**Full plan:** `tasks/plan_m5.md`
+
+- [x] **M5.1 — Schema additions**
+  - `IsGraphRef`, `GraphRefKind`, `GraphRefID` in `meshant/schema/graphref.go`
+  - `parseGraphRef` private helper using `strings.Cut`; 14 tests, 100% coverage
+  - Branch: `feat/m5-schema` (merged to develop)
+
+- [x] **M5.2 — Graph actor additions**
+  - `ID string` on `MeshGraph` and `GraphDiff` (zero = not an actor)
+  - `meshant/graph/actor.go`: `IdentifyGraph`, `IdentifyDiff`, `GraphRef`, `DiffRef`, `newUUID4`
+  - 15 tests (groups 17–21); branch: `feat/m5-actor` (merged to develop)
+
+- [x] **M5.3 — Loader addition and new dataset**
+  - `GraphRefs []string` on `MeshSummary`; `Summarise` populates from source/target
+  - `data/examples/graph_ref_traces.json` — 6 traces with 3 distinct graph-refs
+  - 14 unit tests (groups 5–6) + 5 E2E tests (group 7), loader 100% coverage
+  - Branch: `feat/m5-loader` (merged to develop)
+
+- [x] **M5.4 — Decision record**
+  - `docs/decisions/graph-as-actor-v1.md`
+  - 10 decisions; ideological grounding (ANT/Strathern/Haraway/Principle 8)
+
+---
+
+## Provisional: M6
+
+Two directions from M5's shadow:
+
+- **M6-A: Reflexive tracing** — helper for recording the act of articulation as a trace
+  (closes the reflexive loop described in Principle 8 more completely)
+- **M6-B: Graph serialisation** — `json.Marshal`/`Unmarshal` for `MeshGraph` and `GraphDiff`,
+  enabling cross-session stable references
 
 ---
 
 ## Notes
 
-- Do not begin simulation, persona generation, or LLM integration before M1 is complete.
+- Do not begin simulation, persona generation, or LLM integration until the framework is stable.
 - Do not copy the Miro Fish schema or pipeline. Use it only as a reference for structural patterns.
 - The trace schema should feel provisional and revisable — not like a finished ontology.
 - Do not lock in a form factor (CLI / web app / agent framework). Let it emerge.
-- Tag-filter axis deferred to M4+ (not implemented in M3 or M4).
-- Graph-as-actor deferred to M5 (after graph-diff lands in M4).
+- Tag-filter cut axis deferred to M5+ (not implemented in M3, M4, or M5).
+- Graph-as-actor fulfilled in M5; graph-diff fulfilled in M4.
