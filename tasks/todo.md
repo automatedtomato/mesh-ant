@@ -112,22 +112,71 @@ this observer see?" but "what did this observer see within this window?"
 
 ---
 
-## Provisional: M4
+## Milestone 4: Graph Diff — COMPLETE (merged to develop)
 
-Not scoped. Two candidate directions, to be confirmed after M3 is complete:
+Situated comparison of two articulations. A diff is not a neutral changelog; it records
+both positions it compares and what became visible or invisible between them.
 
-- **M4-A: Graph diff** — `Diff(g1, g2 MeshGraph) GraphDiff` comparing two articulations
-  (natural use case: diff day-1 vs day-3 from same observer position)
-- **M4-B: Graph-as-actor** — produced graph gets a trace ID and can appear as source/target
-  in subsequent traces; requires schema convention for graph-reference IDs
+**Full plan:** `tasks/plan_m4.md`
+
+- [x] **M4.1** — `Diff()` + `GraphDiff`, `PersistedNode`, `ShadowShift`, `ShadowShiftKind` types; 47 unit tests (groups 10–15)
+- [x] **M4.2** — `PrintDiff()` + output tests
+- [x] **M4.3** — E2E tests against longitudinal dataset (group 16, 8 tests)
+- [x] **M4.4** — `docs/decisions/graph-diff-v1.md`; `docs/potential-forms.md`
+
+125 tests total; 99% graph coverage, 100% loader + schema.
+
+---
+
+## Milestone 5: Graph-as-Actor
+
+The observation apparatus enters the mesh it observes. A produced `MeshGraph` or
+`GraphDiff` can be assigned a stable identifier and appear as a `Source` or `Target`
+in subsequent traces. Reflexivity: the framework can observe its own action in the network.
+
+**Full plan:** `tasks/plan_m5.md`
+
+### Tasks
+
+- [ ] **M5.1 — Schema additions**
+  - `IsGraphRef`, `GraphRefKind`, `GraphRefID` in `meshant/schema/`
+  - Verify `Validate()` accepts graph-ref strings in Source/Target
+  - 13 tests; branch: `feat/m5-schema`
+
+- [ ] **M5.2 — Graph actor additions**
+  - `ID string` on `MeshGraph` and `GraphDiff`
+  - `meshant/graph/actor.go`: `IdentifyGraph`, `IdentifyDiff`, `GraphRef`, `DiffRef`, `newUUID4`
+  - 15 tests; branch: `feat/m5-actor`
+
+- [ ] **M5.3 — Loader addition and new dataset**
+  - `GraphRefs []string` on `MeshSummary`; `Summarise` populates from source/target
+  - `data/examples/graph_ref_traces.json` — 6 traces with graph-ref strings
+  - 9 unit tests + 5 E2E tests; branch: `feat/m5-loader`
+
+- [ ] **M5.4 — Decision record**
+  - `docs/decisions/graph-as-actor-v1.md`
+  - 10 decisions: symmetry, prefix convention, `[]string` placement, pure functions,
+    no registry, no auto-recording, schema predicates, UUID4, encounter-order GraphRefs,
+    Validate() permissiveness
+
+---
+
+## Provisional: M6
+
+Two directions from M5's shadow:
+
+- **M6-A: Reflexive tracing** — helper for recording the act of articulation as a trace
+  (closes the reflexive loop described in Principle 8 more completely)
+- **M6-B: Graph serialisation** — `json.Marshal`/`Unmarshal` for `MeshGraph` and `GraphDiff`,
+  enabling cross-session stable references
 
 ---
 
 ## Notes
 
-- Do not begin simulation, persona generation, or LLM integration before M1 is complete.
+- Do not begin simulation, persona generation, or LLM integration until the framework is stable.
 - Do not copy the Miro Fish schema or pipeline. Use it only as a reference for structural patterns.
 - The trace schema should feel provisional and revisable — not like a finished ontology.
 - Do not lock in a form factor (CLI / web app / agent framework). Let it emerge.
-- M3 adds the time-window axis. Do not implement tag-filter axis in M3 — defer to M4+.
-- Graph-as-actor and graph-diff are noted provisionally for M4 but not committed.
+- Tag-filter cut axis deferred to M5+ (not implemented in M3, M4, or M5).
+- Graph-as-actor fulfilled in M5; graph-diff fulfilled in M4.

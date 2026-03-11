@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/suggest-compact.js"
+            "command": "node \"$(git rev-parse --show-toplevel)/.claude/hooks/suggest-compact.js\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/extract-patterns.js"
+            "command": "node \"$(git rev-parse --show-toplevel)/.claude/hooks/extract-patterns.js\""
           }
         ]
       }
