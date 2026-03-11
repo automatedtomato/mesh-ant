@@ -2,6 +2,7 @@ package loader_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,15 +13,17 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
-// examplesPath is the relative path from the meshant module root to the
-// example dataset. Tests that use it must be run from the module root
-// (go test ./...) — which is the standard invocation.
+// examplesPath is the relative path from the loader package directory to the
+// example dataset. Tests are run by `go test ./...` from the module root,
+// which sets the working directory to the package directory, so this path
+// is two levels up from meshant/loader/.
 const examplesPath = "../../data/examples/traces.json"
 
 // --- helpers ---
 
 // validTrace returns a minimal Trace that passes schema.Validate().
-// Tests may override individual fields to exercise specific behaviours.
+// The id parameter must be a valid lowercase UUID. Tests may override
+// individual fields to exercise specific behaviours.
 func validTrace(id, whatChanged string) schema.Trace {
 	return schema.Trace{
 		ID:          id,
@@ -72,7 +75,9 @@ func TestLoad_FieldsIntact(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	// Spot-check trace #4 (rate-limiter, delay+threshold)
+	// Spot-check trace #4 (IDs: e6a0b4d5...) — rate-limiter delay+threshold.
+	// This trace has: Source=[rate-limiter, queue-throughput-policy-v2],
+	// Mediation=queue-throughput-policy-v2, Tags=[delay, threshold].
 	want := struct {
 		id          string
 		whatChanged string
@@ -112,6 +117,19 @@ func TestLoad_FieldsIntact(t *testing.T) {
 	}
 }
 
+func TestLoad_ReturnsNonNilSlice(t *testing.T) {
+	// Even an empty JSON array must return a non-nil slice — callers should
+	// be able to rely on the slice being range-safe without a nil check.
+	path := writeTempJSON(t, `[]`)
+	traces, err := loader.Load(path)
+	if err != nil {
+		t.Fatalf("Load: unexpected error: %v", err)
+	}
+	if traces == nil {
+		t.Error("Load returned nil slice for empty JSON array; want non-nil empty slice")
+	}
+}
+
 // --- Group 2: Load — Error Cases ---
 
 func TestLoad_FileNotFound(t *testing.T) {
@@ -129,6 +147,22 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	_, err := loader.Load(path)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON, got nil")
+	}
+}
+
+func TestLoad_NullJSONBody(t *testing.T) {
+	// A JSON null literal decoded into []T yields nil — Load must normalise
+	// this to a non-nil empty slice rather than returning nil, nil.
+	path := writeTempJSON(t, `null`)
+	traces, err := loader.Load(path)
+	if err != nil {
+		t.Fatalf("Load: unexpected error for null JSON: %v", err)
+	}
+	if traces == nil {
+		t.Error("Load returned nil for null JSON body; want non-nil empty slice")
+	}
+	if len(traces) != 0 {
+		t.Errorf("Load returned %d traces for null JSON body; want 0", len(traces))
 	}
 }
 
@@ -156,6 +190,9 @@ func TestLoad_EmptyArray(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error for empty array: %v", err)
 	}
+	if traces == nil {
+		t.Error("want non-nil slice for empty array, got nil")
+	}
 	if len(traces) != 0 {
 		t.Errorf("want 0 traces, got %d", len(traces))
 	}
@@ -164,6 +201,8 @@ func TestLoad_EmptyArray(t *testing.T) {
 // --- Group 3: Summarise — Correctness ---
 
 func TestSummarise_ElementFrequency(t *testing.T) {
+	// Two traces, each with alpha in Source: alpha count = 2.
+	// beta and gamma each appear once as Target.
 	t1 := validTrace("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", "first event")
 	t1.Source = []string{"alpha"}
 	t1.Target = []string{"beta"}
@@ -187,6 +226,8 @@ func TestSummarise_ElementFrequency(t *testing.T) {
 
 func TestSummarise_ElementsUnionOfSourceAndTarget(t *testing.T) {
 	// "shared" appears once as source and once as target — total count 2.
+	// This verifies that element counting is a union of appearances, not
+	// a deduplication of names within a single trace.
 	tr := validTrace("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", "shared element")
 	tr.Source = []string{"shared"}
 	tr.Target = []string{"shared"}
@@ -198,6 +239,8 @@ func TestSummarise_ElementsUnionOfSourceAndTarget(t *testing.T) {
 }
 
 func TestSummarise_MediationsDeduped(t *testing.T) {
+	// Two traces with the same mediation: Mediations should contain it once,
+	// but MediatedTraceCount should be 2.
 	t1 := validTrace("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", "first")
 	t1.Mediation = "policy-x"
 
@@ -211,9 +254,13 @@ func TestSummarise_MediationsDeduped(t *testing.T) {
 	if s.Mediations[0] != "policy-x" {
 		t.Errorf("want mediations[0]=%q, got %q", "policy-x", s.Mediations[0])
 	}
+	if s.MediatedTraceCount != 2 {
+		t.Errorf("MediatedTraceCount: want 2 (both traces had mediation), got %d", s.MediatedTraceCount)
+	}
 }
 
 func TestSummarise_MediationsEncounterOrder(t *testing.T) {
+	// Mediations must appear in the order first encountered, not sorted.
 	t1 := validTrace("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", "first")
 	t1.Mediation = "policy-a"
 
@@ -221,7 +268,7 @@ func TestSummarise_MediationsEncounterOrder(t *testing.T) {
 	t2.Mediation = "policy-b"
 
 	t3 := validTrace("c3d4e5f6-a7b8-4c9d-0e1f-a2b3c4d5e6f7", "third")
-	t3.Mediation = "policy-a" // duplicate of first — should not appear again
+	t3.Mediation = "policy-a" // duplicate — must not appear again
 
 	s := loader.Summarise([]schema.Trace{t1, t2, t3})
 	if len(s.Mediations) != 2 {
@@ -235,14 +282,37 @@ func TestSummarise_MediationsEncounterOrder(t *testing.T) {
 	}
 }
 
+func TestSummarise_MediatedTraceCount(t *testing.T) {
+	// MediatedTraceCount = traces with non-empty Mediation, regardless of uniqueness.
+	// 3 traces: 2 with the same mediation, 1 without. Count = 2, Unique = 1.
+	t1 := validTrace("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", "first")
+	t1.Mediation = "rule-v1"
+
+	t2 := validTrace("b2c3d4e5-f6a7-4b8c-9d0e-f1a2b3c4d5e6", "second")
+	t2.Mediation = "rule-v1"
+
+	t3 := validTrace("c3d4e5f6-a7b8-4c9d-0e1f-a2b3c4d5e6f7", "third") // no mediation
+
+	s := loader.Summarise([]schema.Trace{t1, t2, t3})
+	if s.MediatedTraceCount != 2 {
+		t.Errorf("MediatedTraceCount: want 2, got %d", s.MediatedTraceCount)
+	}
+	if len(s.Mediations) != 1 {
+		t.Errorf("Mediations unique: want 1, got %d", len(s.Mediations))
+	}
+}
+
 func TestSummarise_EmptyMediationExcluded(t *testing.T) {
+	// A trace with zero-value Mediation ("") must not contribute to Mediations
+	// or MediatedTraceCount.
 	tr := validTrace("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", "no intermediary observed")
-	// tr.Mediation is zero-value ("") — should not appear in Mediations
 
 	s := loader.Summarise([]schema.Trace{tr})
 	if len(s.Mediations) != 0 {
-		t.Errorf("want 0 mediations for trace with empty Mediation, got %d: %v",
-			len(s.Mediations), s.Mediations)
+		t.Errorf("want 0 mediations, got %d: %v", len(s.Mediations), s.Mediations)
+	}
+	if s.MediatedTraceCount != 0 {
+		t.Errorf("MediatedTraceCount: want 0, got %d", s.MediatedTraceCount)
 	}
 }
 
@@ -280,6 +350,8 @@ func TestSummarise_FlaggedTracesOtherTagsExcluded(t *testing.T) {
 }
 
 func TestSummarise_FlaggedTracesFields(t *testing.T) {
+	// FlaggedTrace must carry the full Tags slice (not just the triggering tag)
+	// and correct ID and WhatChanged.
 	tr := validTrace("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", "threshold breached")
 	tr.Tags = []string{string(schema.TagThreshold), string(schema.TagRedirection)}
 
@@ -294,7 +366,6 @@ func TestSummarise_FlaggedTracesFields(t *testing.T) {
 	if ft.WhatChanged != tr.WhatChanged {
 		t.Errorf("WhatChanged: got %q, want %q", ft.WhatChanged, tr.WhatChanged)
 	}
-	// Full tags slice must be preserved, not just the triggering tag.
 	if len(ft.Tags) != 2 {
 		t.Fatalf("Tags: want len 2, got %d: %v", len(ft.Tags), ft.Tags)
 	}
@@ -306,8 +377,27 @@ func TestSummarise_FlaggedTracesFields(t *testing.T) {
 	}
 }
 
+func TestSummarise_FlaggedTracesTagsIsCopy(t *testing.T) {
+	// FlaggedTrace.Tags must be a copy of the source Tags slice, not a reference
+	// to the same backing array. Mutating the FlaggedTrace must not affect the
+	// original trace.
+	tr := validTrace("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", "delay observed")
+	tr.Tags = []string{string(schema.TagDelay), string(schema.TagBlockage)}
+
+	s := loader.Summarise([]schema.Trace{tr})
+	if len(s.FlaggedTraces) != 1 {
+		t.Fatalf("want 1 flagged trace, got %d", len(s.FlaggedTraces))
+	}
+
+	// Mutate the FlaggedTrace.Tags — the original tr.Tags must be unchanged.
+	s.FlaggedTraces[0].Tags[0] = "mutated"
+	if tr.Tags[0] != string(schema.TagDelay) {
+		t.Errorf("mutating FlaggedTrace.Tags affected the original trace.Tags: got %q", tr.Tags[0])
+	}
+}
+
 func TestSummarise_FlaggedTracesNoDuplication(t *testing.T) {
-	// A trace with both delay and threshold should appear only once.
+	// A trace with both delay and threshold should appear only once in FlaggedTraces.
 	tr := validTrace("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", "buffered past threshold")
 	tr.Tags = []string{string(schema.TagDelay), string(schema.TagThreshold)}
 
@@ -326,6 +416,9 @@ func TestSummarise_EmptyInput(t *testing.T) {
 	if len(s.Mediations) != 0 {
 		t.Errorf("want 0 mediations, got %d", len(s.Mediations))
 	}
+	if s.MediatedTraceCount != 0 {
+		t.Errorf("MediatedTraceCount: want 0, got %d", s.MediatedTraceCount)
+	}
 	if len(s.FlaggedTraces) != 0 {
 		t.Errorf("want 0 flagged traces, got %d", len(s.FlaggedTraces))
 	}
@@ -333,9 +426,8 @@ func TestSummarise_EmptyInput(t *testing.T) {
 
 // --- Group 4: PrintSummary — Output ---
 
-// summaryFromExamples loads the example dataset and builds a summary,
-// failing the test if either step fails. Used by PrintSummary tests that
-// want realistic output rather than minimal hand-built input.
+// summaryFromExamples loads the example dataset and builds a summary.
+// Used by PrintSummary tests that want realistic output.
 func summaryFromExamples(t *testing.T) loader.MeshSummary {
 	t.Helper()
 	traces, err := loader.Load(examplesPath)
@@ -347,7 +439,9 @@ func summaryFromExamples(t *testing.T) loader.MeshSummary {
 
 func TestPrintSummary_ContainsElementsHeader(t *testing.T) {
 	var buf bytes.Buffer
-	loader.PrintSummary(&buf, summaryFromExamples(t))
+	if err := loader.PrintSummary(&buf, summaryFromExamples(t)); err != nil {
+		t.Fatalf("PrintSummary: %v", err)
+	}
 	if !strings.Contains(buf.String(), "Elements") {
 		t.Errorf("output missing 'Elements' header; got:\n%s", buf.String())
 	}
@@ -355,7 +449,9 @@ func TestPrintSummary_ContainsElementsHeader(t *testing.T) {
 
 func TestPrintSummary_ContainsMediationsHeader(t *testing.T) {
 	var buf bytes.Buffer
-	loader.PrintSummary(&buf, summaryFromExamples(t))
+	if err := loader.PrintSummary(&buf, summaryFromExamples(t)); err != nil {
+		t.Fatalf("PrintSummary: %v", err)
+	}
 	if !strings.Contains(buf.String(), "mediations") {
 		t.Errorf("output missing 'mediations' header; got:\n%s", buf.String())
 	}
@@ -363,7 +459,9 @@ func TestPrintSummary_ContainsMediationsHeader(t *testing.T) {
 
 func TestPrintSummary_ContainsFlaggedHeader(t *testing.T) {
 	var buf bytes.Buffer
-	loader.PrintSummary(&buf, summaryFromExamples(t))
+	if err := loader.PrintSummary(&buf, summaryFromExamples(t)); err != nil {
+		t.Fatalf("PrintSummary: %v", err)
+	}
 	if !strings.Contains(buf.String(), "Traces tagged") {
 		t.Errorf("output missing 'Traces tagged' header; got:\n%s", buf.String())
 	}
@@ -371,23 +469,49 @@ func TestPrintSummary_ContainsFlaggedHeader(t *testing.T) {
 
 func TestPrintSummary_ContainsProvisionalNote(t *testing.T) {
 	var buf bytes.Buffer
-	loader.PrintSummary(&buf, summaryFromExamples(t))
-	out := buf.String()
-	if !strings.Contains(out, "first look at the mesh") {
-		t.Errorf("output missing footer disclaimer; got:\n%s", out)
+	if err := loader.PrintSummary(&buf, summaryFromExamples(t)); err != nil {
+		t.Fatalf("PrintSummary: %v", err)
+	}
+	if !strings.Contains(buf.String(), "first look at the mesh") {
+		t.Errorf("output missing footer disclaimer; got:\n%s", buf.String())
 	}
 }
 
 func TestPrintSummary_ElementAppearsWithCount(t *testing.T) {
 	var buf bytes.Buffer
-	loader.PrintSummary(&buf, summaryFromExamples(t))
+	if err := loader.PrintSummary(&buf, summaryFromExamples(t)); err != nil {
+		t.Fatalf("PrintSummary: %v", err)
+	}
 	out := buf.String()
-	// vendor-registration-application-00142 appears 8 times (target in traces 2–10 minus #1,#3)
+	// vendor-registration-application-00142 is the target in traces 2, 4, 5, 6,
+	// 7, 8, 9, and 10 (IDs: c4e8f2b3, e6a0b4d5, f7b1c5e6, a8c2d6f7, b9d3e7a8,
+	// c0e4f8b9, d1f5a9c0, e2a6b0d1) — 8 appearances.
 	if !strings.Contains(out, "vendor-registration-application-00142") {
 		t.Errorf("output missing expected element name; got:\n%s", out)
 	}
 	if !strings.Contains(out, "x8") {
 		t.Errorf("output missing count x8 for top element; got:\n%s", out)
+	}
+}
+
+func TestPrintSummary_MediatedTraceCountInHeader(t *testing.T) {
+	var buf bytes.Buffer
+	if err := loader.PrintSummary(&buf, summaryFromExamples(t)); err != nil {
+		t.Fatalf("PrintSummary: %v", err)
+	}
+	// The vendor registration dataset has 7 traces with mediations and 7 unique
+	// mediation strings, so the header should read "7 traces, 7 unique".
+	if !strings.Contains(buf.String(), "7 traces, 7 unique") {
+		t.Errorf("output missing correct mediation counts; got:\n%s", buf.String())
+	}
+}
+
+func TestPrintSummary_WriterErrorPropagated(t *testing.T) {
+	// PrintSummary must return an error if the writer fails.
+	s := summaryFromExamples(t)
+	err := loader.PrintSummary(&failWriter{}, s)
+	if err == nil {
+		t.Error("expected error from PrintSummary when writer fails, got nil")
 	}
 }
 
@@ -399,5 +523,13 @@ func TestPrintSummary_EmptySummary_DoesNotPanic(t *testing.T) {
 		}
 	}()
 	var buf bytes.Buffer
-	loader.PrintSummary(&buf, loader.MeshSummary{})
+	_ = loader.PrintSummary(&buf, loader.MeshSummary{})
+}
+
+// failWriter is an io.Writer that always returns an error.
+// Used to test that PrintSummary propagates writer errors.
+type failWriter struct{}
+
+func (failWriter) Write([]byte) (int, error) {
+	return 0, fmt.Errorf("simulated write failure")
 }

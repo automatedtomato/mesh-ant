@@ -18,6 +18,11 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
+// maxFileBytes caps the size of a JSON file accepted by Load.
+// This prevents accidental memory exhaustion from an unexpectedly large file.
+// 50 MB is generous for any realistic trace dataset at this stage.
+const maxFileBytes = 50 * 1024 * 1024 // 50 MB
+
 // MeshSummary holds a provisional first-pass reading of a trace dataset.
 // It is named "summary" rather than "report" or "analysis" to signal that
 // this is a cut made from a particular position at a particular time —
@@ -39,6 +44,11 @@ type MeshSummary struct {
 	// network's structure.
 	Mediations []string
 
+	// MediatedTraceCount is the number of traces that had a non-empty
+	// Mediation field. This may differ from len(Mediations) if the same
+	// mediation string appears in more than one trace.
+	MediatedTraceCount int
+
 	// FlaggedTraces is the subset of traces that carry a "delay" or
 	// "threshold" tag. These mark structural friction points and capacity
 	// boundaries in the mesh — places where time was taken or limits were
@@ -50,6 +60,9 @@ type MeshSummary struct {
 // threshold tag. It carries only the fields needed to identify the trace
 // and describe what happened, signalling that a summary view is not the
 // same as the full trace record.
+//
+// Tags is a copy of the source trace's Tags slice, not a reference to it.
+// Callers may safely modify FlaggedTrace.Tags without affecting the original.
 type FlaggedTrace struct {
 	ID          string
 	WhatChanged string
@@ -62,6 +75,7 @@ type FlaggedTrace struct {
 // Load stops at the first invalid trace.
 //
 // An empty JSON array is valid and returns an empty (non-nil) slice.
+// Files larger than 50 MB are rejected before decoding.
 func Load(path string) ([]schema.Trace, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -69,9 +83,18 @@ func Load(path string) ([]schema.Trace, error) {
 	}
 	defer f.Close()
 
+	// Limit reads to maxFileBytes to prevent memory exhaustion on large inputs.
+	limited := io.LimitReader(f, maxFileBytes)
+
 	var traces []schema.Trace
-	if err := json.NewDecoder(f).Decode(&traces); err != nil {
+	if err := json.NewDecoder(limited).Decode(&traces); err != nil {
 		return nil, fmt.Errorf("loader: decode %q: %w", path, err)
+	}
+
+	// json.Decode sets a []T target to nil when the JSON value is null.
+	// Normalise to an empty non-nil slice to honour the documented postcondition.
+	if traces == nil {
+		traces = []schema.Trace{}
 	}
 
 	for i, t := range traces {
@@ -88,13 +111,15 @@ func Load(path string) ([]schema.Trace, error) {
 //
 // Elements counts each string's total appearances across all Source and
 // Target slices (not unique traces). Mediations are deduplicated and listed
-// in encounter order. FlaggedTraces includes any trace with a "delay" or
-// "threshold" tag; each such trace appears at most once regardless of how
+// in encounter order. MediatedTraceCount records how many traces had a
+// non-empty Mediation field. FlaggedTraces includes any trace with a "delay"
+// or "threshold" tag; each such trace appears at most once regardless of how
 // many triggering tags it carries.
 func Summarise(traces []schema.Trace) MeshSummary {
 	elements := make(map[string]int)
 	var mediations []string
 	mediationSeen := make(map[string]bool)
+	mediatedCount := 0
 	var flagged []FlaggedTrace
 
 	for _, t := range traces {
@@ -106,20 +131,26 @@ func Summarise(traces []schema.Trace) MeshSummary {
 			elements[tg]++
 		}
 
-		// Deduplicate mediations in encounter order.
-		if t.Mediation != "" && !mediationSeen[t.Mediation] {
-			mediations = append(mediations, t.Mediation)
-			mediationSeen[t.Mediation] = true
+		// Track mediation presence and deduplicate in encounter order.
+		if t.Mediation != "" {
+			mediatedCount++
+			if !mediationSeen[t.Mediation] {
+				mediations = append(mediations, t.Mediation)
+				mediationSeen[t.Mediation] = true
+			}
 		}
 
 		// Flag traces carrying a delay or threshold tag. Break after the
 		// first match so a trace with both tags appears exactly once.
+		// Copy Tags to avoid sharing the backing array with the source trace.
 		for _, tag := range t.Tags {
 			if tag == string(schema.TagDelay) || tag == string(schema.TagThreshold) {
+				tags := make([]string, len(t.Tags))
+				copy(tags, t.Tags)
 				flagged = append(flagged, FlaggedTrace{
 					ID:          t.ID,
 					WhatChanged: t.WhatChanged,
-					Tags:        t.Tags,
+					Tags:        tags,
 				})
 				break
 			}
@@ -127,9 +158,10 @@ func Summarise(traces []schema.Trace) MeshSummary {
 	}
 
 	return MeshSummary{
-		Elements:      elements,
-		Mediations:    mediations,
-		FlaggedTraces: flagged,
+		Elements:           elements,
+		Mediations:         mediations,
+		MediatedTraceCount: mediatedCount,
+		FlaggedTraces:      flagged,
 	}
 }
 
@@ -144,10 +176,15 @@ func Summarise(traces []schema.Trace) MeshSummary {
 // The footer note is mandatory output — it encodes the methodological
 // commitment that the element list is not an actor list, and that this
 // summary is a provisional cut, not a finished ontology.
-func PrintSummary(w io.Writer, s MeshSummary) {
-	fmt.Fprintln(w, "=== Mesh Summary (provisional) ===")
-	fmt.Fprintln(w)
-
+//
+// Note: trace field values (element names, mediations, WhatChanged strings)
+// are written to w as-is. If w is a terminal writer, values containing ANSI
+// control sequences from an untrusted dataset could affect terminal state.
+// For trusted local datasets this is not a concern; re-evaluate if the tool
+// is ever exposed to external or user-supplied data.
+//
+// Returns the first write error encountered, if any.
+func PrintSummary(w io.Writer, s MeshSummary) error {
 	// Build a sortable slice from the elements map.
 	type entry struct {
 		name  string
@@ -165,34 +202,37 @@ func PrintSummary(w io.Writer, s MeshSummary) {
 		return entries[i].name < entries[j].name
 	})
 
-	fmt.Fprintln(w, "Elements (source/target appearances across all traces):")
+	lines := []string{
+		"=== Mesh Summary (provisional) ===",
+		"",
+		"Elements (source/target appearances across all traces):",
+	}
 	for _, e := range entries {
-		fmt.Fprintf(w, "  %-45s x%d\n", e.name, e.count)
+		lines = append(lines, fmt.Sprintf("  %-45s x%d", e.name, e.count))
 	}
-	fmt.Fprintln(w)
-
-	fmt.Fprintf(w, "Observed mediations (%d traces, %d unique):\n",
-		countTracesWithMediation(s), len(s.Mediations))
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("Observed mediations (%d traces, %d unique):",
+		s.MediatedTraceCount, len(s.Mediations)))
 	for _, m := range s.Mediations {
-		fmt.Fprintf(w, "  %s\n", m)
+		lines = append(lines, "  "+m)
 	}
-	fmt.Fprintln(w)
-
-	fmt.Fprintf(w, "Traces tagged delay or threshold (%d):\n", len(s.FlaggedTraces))
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("Traces tagged delay or threshold (%d):", len(s.FlaggedTraces)))
 	for _, ft := range s.FlaggedTraces {
-		fmt.Fprintf(w, "  %s  %v  %s\n", ft.ID, ft.Tags, ft.WhatChanged)
+		lines = append(lines, fmt.Sprintf("  %s  %v  %s", ft.ID, ft.Tags, ft.WhatChanged))
 	}
-	fmt.Fprintln(w)
+	lines = append(lines,
+		"",
+		"---",
+		"Note: this is a first look at the mesh, not a classification of actors.",
+		"Elements listed here are names that appear in traces — they may be human,",
+		"non-human, or assemblages. Their roles are not yet determined.",
+	)
 
-	fmt.Fprintln(w, "---")
-	fmt.Fprintln(w, "Note: this is a first look at the mesh, not a classification of actors.")
-	fmt.Fprintln(w, "Elements listed here are names that appear in traces — they may be human,")
-	fmt.Fprintln(w, "non-human, or assemblages. Their roles are not yet determined.")
-}
-
-// countTracesWithMediation counts the number of mediation entries in the
-// Mediations slice as a proxy for "traces that had a mediation observed".
-// Used only for the PrintSummary header line.
-func countTracesWithMediation(s MeshSummary) int {
-	return len(s.Mediations)
+	for _, line := range lines {
+		if _, err := fmt.Fprintln(w, line); err != nil {
+			return fmt.Errorf("loader: PrintSummary: %w", err)
+		}
+	}
+	return nil
 }
