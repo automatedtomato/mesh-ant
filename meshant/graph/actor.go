@@ -53,6 +53,12 @@ func IdentifyDiff(d GraphDiff) GraphDiff {
 //
 // The returned string can be placed in Trace.Source or Trace.Target to record
 // that this graph acted in the mesh.
+//
+// Note: the reference string is a stable handle — it carries no positional
+// information (no observer positions, time window, or shadow). The Cut is
+// held in the MeshGraph struct. If you need to recover the position from
+// which the articulation was made after the reference enters the mesh, retain
+// the identified MeshGraph alongside the reference string.
 func GraphRef(g MeshGraph) (string, error) {
 	if g.ID == "" {
 		return "", fmt.Errorf("graph.GraphRef: graph has no ID; call IdentifyGraph first")
@@ -62,6 +68,10 @@ func GraphRef(g MeshGraph) (string, error) {
 
 // DiffRef returns the graph-reference string for d ("meshdiff:<d.ID>").
 // Returns an error if d.ID is empty — call IdentifyDiff first.
+//
+// Same positional note as GraphRef: the string carries no Cut information.
+// Retain the identified GraphDiff if you need to access From/To cuts after
+// the reference enters the mesh.
 func DiffRef(d GraphDiff) (string, error) {
 	if d.ID == "" {
 		return "", fmt.Errorf("graph.DiffRef: diff has no ID; call IdentifyDiff first")

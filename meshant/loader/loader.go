@@ -51,9 +51,16 @@ type MeshSummary struct {
 	MediatedTraceCount int
 
 	// FlaggedTraces is the subset of traces that carry a "delay" or
-	// "threshold" tag. These mark structural friction points and capacity
-	// boundaries in the mesh — places where time was taken or limits were
-	// tested.
+	// "threshold" tag. These were selected as proxies for measurable,
+	// quantifiable friction: delay marks duration cost; threshold marks
+	// capacity limit.
+	//
+	// This is a provisional cut, not a taxonomy. Other tag types — blockage,
+	// redirection, amplification, translation — are equally significant ANT
+	// conditions (see Principle 7). They are accessible through the full trace
+	// records and through the Elements map. The selection of delay and threshold
+	// here reflects this summary's analytical emphasis, not a claim that the
+	// others are less real or less consequential.
 	FlaggedTraces []FlaggedTrace
 
 	// GraphRefs is the deduplicated list of graph-reference strings found
@@ -245,7 +252,10 @@ func PrintSummary(w io.Writer, s MeshSummary) error {
 		lines = append(lines, fmt.Sprintf("  %s  %v  %s", ft.ID, ft.Tags, ft.WhatChanged))
 	}
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("Graph references (%d):", len(s.GraphRefs)))
+	// Graph-refs are also counted in Elements above (ANT symmetry: identified
+	// graphs are actants like any other source/target). This section names them
+	// additionally as graph references so their structure is visible.
+	lines = append(lines, fmt.Sprintf("Graph references (%d, also counted in Elements above):", len(s.GraphRefs)))
 	if len(s.GraphRefs) == 0 {
 		lines = append(lines, "  (none)")
 	} else {
