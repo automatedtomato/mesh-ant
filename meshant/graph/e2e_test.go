@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/automatedtomato/mesh-ant/meshant/graph"
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
@@ -211,5 +212,244 @@ func TestE2E_PrintArticulation_FullCut(t *testing.T) {
 		if !strings.Contains(out, phrase) {
 			t.Errorf("output missing %q\nGot (first 500 chars):\n%.500s", phrase, out)
 		}
+	}
+}
+
+// longitudinalPath is the relative path from the graph package directory to
+// the longitudinal deforestation example dataset (40 traces across 3 days).
+const longitudinalPath = "../../data/examples/deforestation_longitudinal.json"
+
+// mustParseTimeE2E parses an RFC3339 string and fatals the test on failure.
+// Named to avoid collision with the mustParseTime helper in graph_test.go
+// (both are in package graph_test, but test files share the package namespace).
+func mustParseTimeE2E(t *testing.T, s string) time.Time {
+	t.Helper()
+	ts, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatalf("mustParseTimeE2E: parse %q: %v", s, err)
+	}
+	return ts
+}
+
+// TestE2E_LongitudinalDataset_FullCut loads all 40 longitudinal traces and
+// verifies that a full cut includes all of them and reports the correct total
+// number of distinct observers.
+func TestE2E_LongitudinalDataset_FullCut(t *testing.T) {
+	traces, err := loader.Load(longitudinalPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	g := graph.Articulate(traces, graph.ArticulationOptions{})
+
+	if g.Cut.TracesIncluded != 40 {
+		t.Errorf("TracesIncluded: want 40, got %d", g.Cut.TracesIncluded)
+	}
+	if g.Cut.TracesTotal != 40 {
+		t.Errorf("TracesTotal: want 40, got %d", g.Cut.TracesTotal)
+	}
+	if len(g.Cut.ShadowElements) != 0 {
+		t.Errorf("ShadowElements: want empty for full cut, got %d elements", len(g.Cut.ShadowElements))
+	}
+	if g.Cut.DistinctObserversTotal < 8 {
+		t.Errorf("DistinctObserversTotal: want >= 8, got %d", g.Cut.DistinctObserversTotal)
+	}
+}
+
+// TestE2E_LongitudinalDataset_Day1Window verifies that a time window covering
+// only day 1 (2026-03-11) yields exactly 20 included traces.
+func TestE2E_LongitudinalDataset_Day1Window(t *testing.T) {
+	traces, err := loader.Load(longitudinalPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opts := graph.ArticulationOptions{
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTimeE2E(t, "2026-03-11T23:59:59Z"),
+		},
+	}
+	g := graph.Articulate(traces, opts)
+
+	if g.Cut.TracesIncluded != 20 {
+		t.Errorf("TracesIncluded: want 20 (day 1 only), got %d", g.Cut.TracesIncluded)
+	}
+}
+
+// TestE2E_LongitudinalDataset_Day2Window verifies that a time window covering
+// only day 2 (2026-03-14) yields exactly 10 included traces.
+func TestE2E_LongitudinalDataset_Day2Window(t *testing.T) {
+	traces, err := loader.Load(longitudinalPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opts := graph.ArticulationOptions{
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTimeE2E(t, "2026-03-14T00:00:00Z"),
+			End:   mustParseTimeE2E(t, "2026-03-14T23:59:59Z"),
+		},
+	}
+	g := graph.Articulate(traces, opts)
+
+	if g.Cut.TracesIncluded != 10 {
+		t.Errorf("TracesIncluded: want 10 (day 2 only), got %d", g.Cut.TracesIncluded)
+	}
+}
+
+// TestE2E_LongitudinalDataset_Day3Window verifies that a time window covering
+// only day 3 (2026-03-18) yields exactly 10 included traces.
+func TestE2E_LongitudinalDataset_Day3Window(t *testing.T) {
+	traces, err := loader.Load(longitudinalPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opts := graph.ArticulationOptions{
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTimeE2E(t, "2026-03-18T00:00:00Z"),
+			End:   mustParseTimeE2E(t, "2026-03-18T23:59:59Z"),
+		},
+	}
+	g := graph.Articulate(traces, opts)
+
+	if g.Cut.TracesIncluded != 10 {
+		t.Errorf("TracesIncluded: want 10 (day 3 only), got %d", g.Cut.TracesIncluded)
+	}
+}
+
+// TestE2E_LongitudinalDataset_Days1And2Window verifies that a time window
+// spanning days 1 and 2 yields exactly 30 included traces.
+func TestE2E_LongitudinalDataset_Days1And2Window(t *testing.T) {
+	traces, err := loader.Load(longitudinalPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opts := graph.ArticulationOptions{
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTimeE2E(t, "2026-03-14T23:59:59Z"),
+		},
+	}
+	g := graph.Articulate(traces, opts)
+
+	if g.Cut.TracesIncluded != 30 {
+		t.Errorf("TracesIncluded: want 30 (days 1+2), got %d", g.Cut.TracesIncluded)
+	}
+}
+
+// TestE2E_LongitudinalDataset_ShadowContainsDay3Elements verifies that a
+// window covering only days 1 and 2 produces a non-empty shadow, because day
+// 3 elements are invisible from this temporal position.
+func TestE2E_LongitudinalDataset_ShadowContainsDay3Elements(t *testing.T) {
+	traces, err := loader.Load(longitudinalPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opts := graph.ArticulationOptions{
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTimeE2E(t, "2026-03-14T23:59:59Z"),
+		},
+	}
+	g := graph.Articulate(traces, opts)
+
+	if len(g.Cut.ShadowElements) == 0 {
+		t.Error("ShadowElements: want non-empty (day 3 elements invisible from days 1+2 window)")
+	}
+}
+
+// TestE2E_LongitudinalDataset_ObserverAndTimeWindow_Combined verifies that
+// filtering by both observer (satellite-operator) and a day-1 time window
+// yields only satellite-operator day-1 traces and a non-empty shadow.
+func TestE2E_LongitudinalDataset_ObserverAndTimeWindow_Combined(t *testing.T) {
+	traces, err := loader.Load(longitudinalPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opts := graph.ArticulationOptions{
+		ObserverPositions: []string{"satellite-operator"},
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTimeE2E(t, "2026-03-11T23:59:59Z"),
+		},
+	}
+	g := graph.Articulate(traces, opts)
+
+	// satellite-operator on day 1: only trace e601 (timestamp 2026-03-11T02:14:00Z)
+	if g.Cut.TracesIncluded != 1 {
+		t.Errorf("TracesIncluded: want 1 (satellite-operator day-1 only), got %d", g.Cut.TracesIncluded)
+	}
+	if len(g.Cut.ShadowElements) == 0 {
+		t.Error("ShadowElements: want non-empty — most elements invisible from this narrow cut")
+	}
+}
+
+// TestE2E_LongitudinalDataset_ShadowReason_TimeWindow_Day3Element verifies
+// that when only a days 1+2 time window is set (no observer filter), at least
+// one shadow element has a Reason containing ShadowReasonTimeWindow.
+func TestE2E_LongitudinalDataset_ShadowReason_TimeWindow_Day3Element(t *testing.T) {
+	traces, err := loader.Load(longitudinalPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opts := graph.ArticulationOptions{
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTimeE2E(t, "2026-03-14T23:59:59Z"),
+		},
+	}
+	g := graph.Articulate(traces, opts)
+
+	found := false
+	for _, se := range g.Cut.ShadowElements {
+		for _, r := range se.Reasons {
+			if r == graph.ShadowReasonTimeWindow {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		t.Error("ShadowElements: want at least one element with ShadowReasonTimeWindow (day 3 elements excluded by window)")
+	}
+}
+
+// TestE2E_LongitudinalDataset_PrintArticulation_TimeWindowLine verifies that
+// a time-filtered articulation of the longitudinal dataset produces output
+// containing the "Time window:" line with actual timestamps.
+func TestE2E_LongitudinalDataset_PrintArticulation_TimeWindowLine(t *testing.T) {
+	traces, err := loader.Load(longitudinalPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	opts := graph.ArticulationOptions{
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTimeE2E(t, "2026-03-11T00:00:00Z"),
+			End:   mustParseTimeE2E(t, "2026-03-14T23:59:59Z"),
+		},
+	}
+	g := graph.Articulate(traces, opts)
+
+	var buf bytes.Buffer
+	if err := graph.PrintArticulation(&buf, g); err != nil {
+		t.Fatalf("PrintArticulation: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, "Time window:") {
+		t.Errorf("output missing %q line\nGot (first 500 chars):\n%.500s", "Time window:", out)
+	}
+	if !strings.Contains(out, "2026-03-11T00:00:00Z") {
+		t.Errorf("output missing start timestamp 2026-03-11T00:00:00Z\nGot (first 500 chars):\n%.500s", out)
 	}
 }
