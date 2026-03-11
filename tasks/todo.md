@@ -87,14 +87,14 @@ this observer see?" but "what did this observer see within this window?"
 
 ### Tasks
 
-- [ ] **M3.1 — Write the longitudinal dataset**
+- [x] **M3.1 — Write the longitudinal dataset**
   - `data/examples/deforestation_longitudinal.json` — 40 traces, 3 days
   - Extends the deforestation scenario: 2026-03-11 (20 existing) + 2026-03-14 (10) + 2026-03-18 (10)
   - All 8 observer positions; all 6 tag types per day; cross-day element persistence
   - `meshant/loader/longitudinal_test.go` — 19 tests
   - Branch: `feat/m3-dataset`
 
-- [ ] **M3.2 — Extend the graph articulation package with time-window axis**
+- [x] **M3.2 — Extend the graph articulation package with time-window axis**
   - New types: `TimeWindow`, `ShadowReason`
   - `ShadowElement` gains `Reasons []ShadowReason`
   - `ArticulationOptions` and `Cut` gain `TimeWindow`
@@ -104,7 +104,7 @@ this observer see?" but "what did this observer see within this window?"
   - `meshant/graph/e2e_test.go` — 9 new longitudinal e2e tests
   - Branch: `feat/m3-time-window`
 
-- [ ] **M3.3 — Record the time-window cut**
+- [x] **M3.3 — Record the time-window cut**
   - `docs/decisions/time-window-v1.md`
   - 8 decisions: TimeWindow in graph package, zero=full-cut, AND semantics, inclusive bounds,
     ShadowReason per element, Cut.TimeWindow stored verbatim, deferred items, relation to
