@@ -223,12 +223,22 @@ func PrintGraphMermaid(w io.Writer, g MeshGraph) error {
 // a comment in DOT and Mermaid output. Example:
 //
 //	"observer: meteorological-analyst | window: 2026-04-14T00:00:00Z–2026-04-14T23:59:59Z"
+//
+// Observer position strings are newline-stripped before joining to prevent a
+// crafted observer value from breaking out of the comment line into raw DOT syntax.
 func dotCutComment(c Cut) string {
 	obs := "full cut"
 	if len(c.ObserverPositions) > 0 {
-		obs = strings.Join(c.ObserverPositions, ", ")
+		sanitized := make([]string, len(c.ObserverPositions))
+		for i, p := range c.ObserverPositions {
+			sanitized[i] = stripNewlines(p)
+		}
+		obs = strings.Join(sanitized, ", ")
 	}
-	win := "no window"
+	// "full temporal cut" names the zero TimeWindow as a deliberate choice —
+	// the full temporal extent of the dataset — rather than implying a neutral
+	// absence. Mirrors the "(all — full cut)" observer convention.
+	win := "full temporal cut"
 	if !c.TimeWindow.IsZero() {
 		start := "(unbounded)"
 		end := "(unbounded)"
@@ -259,10 +269,21 @@ func truncateLabel(s string) string {
 	return string(runes[:maxEdgeLabel]) + "..."
 }
 
-// mermaidLabel replaces double quotes in s with single quotes for safe
-// embedding inside Mermaid label strings (Mermaid does not support \" escaping).
+// mermaidLabel sanitizes s for safe embedding inside a Mermaid label string.
+// It strips newlines and carriage returns (which would break out of the label
+// and allow injection of arbitrary Mermaid directives, including click handlers
+// with javascript: URIs when rendered in a browser) and replaces double quotes
+// with single quotes (Mermaid does not support \" escaping).
 func mermaidLabel(s string) string {
+	s = stripNewlines(s)
 	return strings.ReplaceAll(s, `"`, `'`)
+}
+
+// stripNewlines removes newline and carriage-return characters from s.
+// Used to prevent multi-line injection into single-line DOT comments and
+// Mermaid label strings derived from user-controlled trace field values.
+func stripNewlines(s string) string {
+	return strings.NewReplacer("\n", " ", "\r", " ").Replace(s)
 }
 
 // nonAlphanumRe matches any character that is not a letter, digit, or underscore.

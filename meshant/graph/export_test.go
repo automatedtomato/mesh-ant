@@ -741,3 +741,68 @@ func TestPrintGraphMermaid_EmptyNodeName(t *testing.T) {
 	}
 }
 
+
+// TestMermaidLabel_StripsNewlines verifies that newlines in trace-derived values
+// are replaced before they reach Mermaid output. A crafted label with a newline
+// could otherwise inject a Mermaid "click" directive with a javascript: URI,
+// creating an XSS vector when the output is rendered in a browser.
+func TestMermaidLabel_StripsNewlines(t *testing.T) {
+	g := graph.MeshGraph{
+		Nodes: map[string]graph.Node{
+			"a\nb": {Name: "a\nb"},
+		},
+		Edges: []graph.Edge{
+			{Sources: []string{"a\nb"}, Targets: []string{"c"}, WhatChanged: "act\nclick c \"javascript:alert(1)\""},
+		},
+		Cut: graph.Cut{
+			ObserverPositions: []string{"obs"},
+			TracesTotal:       1,
+			TracesIncluded:    1,
+		},
+	}
+	var buf bytes.Buffer
+	if err := graph.PrintGraphMermaid(&buf, g); err != nil {
+		t.Fatalf("PrintGraphMermaid: %v", err)
+	}
+	out := buf.String()
+	// After stripping newlines, "click c ..." must not appear as a standalone
+	// Mermaid directive on its own line. It may still appear as literal label text,
+	// which is harmless — only a newline-prefixed click directive is dangerous.
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "click ") {
+			t.Errorf("Mermaid output contains a standalone 'click' directive: %q", line)
+		}
+	}
+}
+
+// TestDotCutComment_StripsNewlines verifies that a crafted observer position
+// containing a newline cannot break out of the DOT comment line and inject
+// raw DOT syntax into the output.
+func TestDotCutComment_StripsNewlines(t *testing.T) {
+	g := graph.MeshGraph{
+		Nodes: map[string]graph.Node{"x": {Name: "x"}},
+		Edges: []graph.Edge{},
+		Cut: graph.Cut{
+			ObserverPositions: []string{"legit\n\"x\" -> \"malicious\" [label=\"injected\"]"},
+			TracesTotal:       1,
+			TracesIncluded:    1,
+		},
+	}
+	var buf bytes.Buffer
+	if err := graph.PrintGraphDOT(&buf, g); err != nil {
+		t.Fatalf("PrintGraphDOT: %v", err)
+	}
+	out := buf.String()
+	// After stripping newlines, "malicious" may appear as part of a comment but
+	// must NOT appear as a DOT arc (i.e., no "-> ... malicious" line outside a comment).
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
+			continue // comment lines are safe
+		}
+		if strings.Contains(trimmed, "malicious") {
+			t.Errorf("DOT output contains injected 'malicious' outside a comment: %q", line)
+		}
+	}
+}

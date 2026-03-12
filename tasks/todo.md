@@ -277,3 +277,49 @@ domain (validates generality beyond the evacuation scenario).
 - Do not lock in a form factor (CLI / web app / agent framework). Let it emerge.
 - Tag-filter cut axis deferred to M5+ (not implemented in M3, M4, or M5).
 - Graph-as-actor fulfilled in M5; graph-diff fulfilled in M4.
+- Form factor (CLI) emerged in M9; now suitable for users who code in other languages or prefer CLI use.
+
+---
+
+## Milestone 9: CLI + Docs + Release v1.0.0
+
+Library + CLI form. The framework can be used without writing Go.
+
+**Full plan:** `tasks/plan_m9.md`
+
+### Tasks
+
+- [x] **M9.1 — CLI core: `summarize` and `validate`**
+  - `meshant/cmd/meshant/main.go` — `run()`, `cmdSummarize()`, `cmdValidate()`, `usage()`
+  - `meshant/cmd/meshant/main_test.go` — 10 tests; Branch: `feat/m9-cli-core`
+
+- [x] **M9.2 — CLI `articulate` subcommand**
+  - `--observer` (repeatable), `--from`, `--to`, `--format text|json|dot|mermaid`
+  - `stringSliceFlag`; `parseTimeFlag`; 20 tests; Branch: `feat/m9-cli-articulate`
+
+- [x] **M9.3 — CLI `diff` subcommand**
+  - `--observer-a/b`, per-side time windows, `--format text|json`
+  - `parseTimeWindow` helper; 30 tests; Branch: `feat/m9-cli-diff`
+
+- [x] **M9.4 — Trace authoring guide**
+  - `docs/authoring-traces.md` — 188 lines, 8 sections, worked example
+  - Branch: `feat/m9-authoring-guide`
+
+- [x] **M9.5 — README, decision record, Dockerfile**
+  - README: "Who is this for?", CLI usage, removed stale Principle 8 gap note
+  - `docs/decisions/cli-v1.md` — 6 decisions; Dockerfile: CLI at `/usr/local/bin/meshant`
+  - Branch: `feat/m9-readme`
+
+- [x] **M9.6 — Refactor and clean pass (whole codebase)**
+  - Stale milestone comments removed; `go vet ./...` clean; Branch: `feat/m9-refactor`
+
+- [x] **M9.7 — Philosophical review**
+  - Two violations fixed: `"no time filter"` → `"full temporal cut"` (articulation-first, B1+B2)
+  - `docs/reviews/review_philosophical_m9.md`; Verdict: VIOLATION FOUND — REFACTORED
+  - Branch: `feat/m9-philosophical-review`
+
+- [x] **M9.8 — Codemap + release v1.0.0**
+  - `docs/CODEMAPS/meshant.md` updated with `cmd/meshant` package and new docs
+  - Merged to main; tagged v1.0.0
+
+37 CLI tests, 92.9% `cmd/meshant` coverage; `go vet` clean across all packages.

@@ -1,9 +1,9 @@
 // Package graph_test — tests for graph-as-actor identity functions.
 //
-// M5.2 adds the ability to assign a stable identifier to a MeshGraph or GraphDiff,
-// enabling it to appear as a Source or Target in subsequent traces. Following the
-// ANT principle of generalised symmetry, an identified graph is an actant like any
-// other — it enters the mesh through the same structural positions.
+// An identified MeshGraph or GraphDiff can appear as a Source or Target in
+// subsequent traces. Following the ANT principle of generalised symmetry, an
+// identified graph is an actant like any other — it enters the mesh through
+// the same structural positions.
 //
 // Tests here verify:
 //   - ID assignment (non-empty, unique per call)

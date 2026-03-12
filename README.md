@@ -14,6 +14,18 @@ Agency is not treated here as an exclusively human property, but as something th
 
 MeshAnt is a **trace-first, articulation-first** experiment for simulations and distributed systems where actors are not assumed in advance, but provisionally assembled from traces, frictions, and mediations.
 
+## Who is this for?
+
+MeshAnt is a trace-first framework for making sense of messy distributed or
+socio-technical systems — especially when behavior emerges from interactions between
+services, policies, interfaces, delays, and human actions rather than from a single
+explicit actor.
+
+If you are debugging a multi-agent pipeline, auditing a procurement process, or mapping
+how a decision propagated through a network of tools and people, MeshAnt gives you a
+way to articulate what each observer position could and could not see — without
+claiming a god's-eye view.
+
 ## Core principles
 
 MeshAnt follows a simple methodological shift inspired by **Bruno Latour** and **Actor-Network Theory (ANT)**:
@@ -105,7 +117,52 @@ A path argument overrides the default dataset:
 go run ./cmd/demo /path/to/dataset.json
 ```
 
-### Known gap — Principle 8
+The `meshant` CLI binary is also available — see the [CLI](#cli) section below for
+`articulate`, `diff`, and other commands.
 
-The demo records observer positions (`meteorological-analyst`, `local-mayor`) but does not record its own position: the choice of these two cuts, these parameters, this rendering. Tracked as M7-B.
+## CLI
+
+Install the binary:
+
+```bash
+go install github.com/automatedtomato/mesh-ant/meshant/cmd/meshant@latest
+```
+
+Or build from source:
+
+```bash
+git clone https://github.com/automatedtomato/mesh-ant
+cd mesh-ant
+go build -o meshant ./meshant/cmd/meshant
+```
+
+### Commands
+
+```
+meshant summarize   traces.json
+meshant validate    traces.json
+meshant articulate  traces.json --observer <pos> [--from RFC3339] [--to RFC3339] [--format text|json|dot|mermaid]
+meshant diff        traces.json --observer-a <pos> --observer-b <pos> [--from-a ...] [--to-a ...] [--from-b ...] [--to-b ...] [--format text|json]
+```
+
+### Example
+
+```bash
+# Summarise what actors and mediations are in the dataset
+meshant summarize data/examples/evacuation_order.json
+
+# Articulate what the meteorological analyst saw on day 1
+meshant articulate data/examples/evacuation_order.json \
+  --observer meteorological-analyst \
+  --from 2026-04-14T00:00:00Z --to 2026-04-14T23:59:59Z
+
+# Compare two observer positions — makes structural blindness visible
+meshant diff data/examples/evacuation_order.json \
+  --observer-a meteorological-analyst --from-a 2026-04-14T00:00:00Z --to-a 2026-04-14T23:59:59Z \
+  --observer-b local-mayor           --from-b 2026-04-16T00:00:00Z --to-b 2026-04-16T23:59:59Z
+
+# Export as Graphviz DOT
+meshant articulate data/examples/evacuation_order.json \
+  --observer meteorological-analyst --format dot > graph.dot
+```
 

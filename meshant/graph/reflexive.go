@@ -1,5 +1,5 @@
 // Package graph — reflexive.go contains functions that produce Traces recording
-// the act of articulation or diffing. This is M7.2: reflexive tracing.
+// the act of articulation or diffing (reflexive tracing).
 //
 // Reflexive tracing embodies two core ANT commitments:
 //
