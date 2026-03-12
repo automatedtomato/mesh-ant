@@ -476,7 +476,6 @@ func TestEvacuation_Summarise_ElementCount(t *testing.T) {
 
 // TestEvacuation_Summarise_GraphRefsPopulated verifies that Summarise
 // populates GraphRefs with the graph-ref strings present in the dataset.
-// This exercises the M5.3 loader addition against the new dataset.
 func TestEvacuation_Summarise_GraphRefsPopulated(t *testing.T) {
 	traces := loadEvacuation(t)
 	s := loader.Summarise(traces)
