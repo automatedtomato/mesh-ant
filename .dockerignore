@@ -1,0 +1,19 @@
+# Version control
+.git
+.gitignore
+
+# Development artefacts
+meshant/coverage.out
+meshant/**/*_test.go
+
+# Documentation and planning (not needed at runtime)
+docs/
+tasks/
+reference/
+
+# Claude configuration
+.claude/
+
+# Editor
+.vscode/
+.idea/
