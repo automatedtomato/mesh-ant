@@ -105,4 +105,4 @@ tool needs to stand on. Do that work before adding LLM.
 
 ---
 
-*Last updated: 2026-03-12. This is a note, not a spec.*
+*Last updated: 2026-03-12. This is a note, not a spec. Supersedes `docs/potential-forms.md` (removed).*
