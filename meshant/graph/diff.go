@@ -38,31 +38,31 @@ const (
 // ShadowShiftReasonChanged.
 type ShadowShift struct {
 	// Name is the element string as it appeared in trace source/target slices.
-	Name string
+	Name string `json:"name"`
 
 	// Kind describes which direction the element moved.
-	Kind ShadowShiftKind
+	Kind ShadowShiftKind `json:"kind"`
 
 	// FromReasons are the ShadowReason values for this element in g1.
 	// Empty if the element was a visible Node in g1.
-	FromReasons []ShadowReason
+	FromReasons []ShadowReason `json:"from_reasons"`
 
 	// ToReasons are the ShadowReason values for this element in g2.
 	// Empty if the element became a visible Node in g2.
-	ToReasons []ShadowReason
+	ToReasons []ShadowReason `json:"to_reasons"`
 }
 
 // PersistedNode records a node present in both graphs with its appearance count
 // from each. A changed count indicates the element became more or less active.
 type PersistedNode struct {
 	// Name is the element name.
-	Name string
+	Name string `json:"name"`
 
 	// CountFrom is the AppearanceCount in g1.
-	CountFrom int
+	CountFrom int `json:"count_from"`
 
 	// CountTo is the AppearanceCount in g2.
-	CountTo int
+	CountTo int `json:"count_to"`
 }
 
 // GraphDiff is the result of comparing two MeshGraph articulations. It records
@@ -82,33 +82,33 @@ type PersistedNode struct {
 type GraphDiff struct {
 	// ID is the stable actor identifier for this diff. Empty string means the
 	// diff has not been identified as an actor. Assign via graph.IdentifyDiff.
-	ID string
+	ID string `json:"id"`
 
 	// NodesAdded contains element names in g2.Nodes but not g1.Nodes.
-	NodesAdded []string
+	NodesAdded []string `json:"nodes_added"`
 
 	// NodesRemoved contains element names in g1.Nodes but not g2.Nodes.
-	NodesRemoved []string
+	NodesRemoved []string `json:"nodes_removed"`
 
 	// NodesPersisted contains nodes present in both graphs with both counts.
-	NodesPersisted []PersistedNode
+	NodesPersisted []PersistedNode `json:"nodes_persisted"`
 
 	// EdgesAdded contains edges whose TraceID appears in g2 but not g1.
-	EdgesAdded []Edge
+	EdgesAdded []Edge `json:"edges_added"`
 
 	// EdgesRemoved contains edges whose TraceID appears in g1 but not g2.
-	EdgesRemoved []Edge
+	EdgesRemoved []Edge `json:"edges_removed"`
 
 	// ShadowShifts contains elements that moved between shadow and visible,
 	// or that remained in shadow with changed reasons. Elements in the shadow
 	// of both graphs with identical reasons are not included.
-	ShadowShifts []ShadowShift
+	ShadowShifts []ShadowShift `json:"shadow_shifts"`
 
 	// From is the Cut of g1, stored verbatim (defensive slice copies).
-	From Cut
+	From Cut `json:"from"`
 
 	// To is the Cut of g2, stored verbatim (defensive slice copies).
-	To Cut
+	To Cut `json:"to"`
 }
 
 // --- Diff helpers ---
