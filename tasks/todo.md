@@ -237,6 +237,38 @@ the resulting graph enters the mesh as an actant. M7-B depends on M7-A.
 
 ---
 
+## Milestone 8: Structured Export + Second Domain — release v0.3.1
+
+Closes the two gaps named post-M7: structured output (graphs leave stdout) and second demo
+domain (validates generality beyond the evacuation scenario).
+
+**Full plan:** `tasks/plan_m8.md` (planned in session, not written to file)
+
+### Tasks
+
+- [x] **M8.1 — JSON export**
+  - `meshant/graph/export.go` — `PrintGraphJSON`, `PrintDiffJSON`; 100% coverage
+  - Branch: `feat/m8-json-export`
+
+- [x] **M8.2 — DOT + Mermaid export**
+  - `meshant/graph/export.go` — `PrintGraphDOT`, `PrintGraphMermaid`; shadow in cluster/subgraph; Cartesian product for multi-source edges; 100% coverage
+  - Branch: `feat/m8-dot-mermaid`
+
+- [x] **M8.3 — File persistence package**
+  - `meshant/persist/persist.go` — `WriteJSON`, `ReadGraphJSON`, `ReadDiffJSON`; 100% coverage
+  - Branch: `feat/m8-persist`
+
+- [x] **M8.4 — Second demo domain**
+  - `data/examples/incident_response.json` — 22 traces, e-commerce API outage, 2 days, 5 observers, 8 non-human actants
+  - `meshant/loader/incident_test.go` + `meshant/graph/incident_e2e_test.go`
+  - Branch: `feat/m8-incident-dataset`
+
+- [x] **M8.5 — Decision record + codemap**
+  - `docs/decisions/structured-export-v1.md` — 6 decisions
+  - `docs/CODEMAPS/meshant.md` — updated for M8
+
+---
+
 ## Notes
 
 - Do not begin simulation, persona generation, or LLM integration until the framework is stable.
