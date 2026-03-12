@@ -235,7 +235,10 @@ func dotCutComment(c Cut) string {
 		}
 		obs = strings.Join(sanitized, ", ")
 	}
-	win := "no window"
+	// "full temporal cut" names the zero TimeWindow as a deliberate choice —
+	// the full temporal extent of the dataset — rather than implying a neutral
+	// absence. Mirrors the "(all — full cut)" observer convention.
+	win := "full temporal cut"
 	if !c.TimeWindow.IsZero() {
 		start := "(unbounded)"
 		end := "(unbounded)"
