@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-12
+**Last Updated:** 2026-03-13
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -11,7 +11,8 @@
 |---------|---------|
 | `schema` | Core trace types, graph-reference predicates, and validators. |
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
-| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing. |
+| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, export to JSON/DOT/Mermaid. |
+| `persist` | Read and write graphs to JSON files. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
 
 ## Package: schema
@@ -73,6 +74,7 @@
 | `actor.go` | Graph-as-actor identity: `IdentifyGraph`, `IdentifyDiff`, `GraphRef`, `DiffRef`, `newUUID4`. |
 | `serial.go` | Custom JSON codec for `TimeWindow`: `MarshalJSON`, `UnmarshalJSON`. Null encoding for unbounded bounds. |
 | `reflexive.go` | Reflexive tracing: `ArticulationTrace`, `DiffTrace`. Functions that record articulation and diffing as traces. |
+| `export.go` | Export functions: `PrintGraphJSON`, `PrintDiffJSON`, `PrintGraphDOT`, `PrintGraphMermaid`. Also internal helpers for DOT/Mermaid formatting. |
 
 ### Types
 
@@ -109,6 +111,30 @@
 | `DiffRef` | `func DiffRef(d GraphDiff) (string, error)` | Return "meshdiff:<d.ID>" graph-reference string. Error if d.ID empty. |
 | `ArticulationTrace` | `func ArticulationTrace(g MeshGraph, observer string, source []string) (schema.Trace, error)` | Produce Trace recording the act of articulation (reflexive tracing). g must be identified; observer required. Target set to GraphRef(g). Always passes schema.Validate. |
 | `DiffTrace` | `func DiffTrace(d GraphDiff, g1, g2 MeshGraph, observer string) (schema.Trace, error)` | Produce Trace recording the act of diffing. All three graphs must be identified; observer required. Source = [GraphRef(g1), GraphRef(g2)], Target = [DiffRef(d)]. |
+| `PrintGraphJSON` | `func PrintGraphJSON(w io.Writer, g MeshGraph) error` | Export `MeshGraph` as JSON to io.Writer. |
+| `PrintDiffJSON` | `func PrintDiffJSON(w io.Writer, d GraphDiff) error` | Export `GraphDiff` as JSON to io.Writer. |
+| `PrintGraphDOT` | `func PrintGraphDOT(w io.Writer, g MeshGraph) error` | Export `MeshGraph` as Graphviz DOT format. Includes node labels and edge cardinality. |
+| `PrintGraphMermaid` | `func PrintGraphMermaid(w io.Writer, g MeshGraph) error` | Export `MeshGraph` as Mermaid flowchart syntax. Sanitized IDs and truncated labels for readability. |
+
+## Package: persist
+
+### Files
+
+| File | Contains |
+|------|----------|
+| `persist.go` | `WriteJSON`, `ReadGraphJSON`, `ReadDiffJSON`. File I/O for graphs and diffs. |
+
+### Types
+
+None (persist carries no domain types; wraps graph types).
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `WriteJSON` | `func WriteJSON(path string, v any) error` | Marshal value to JSON and write to file with 0644 permissions. |
+| `ReadGraphJSON` | `func ReadGraphJSON(path string) (graph.MeshGraph, error)` | Read and unmarshal JSON file as `MeshGraph`. |
+| `ReadDiffJSON` | `func ReadDiffJSON(path string) (graph.GraphDiff, error)` | Read and unmarshal JSON file as `GraphDiff`. |
 
 ## Package: cmd/demo
 
@@ -140,8 +166,12 @@ loader/
 
 graph/
   ├─→ imports: schema
-  ├─→ (modules within graph: graph.go, diff.go, actor.go, serial.go, reflexive.go)
-  └─→ (used by) cmd/demo
+  ├─→ (modules within graph: graph.go, diff.go, actor.go, serial.go, reflexive.go, export.go)
+  └─→ (used by) cmd/demo, persist
+
+persist/
+  ├─→ imports: graph
+  └─→ (used by) external tools/pipelines
 
 cmd/demo/
   ├─→ imports: graph, loader
@@ -210,6 +240,13 @@ cmd/demo/
 | Record articulation in traces | `graph/reflexive.go` → `ArticulationTrace()` |
 | Record diff in traces | `graph/reflexive.go` → `DiffTrace()` |
 | TimeWindow JSON encoding | `graph/serial.go` → `MarshalJSON()`, `UnmarshalJSON()` |
+| Export graph to JSON | `graph/export.go` → `PrintGraphJSON()` |
+| Export diff to JSON | `graph/export.go` → `PrintDiffJSON()` |
+| Export graph to Graphviz DOT | `graph/export.go` → `PrintGraphDOT()` |
+| Export graph to Mermaid | `graph/export.go` → `PrintGraphMermaid()` |
+| Write graph to file | `persist/persist.go` → `WriteJSON()` |
+| Read graph from JSON file | `persist/persist.go` → `ReadGraphJSON()` |
+| Read diff from JSON file | `persist/persist.go` → `ReadDiffJSON()` |
 | Run minimal demo | `cmd/demo/main.go` → `run()` |
 
 ## Notable Design Patterns
@@ -247,6 +284,28 @@ cmd/demo/
 - All graph types carry JSON struct tags; `TimeWindow` alone needs custom codec
 - Design rationale: zero bound means "unbounded" (not a real timestamp)
 
+### Structured Export (M8)
+- `PrintGraphJSON()` serializes `MeshGraph` to JSON; `PrintDiffJSON()` for `GraphDiff`
+- `PrintGraphDOT()` generates Graphviz format with quoted labels and edge cardinality
+- `PrintGraphMermaid()` produces Mermaid flowchart syntax with sanitized IDs and truncated labels
+- All export functions accept `io.Writer` for flexibility (file, buffer, stdout)
+
+## Example Datasets
+
+| Dataset | Location | Size | Observers | Actants | Notes |
+|---------|----------|------|-----------|---------|-------|
+| Deforestation (M2) | `data/examples/deforestation.json` | 20 traces | 8 | — | 3 threads, 2026-03-11, development reference |
+| Deforestation Longitudinal (M3) | `data/examples/deforestation_longitudinal.json` | 40 traces | 8 | — | 3 days (03-11/14/18), time-window testing |
+| Evacuation Order (M6) | `data/examples/evacuation_order.json` | 28 traces | 6 | 5 | 3 days (04-14/15/16), 1 graph-ref trace, demo dataset |
+| Graph Ref (M5) | `data/examples/graph_ref_traces.json` | — | — | — | Graph-reference examples for M5 actor testing |
+| Incident Response (M8) | `data/examples/incident_response.json` | 22 traces | 5 | 8 | 2 days (05-10/11), postmortem scenario, export testing |
+
+**Dataset M8 (Incident Response):**
+- **Observers:** monitoring-service, on-call-engineer, incident-commander, product-manager, customer-support
+- **Actants:** alerting-pipeline, auto-scaler, circuit-breaker, sla-timer, runbook-engine, dashboard-service, connection-pool-monitor, pagerduty-webhook
+- **Trace Stats:** 22 traces, 86% mediated, all 6 tag types represented, 1 graph-ref, 1 absent-source
+- **Use Case:** Incident lifecycle (detection to postmortem); demonstrates observer positioning across operational roles
+
 ## Related Decision Records
 
 - `docs/decisions/trace-schema-v1.md` — core Trace type rationale
@@ -255,16 +314,21 @@ cmd/demo/
 - `docs/decisions/graph-diff-v1.md` — diff computation and shadow shifts
 - `docs/decisions/graph-as-actor-v1.md` — identified graphs as actants
 - `docs/decisions/m7-serialisation-reflexivity-v1.md` — TimeWindow JSON codec and reflexive tracing
+- `docs/decisions/structured-export-v1.md` — graph export to JSON, DOT, Mermaid formats
 
 ## Test Coverage
 
 - `schema/trace_test.go` — 27 tests, 100%
 - `schema/graphref_test.go` — 14 tests, 100%
 - `loader/loader_test.go` — 56 tests, 100%
+- `loader/evacuation_test.go` — 27 tests (M6 dataset), all green
+- `loader/incident_test.go` — tests for M8 incident response dataset
 - `graph/graph_test.go` — 84 tests (including M3 time-window tests), 99.3%
 - `graph/diff_test.go` — 41 tests, 100%
 - `graph/actor_test.go` — 15 tests, 100%
 - `graph/serial_test.go` — 19 tests, 100%
 - `graph/reflexive_test.go` — 19 tests, 100%
+- `graph/export_test.go` — tests for JSON, DOT, Mermaid export functions
+- `graph/incident_e2e_test.go` — E2E tests using incident response dataset
+- `persist/persist_test.go` — tests for file I/O functions
 - `cmd/demo/main_test.go` — E2E test
-- `loader/evacuation_test.go` — 27 tests (M6 dataset), all green
