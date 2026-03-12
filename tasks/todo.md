@@ -158,14 +158,69 @@ in subsequent traces. Reflexivity: the framework can observe its own action in t
 
 ---
 
-## Provisional: M6
+## Milestone 6: Minimal Demo + Docker — release 0.2.0
 
-Two directions from M5's shadow:
+A minimal demo is a cut of the current state of the framework, not a determination of the
+final product. It shows what form has emerged from following the traces so far. The form
+factor is not forced — it arises from the work.
 
-- **M6-A: Reflexive tracing** — helper for recording the act of articulation as a trace
-  (closes the reflexive loop described in Principle 8 more completely)
-- **M6-B: Graph serialisation** — `json.Marshal`/`Unmarshal` for `MeshGraph` and `GraphDiff`,
-  enabling cross-session stable references
+The demo will itself become an actant: once it runs, it shapes what gets built next.
+That is not a reason to avoid it; it is a reason to make the cut deliberately.
+
+**Known gap:** the demo will run articulations but will not record those acts as traces.
+Principle 8 remains partially open — the framework observes but does not yet observe itself
+observing. This is tracked as M7-B.
+
+**Deforestation dataset:** retained as development data and future demo variation.
+The demo binary accepts a path argument; the Docker image supports volume mount.
+
+**Full plan:** `tasks/plan_m6.md`
+
+### Tasks
+
+- [x] **M6.1 — Design the demo cut and re-plan M6** *(complete)*
+  - Scenario: coastal evacuation order (category-3 hurricane, 72h window)
+  - Cut A: `meteorological-analyst`, 2026-04-14 only (T-72h)
+  - Cut B: `local-mayor`, 2026-04-16 only (T-24h)
+  - Chosen for maximal epistemic asymmetry; non-human actants central; structural blindness made visible by diff
+
+- [x] **M6.2 — Write the evacuation order dataset**
+  - Branch: `feat/m6-dataset`
+  - `data/examples/evacuation_order.json` — 28 traces, 3 days (2026-04-14/15/16), 6 observer positions
+  - 14 actants including 5 non-human; all 6 tag types; mediation on ≥40% of traces; ≥1 graph-ref trace
+  - `meshant/loader/evacuation_test.go` — validation tests
+
+- [x] **M6.3 — Write the demo entry point**
+  - Branch: `feat/m6-demo`
+  - `meshant/cmd/demo/main.go` — `run(io.Writer, string) error` + thin `main()`
+  - `meshant/cmd/demo/main_test.go` — 7 tests (black-box, package `demo_test`)
+  - Pipeline: Load → PrintSummary → Articulate A → PrintArticulation → Articulate B → PrintArticulation → Diff → PrintDiff → closing note naming the shadow
+  - Stdlib only: no new dependencies
+
+- [x] **M6.4 — Docker environment + tag release v0.2.0**
+  - Branch: `feat/m6-docker`
+  - `Dockerfile` — multi-stage build (golang:1.25-alpine builder, alpine:latest runtime)
+  - `.dockerignore` — exclude .git, test files, dev artifacts
+  - `docker build -t mesh-ant-demo . && docker run --rm mesh-ant-demo` produces full demo output
+  - Volume mount supports deforestation dataset as variation
+  - Merge chain: feat/m6-dataset → feat/m6-demo → feat/m6-docker → develop → main
+  - Release notes: scenario, two cuts, diff, Docker usage, shadow named (M7-A/B)
+  - `git tag v0.2.0 -a -m "v0.2.0: minimal demo — coastal evacuation order, two observer cuts, diff, named shadow"`
+
+---
+
+## Provisional: M7
+
+Two directions from M6's shadow. Neither is scheduled yet — let M6 surface what matters.
+
+- **M7-A: Graph serialisation** — `json.Marshal`/`Unmarshal` for `MeshGraph` and `GraphDiff`.
+  Precondition for M7-B: without serialisation, graphs are ephemeral (session-only). Serialisation
+  makes graphs true immutable mobiles — forms that travel without deforming. A reflexive trace
+  referencing `meshgraph:<uuid>` points to nothing once the process ends; M7-A fixes that.
+
+- **M7-B: Reflexive tracing** — helper for recording the act of articulation as a trace.
+  Closes the Principle 8 loop: the framework observes itself observing. Depends on M7-A
+  for durability — the recorded trace must reference a graph that can be recovered.
 
 ---
 
