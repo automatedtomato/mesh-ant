@@ -1,134 +1,123 @@
 // Package main contains the test suite for the demo entry point.
 //
-// Tests call run() and printClosingNote() directly, keeping them fast and
-// deterministic without executing the binary. Using package main (internal)
-// is the standard Go approach for testing main packages, since main packages
-// cannot be imported by external test packages.
+// Tests call run() and printClosingNote() directly. Using package main
+// (internal) is the standard Go approach for testing main packages, since
+// main packages cannot be imported by external test packages.
 //
-// All tests resolve the dataset path relative to the package source directory,
-// matching the convention used throughout the loader and graph test suites.
+// Coverage note: main() is 0% (untestable in any Go main package). Excluding
+// main(), the testable surface (run() + printClosingNote()) achieves ~86%.
+// The remaining uncovered branches in run() are two defensive
+// TimeWindow.Validate() guards that cannot be triggered by the hardcoded
+// correct dates — by design, not by omission.
 package main
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
 
-// datasetPath is the path to the evacuation dataset relative to the package
-// source directory. Go test sets the working directory to the package
-// directory, so three levels up reaches the module root before descending
-// into data/examples/.
-const datasetPath = "../../../data/examples/evacuation_order.json"
+// errWriter is an io.Writer that always returns an error. Used to exercise
+// write-error propagation in run() and printClosingNote().
+type errWriter struct{}
+
+func (errWriter) Write([]byte) (int, error) { return 0, errors.New("write error") }
+
+// runDemo executes the full demo pipeline once and returns the output.
+// It is the shared helper for all happy-path assertions, ensuring the
+// pipeline runs exactly once per test group. Using t.Helper() + t.Fatalf
+// aborts the calling test immediately on pipeline failure rather than
+// cascading into misleading assertion failures.
+func runDemo(t *testing.T) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := run(&buf, defaultDatasetPath); err != nil {
+		t.Fatalf("run() returned error: %v", err)
+	}
+	return buf.String()
+}
 
 // --- Group 1: Happy path ---
 
-// TestDemo_Run_NoError verifies that run() returns nil for a valid dataset.
-// This is the primary green-path smoke test: if this fails, all others are
-// expected to fail too.
-func TestDemo_Run_NoError(t *testing.T) {
-	var buf bytes.Buffer
-	if err := run(&buf, datasetPath); err != nil {
-		t.Fatalf("run() returned error: %v", err)
-	}
-}
+// TestDemo_Run_HappyPath verifies the full pipeline output against the
+// evacuation order dataset. All sub-tests share a single run() invocation.
+func TestDemo_Run_HappyPath(t *testing.T) {
+	output := runDemo(t)
 
-// TestDemo_Run_OutputContainsMeshSummary verifies the output includes the
-// mesh summary header produced by loader.PrintSummary. The summary is the
-// first section of the pipeline and must always be present.
-func TestDemo_Run_OutputContainsMeshSummary(t *testing.T) {
-	var buf bytes.Buffer
-	if err := run(&buf, datasetPath); err != nil {
-		t.Fatalf("run() returned error: %v", err)
-	}
-	if !strings.Contains(buf.String(), "=== Mesh Summary") {
-		t.Error("output does not contain \"=== Mesh Summary\"")
-	}
-}
-
-// TestDemo_Run_OutputContainsBothArticulations verifies the output includes
-// two Mesh Articulation blocks — one for each observer cut. A single block
-// would indicate one articulation silently failed or was skipped.
-func TestDemo_Run_OutputContainsBothArticulations(t *testing.T) {
-	var buf bytes.Buffer
-	if err := run(&buf, datasetPath); err != nil {
-		t.Fatalf("run() returned error: %v", err)
-	}
-
-	output := buf.String()
-	const header = "=== Mesh Articulation"
-	count := strings.Count(output, header)
-	if count < 2 {
-		t.Errorf("output contains %d %q block(s); want >= 2", count, header)
-	}
-}
-
-// TestDemo_Run_OutputContainsDiff verifies the output includes the diff
-// block produced by graph.PrintDiff. The diff is the analytical centrepiece
-// of the demo; its absence would mean the comparison was not performed.
-func TestDemo_Run_OutputContainsDiff(t *testing.T) {
-	var buf bytes.Buffer
-	if err := run(&buf, datasetPath); err != nil {
-		t.Fatalf("run() returned error: %v", err)
-	}
-	if !strings.Contains(buf.String(), "=== Mesh Diff") {
-		t.Error("output does not contain \"=== Mesh Diff\"")
-	}
-}
-
-// TestDemo_Run_OutputNamesObservers verifies that both demo observer positions
-// appear in the output. Their absence would indicate the articulation options
-// were not passed correctly to graph.Articulate.
-func TestDemo_Run_OutputNamesObservers(t *testing.T) {
-	var buf bytes.Buffer
-	if err := run(&buf, datasetPath); err != nil {
-		t.Fatalf("run() returned error: %v", err)
-	}
-
-	output := buf.String()
-	for _, obs := range []string{"meteorological-analyst", "local-mayor"} {
-		if !strings.Contains(output, obs) {
-			t.Errorf("output does not contain observer %q", obs)
+	// Mesh summary must appear first in the output.
+	t.Run("ContainsMeshSummary", func(t *testing.T) {
+		if !strings.Contains(output, "=== Mesh Summary") {
+			t.Error("output does not contain \"=== Mesh Summary\"")
 		}
-	}
+	})
+
+	// Both articulations must be present; one would mean a cut was skipped.
+	t.Run("ContainsBothArticulations", func(t *testing.T) {
+		if count := strings.Count(output, "=== Mesh Articulation"); count < 2 {
+			t.Errorf("output contains %d articulation block(s); want >= 2", count)
+		}
+	})
+
+	// The diff is the analytical centrepiece; its absence means the
+	// comparison was not performed.
+	t.Run("ContainsDiff", func(t *testing.T) {
+		if !strings.Contains(output, "=== Mesh Diff") {
+			t.Error("output does not contain \"=== Mesh Diff\"")
+		}
+	})
+
+	// Both observer positions must be named; their absence would indicate
+	// the ArticulationOptions were not passed correctly.
+	t.Run("NamesObservers", func(t *testing.T) {
+		for _, obs := range []string{"meteorological-analyst", "local-mayor"} {
+			if !strings.Contains(output, obs) {
+				t.Errorf("output does not contain observer %q", obs)
+			}
+		}
+	})
+
+	// Both articulations must produce shadow elements given near-disjoint
+	// observer positions.
+	t.Run("ContainsShadow", func(t *testing.T) {
+		if !strings.Contains(output, "Shadow") {
+			t.Error("output does not contain \"Shadow\"")
+		}
+	})
+
+	// The closing note names the Principle 8 gap; its absence would mean
+	// the demo does not name its own shadow.
+	t.Run("ContainsClosingNote", func(t *testing.T) {
+		if !strings.Contains(output, "Note on this articulation") {
+			t.Error("output does not contain closing note section")
+		}
+	})
 }
 
-// TestDemo_Run_OutputContainsShadow verifies the output includes at least one
-// Shadow section. Both articulations should produce shadow elements given the
-// near-disjoint observer positions; a missing Shadow would indicate the cut
-// axes were not working or both cuts accidentally included all traces.
-func TestDemo_Run_OutputContainsShadow(t *testing.T) {
-	var buf bytes.Buffer
-	if err := run(&buf, datasetPath); err != nil {
-		t.Fatalf("run() returned error: %v", err)
-	}
-	if !strings.Contains(buf.String(), "Shadow") {
-		t.Error("output does not contain \"Shadow\"")
-	}
-}
+// --- Group 2: Error paths ---
 
-// TestDemo_Run_OutputContainsClosingNote verifies the closing note is present.
-// The note names the Principle 8 gap; its absence would mean the demo does not
-// name its own shadow — contradicting the methodological stance of the project.
-func TestDemo_Run_OutputContainsClosingNote(t *testing.T) {
-	var buf bytes.Buffer
-	if err := run(&buf, datasetPath); err != nil {
-		t.Fatalf("run() returned error: %v", err)
-	}
-	if !strings.Contains(buf.String(), "Note on this articulation") {
-		t.Error("output does not contain closing note section")
-	}
-}
-
-// --- Group 2: Error path ---
-
-// TestDemo_Run_InvalidPath_ReturnsError verifies that run() returns a non-nil
-// error when given a path that does not exist. This ensures the error path
-// through loader.Load is handled and propagated rather than silently ignored.
+// TestDemo_Run_InvalidPath_ReturnsError verifies that run() propagates
+// the error from loader.Load when the dataset path does not exist.
 func TestDemo_Run_InvalidPath_ReturnsError(t *testing.T) {
 	var buf bytes.Buffer
-	err := run(&buf, "/nonexistent/path/dataset.json")
-	if err == nil {
+	if err := run(&buf, "/nonexistent/path/dataset.json"); err == nil {
 		t.Error("run() with invalid path: want non-nil error, got nil")
+	}
+}
+
+// TestDemo_Run_WriterError_ReturnsError verifies that run() propagates
+// write errors. errWriter fails on the first write, which short-circuits
+// at loader.PrintSummary — only that branch is directly exercised here.
+func TestDemo_Run_WriterError_ReturnsError(t *testing.T) {
+	if err := run(errWriter{}, defaultDatasetPath); err == nil {
+		t.Error("run() with failing writer: want non-nil error, got nil")
+	}
+}
+
+// TestDemo_PrintClosingNote_WriterError_ReturnsError verifies that
+// printClosingNote() propagates write errors independently of the pipeline.
+func TestDemo_PrintClosingNote_WriterError_ReturnsError(t *testing.T) {
+	if err := printClosingNote(errWriter{}); err == nil {
+		t.Error("printClosingNote() with failing writer: want non-nil error, got nil")
 	}
 }
