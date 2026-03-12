@@ -323,3 +323,181 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// --- Group 5: cmdDiff ---
+
+// TestCmdDiff_HappyPath verifies that cmdDiff produces non-empty output when
+// given two distinct observer positions from the evacuation dataset and no
+// time window constraints. The two observers (meteorological-analyst and
+// local-mayor) are near-disjoint, so the diff should reflect structural
+// divergence between their respective articulations.
+func TestCmdDiff_HappyPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff() returned unexpected error: %v", err)
+	}
+	if len(buf.String()) == 0 {
+		t.Error("cmdDiff() produced empty output; want non-empty")
+	}
+}
+
+// TestCmdDiff_WithTimeWindows verifies that cmdDiff accepts per-side time
+// window flags (--from-a/--to-a, --from-b/--to-b) alongside observer flags
+// without returning an error.
+func TestCmdDiff_WithTimeWindows(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--from-a", "2026-04-14T00:00:00Z",
+		"--to-a", "2026-04-14T23:59:59Z",
+		"--from-b", "2026-04-16T00:00:00Z",
+		"--to-b", "2026-04-16T23:59:59Z",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff() with time windows returned unexpected error: %v", err)
+	}
+}
+
+// TestCmdDiff_FormatJSON verifies that --format json causes cmdDiff to produce
+// output that begins with '{' (a JSON object).
+func TestCmdDiff_FormatJSON(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--format", "json",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff() --format json returned unexpected error: %v", err)
+	}
+	out := strings.TrimSpace(buf.String())
+	if !strings.HasPrefix(out, "{") {
+		t.Errorf("cmdDiff() --format json: output does not start with '{'; got: %q", out[:min(len(out), 40)])
+	}
+}
+
+// TestCmdDiff_MissingObserverA verifies that cmdDiff returns an error
+// containing "observer-a" when no --observer-a flag is supplied.
+func TestCmdDiff_MissingObserverA(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-b", "local-mayor",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() with no --observer-a: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "observer-a") {
+		t.Errorf("cmdDiff() error = %q; want it to contain \"observer-a\"", err.Error())
+	}
+}
+
+// TestCmdDiff_MissingObserverB verifies that cmdDiff returns an error
+// containing "observer-b" when no --observer-b flag is supplied.
+func TestCmdDiff_MissingObserverB(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() with no --observer-b: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "observer-b") {
+		t.Errorf("cmdDiff() error = %q; want it to contain \"observer-b\"", err.Error())
+	}
+}
+
+// TestCmdDiff_FormatDOT_Rejected verifies that --format dot is rejected with
+// an error containing "not supported", because PrintDiffDOT does not exist.
+func TestCmdDiff_FormatDOT_Rejected(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--format", "dot",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() --format dot: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Errorf("cmdDiff() --format dot error = %q; want it to contain \"not supported\"", err.Error())
+	}
+}
+
+// TestCmdDiff_FormatMermaid_Rejected verifies that --format mermaid is
+// rejected with an error containing "not supported", because
+// PrintDiffMermaid does not exist.
+func TestCmdDiff_FormatMermaid_Rejected(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--format", "mermaid",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() --format mermaid: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Errorf("cmdDiff() --format mermaid error = %q; want it to contain \"not supported\"", err.Error())
+	}
+}
+
+// TestCmdDiff_UnknownFormat verifies that an unrecognised --format value
+// returns an error containing "unknown".
+func TestCmdDiff_UnknownFormat(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--format", "xml",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() --format xml: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown") {
+		t.Errorf("cmdDiff() --format xml error = %q; want it to contain \"unknown\"", err.Error())
+	}
+}
+
+// TestCmdDiff_BadFromTime verifies that a malformed --from-a value produces
+// an error containing "RFC3339".
+func TestCmdDiff_BadFromTime(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--from-a", "notadate",
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() with bad --from-a: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "RFC3339") {
+		t.Errorf("cmdDiff() error = %q; want it to contain \"RFC3339\"", err.Error())
+	}
+}
+
+// TestCmdDiff_MissingPath verifies that cmdDiff returns an error when no
+// positional path argument is provided after the flags.
+func TestCmdDiff_MissingPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() with no path: want non-nil error, got nil")
+	}
+}
