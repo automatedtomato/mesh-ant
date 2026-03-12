@@ -1,0 +1,219 @@
+[
+  {
+    "id": "f0000001-0000-4000-8000-000000000001",
+    "timestamp": "2026-05-10T09:14:00Z",
+    "what_changed": "connection-pool-monitor detected active connection count crossing 95% saturation threshold (190/200 connections) on primary database cluster; metric emitted to alerting-pipeline with severity classification pending",
+    "source": [],
+    "target": ["alerting-pipeline"],
+    "mediation": "connection-pool-saturation-threshold-policy",
+    "tags": ["threshold"],
+    "observer": "monitoring-service"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000002",
+    "timestamp": "2026-05-10T09:15:30Z",
+    "what_changed": "alerting-pipeline translated raw connection-pool saturation metric into Severity-1 incident classification using escalation-rule-engine; pagerduty-webhook triggered with on-call rotation lookup",
+    "source": ["alerting-pipeline"],
+    "target": ["pagerduty-webhook"],
+    "mediation": "escalation-rule-engine",
+    "tags": ["translation"],
+    "observer": "monitoring-service"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000003",
+    "timestamp": "2026-05-10T09:16:45Z",
+    "what_changed": "pagerduty-webhook notified on-call-engineer via mobile alert; alert delivery registered 75-second lag from initial metric emission due to pagerduty-webhook retry queue congestion under flash sale load",
+    "source": ["pagerduty-webhook"],
+    "target": ["on-call-engineer"],
+    "mediation": "pagerduty-escalation-policy-v3",
+    "tags": ["delay"],
+    "observer": "monitoring-service"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000004",
+    "timestamp": "2026-05-10T09:18:00Z",
+    "what_changed": "sla-timer registered that SLA window for Severity-1 acknowledgement (5 minutes) had elapsed with no acknowledgement recorded; sla-timer emitted SLA breach event to incident-commander escalation channel",
+    "source": ["sla-timer"],
+    "target": ["incident-commander"],
+    "mediation": "severity-1-sla-contract-2026",
+    "tags": ["threshold", "translation"],
+    "observer": "monitoring-service"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000005",
+    "timestamp": "2026-05-10T09:20:00Z",
+    "what_changed": "on-call-engineer acknowledged PagerDuty alert; opened runbook-engine and loaded playbook RUNBOOK-DB-POOL-001; first runbook step required approval from database-admin before executing connection pool flush procedure",
+    "source": ["on-call-engineer"],
+    "target": ["runbook-engine"],
+    "tags": ["blockage"],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000006",
+    "timestamp": "2026-05-10T09:21:00Z",
+    "what_changed": "circuit-breaker tripped on checkout-api service after error rate exceeded 40% threshold over 60-second rolling window; checkout-api traffic rerouted to fallback-region-eu as per circuit-breaker-policy",
+    "source": ["circuit-breaker"],
+    "target": ["fallback-region-eu"],
+    "mediation": "circuit-breaker-policy-v2",
+    "tags": ["blockage", "redirection"],
+    "observer": "monitoring-service"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000007",
+    "timestamp": "2026-05-10T09:22:30Z",
+    "what_changed": "dashboard-service registered spike in customer-support ticket volume: 847 tickets in 8 minutes, 12x above baseline; dashboard-service amplification event routed to customer-support team Slack channel with auto-generated impact summary",
+    "source": ["dashboard-service"],
+    "target": ["customer-support"],
+    "mediation": "ticket-volume-amplification-detector",
+    "tags": ["amplification", "translation"],
+    "observer": "monitoring-service"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000008",
+    "timestamp": "2026-05-10T09:24:00Z",
+    "what_changed": "incident-commander activated incident response protocol upon receiving SLA breach escalation; assembled virtual war room with on-call-engineer, database-admin, and product-manager; declared P0 incident incident-p0-20260510-001",
+    "source": ["incident-commander"],
+    "target": ["incident-p0-20260510-001"],
+    "mediation": "incident-response-protocol-v4",
+    "tags": ["translation"],
+    "observer": "incident-commander"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000009",
+    "timestamp": "2026-05-10T09:26:00Z",
+    "what_changed": "auto-scaler initiated horizontal scaling of api-service pods; warm-up time for new pod instances estimated at 4 minutes; auto-scaler emitted scaling-in-progress status to monitoring-service but could not accept connections until warm-up complete",
+    "source": ["auto-scaler"],
+    "target": ["api-service-pods"],
+    "mediation": "kubernetes-hpa-scaling-policy",
+    "tags": ["delay"],
+    "observer": "monitoring-service"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000010",
+    "timestamp": "2026-05-10T09:28:00Z",
+    "what_changed": "runbook-engine step RUNBOOK-DB-POOL-001-STEP-2 blocked on database-admin approval for 8 minutes; approval workflow required senior database-admin signature and backup-dba confirmation, neither available during initial window",
+    "source": ["runbook-engine"],
+    "target": ["runbook-approval-pending-20260510"],
+    "mediation": "runbook-approval-workflow-v2",
+    "tags": ["blockage", "delay"],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000011",
+    "timestamp": "2026-05-10T09:30:00Z",
+    "what_changed": "product-manager escalated customer impact to executive stakeholders: checkout failure rate 67%, estimated revenue loss $23,000/minute; product-manager-impact-brief-20260510 distributed to incident war room",
+    "source": ["product-manager"],
+    "target": ["product-manager-impact-brief-20260510"],
+    "tags": ["amplification"],
+    "observer": "product-manager"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000012",
+    "timestamp": "2026-05-10T09:32:00Z",
+    "what_changed": "database-admin received incident-p0-20260510-001 war room invitation; overrode runbook-approval-pending-20260510 blockage via emergency-approval-protocol; connection pool flush procedure authorised to proceed",
+    "source": ["database-admin", "incident-commander"],
+    "target": ["runbook-engine"],
+    "mediation": "emergency-approval-protocol",
+    "tags": ["blockage"],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000013",
+    "timestamp": "2026-05-10T09:35:00Z",
+    "what_changed": "runbook-engine executed RUNBOOK-DB-POOL-001-STEP-3: connection pool flush and reconfiguration; pool size increased from 200 to 350 connections; flush procedure released stale connections held by zombie query processes",
+    "source": ["runbook-engine"],
+    "target": ["database-connection-pool-primary"],
+    "mediation": "RUNBOOK-DB-POOL-001",
+    "tags": ["translation"],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000014",
+    "timestamp": "2026-05-10T09:40:00Z",
+    "what_changed": "connection-pool-monitor registered pool utilisation dropping to 58%; alerting-pipeline received recovery signal; circuit-breaker reset and traffic rerouted from fallback-region-eu back to primary us-east-1 region",
+    "source": ["connection-pool-monitor", "circuit-breaker"],
+    "target": ["alerting-pipeline"],
+    "mediation": "connection-pool-recovery-threshold-policy",
+    "tags": ["threshold", "redirection"],
+    "observer": "monitoring-service"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000015",
+    "timestamp": "2026-05-10T09:45:00Z",
+    "what_changed": "incident-commander declared incident-p0-20260510-001 resolved; total incident duration 31 minutes; on-call-engineer authored incident-timeline-20260510 capturing detection lag, runbook blockage, and circuit-breaker effectiveness",
+    "source": ["incident-commander", "on-call-engineer"],
+    "target": ["incident-timeline-20260510"],
+    "mediation": "incident-closure-protocol",
+    "tags": ["translation"],
+    "observer": "incident-commander"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000016",
+    "timestamp": "2026-05-10T10:00:00Z",
+    "what_changed": "customer-support registered cumulative ticket count of 2,341 within incident window; ticket-volume-spike-report-20260510 compiled by customer-support; customer-impacted-accounts estimated at 14,200 unique sessions",
+    "source": ["customer-support"],
+    "target": ["ticket-volume-spike-report-20260510"],
+    "tags": ["amplification"],
+    "observer": "customer-support"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000017",
+    "timestamp": "2026-05-10T11:00:00Z",
+    "what_changed": "meshgraph:a1b2c3d4-e5f6-4789-abcd-ef1234567890 produced by articulating monitoring-service cut at incident peak (09:14-09:40 window) entered mesh as source; the automated detection sub-network became an actor in the postmortem analysis — Principle 8 reflexive closure for incident review",
+    "source": ["meshgraph:a1b2c3d4-e5f6-4789-abcd-ef1234567890"],
+    "target": ["reflexivity-marker-incident-demo"],
+    "mediation": "graph-as-actor-principle",
+    "tags": ["translation"],
+    "observer": "incident-commander"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000018",
+    "timestamp": "2026-05-11T09:00:00Z",
+    "what_changed": "incident-commander convened postmortem-session-20260511 with on-call-engineer, database-admin, and product-manager; incident-timeline-20260510 and ticket-volume-spike-report-20260510 used as source documents for root-cause analysis",
+    "source": ["incident-commander", "on-call-engineer", "database-admin"],
+    "target": ["postmortem-session-20260511"],
+    "mediation": "postmortem-facilitation-guide-v3",
+    "tags": ["translation"],
+    "observer": "incident-commander"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000019",
+    "timestamp": "2026-05-11T09:30:00Z",
+    "what_changed": "postmortem-session-20260511 identified primary root cause: connection-pool configuration was not updated when flash-sale traffic patterns were projected; runbook-approval-workflow-v2 identified as contributing factor — approval bottleneck added 8 minutes to incident duration",
+    "source": ["postmortem-session-20260511"],
+    "target": ["root-cause-report-20260511"],
+    "mediation": "five-whys-analysis-framework",
+    "tags": ["translation"],
+    "observer": "incident-commander"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000020",
+    "timestamp": "2026-05-11T10:00:00Z",
+    "what_changed": "incident-commander and database-admin co-authored connection-pool-scaling-policy-v2: pool size pre-scaled to 400 connections before projected high-traffic events; auto-scaler trigger thresholds lowered from 80% to 60% CPU to reduce warm-up lag",
+    "source": ["incident-commander", "database-admin"],
+    "target": ["connection-pool-scaling-policy-v2"],
+    "mediation": "root-cause-report-20260511",
+    "tags": ["translation"],
+    "observer": "incident-commander"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000021",
+    "timestamp": "2026-05-11T10:30:00Z",
+    "what_changed": "runbook-engine updated with RUNBOOK-DB-POOL-002: emergency approval step replaced with pre-authorised auto-execute for Severity-1 pool flush; runbook-approval-workflow-v2 blockage pattern formally removed from critical path",
+    "source": ["on-call-engineer"],
+    "target": ["runbook-engine"],
+    "mediation": "RUNBOOK-DB-POOL-002",
+    "tags": ["blockage"],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "f0000001-0000-4000-8000-000000000022",
+    "timestamp": "2026-05-11T11:00:00Z",
+    "what_changed": "product-manager issued customer-communication-plan-20260511: public status page updated with incident timeline and remediation steps; 14,200 impacted customers notified via email with service credit offer",
+    "source": ["product-manager"],
+    "target": ["customer-communication-plan-20260511"],
+    "mediation": "customer-impact-communication-policy",
+    "tags": ["translation"],
+    "observer": "product-manager"
+  }
+]
