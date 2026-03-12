@@ -29,11 +29,16 @@ import (
 //
 // The bounds are evaluated as: trace.Timestamp >= Start (if Start non-zero) AND
 // trace.Timestamp <= End (if End non-zero). Both bounds are inclusive.
+//
+// JSON encoding: zero bounds are serialised as null (not as the RFC3339 zero
+// time "0001-01-01T00:00:00Z"). See MarshalJSON and UnmarshalJSON in serial.go.
 type TimeWindow struct {
 	// Start is the inclusive lower bound. Zero means unbounded.
+	// JSON: null when zero, RFC3339 string when non-zero.
 	Start time.Time
 
 	// End is the inclusive upper bound. Zero means unbounded.
+	// JSON: null when zero, RFC3339 string when non-zero.
 	End time.Time
 }
 
@@ -112,21 +117,21 @@ type MeshGraph struct {
 	// ID is the stable actor identifier for this graph. Empty string means the
 	// graph has not been identified as an actor — it is an articulation output,
 	// not yet a participant in the mesh. Assign via graph.IdentifyGraph.
-	ID string
+	ID string `json:"id"`
 
 	// Nodes maps element names to their node data. An element enters the graph
 	// if it appeared in the Source or Target of any included trace.
-	Nodes map[string]Node
+	Nodes map[string]Node `json:"nodes"`
 
 	// Edges is one edge per included trace, preserving dataset order.
 	// Edges in dataset order preserves the temporal sequence, which is part
 	// of what the dataset is saying about the network's structure.
-	Edges []Edge
+	Edges []Edge `json:"edges"`
 
 	// Cut records the articulation parameters and the shadow:
 	// elements that exist in the full dataset but are invisible from
 	// the chosen observer position(s).
-	Cut Cut
+	Cut Cut `json:"cut"`
 }
 
 // Node represents a named element in the graph. It counts how many times the
@@ -139,12 +144,12 @@ type MeshGraph struct {
 // not just what nominally exists.
 type Node struct {
 	// Name is the element string as it appeared in the trace source/target slices.
-	Name string
+	Name string `json:"name"`
 
 	// AppearanceCount is the total number of times this element appeared in
 	// Source or Target slices across all included traces. An element can
 	// accumulate count from both source and target roles.
-	AppearanceCount int
+	AppearanceCount int `json:"appearance_count"`
 
 	// ShadowCount is the number of excluded traces in which this element appears.
 	// Zero for nodes that exist only in included traces. A non-zero ShadowCount
@@ -152,7 +157,7 @@ type Node struct {
 	// traces) AND present in excluded traces (shadow). Methodologically, it
 	// participates in more observational positions than this cut can see —
 	// a partial connection rather than a clean inclusion or exclusion.
-	ShadowCount int
+	ShadowCount int `json:"shadow_count"`
 }
 
 // Edge represents one trace in the graph. It preserves the full trace
@@ -163,26 +168,26 @@ type Node struct {
 // on the original trace data.
 type Edge struct {
 	// TraceID is the UUID of the source trace.
-	TraceID string
+	TraceID string `json:"trace_id"`
 
 	// WhatChanged is the short description of the difference from the trace.
-	WhatChanged string
+	WhatChanged string `json:"what_changed"`
 
 	// Mediation is the intermediary that transformed, redirected, or relayed
 	// the action. Empty if no intermediary was observed.
-	Mediation string
+	Mediation string `json:"mediation"`
 
 	// Observer is the observer string from the source trace.
-	Observer string
+	Observer string `json:"observer"`
 
 	// Sources is a copy of the trace's Source slice.
-	Sources []string
+	Sources []string `json:"sources"`
 
 	// Targets is a copy of the trace's Target slice.
-	Targets []string
+	Targets []string `json:"targets"`
 
 	// Tags is a copy of the trace's Tags slice. Safe to mutate.
-	Tags []string
+	Tags []string `json:"tags"`
 }
 
 // Cut records the position from which a MeshGraph was articulated and names
@@ -191,37 +196,37 @@ type Edge struct {
 type Cut struct {
 	// ObserverPositions lists the filter used. Empty means no filter (full cut).
 	// Stored verbatim from ArticulationOptions.
-	ObserverPositions []string
+	ObserverPositions []string `json:"observer_positions"`
 
 	// TimeWindow is the temporal filter used. Zero value means no time filter.
 	// Stored verbatim (value copy) from ArticulationOptions.TimeWindow.
-	TimeWindow TimeWindow
+	TimeWindow TimeWindow `json:"time_window"`
 
 	// TracesIncluded is the number of traces that passed the filter.
-	TracesIncluded int
+	TracesIncluded int `json:"traces_included"`
 
 	// TracesTotal is the total number of traces in the input dataset,
 	// before any filtering. This is always equal to len(input).
-	TracesTotal int
+	TracesTotal int `json:"traces_total"`
 
 	// DistinctObserversTotal is the number of distinct observer strings
 	// across all traces in the input (before filtering). This names how
 	// many positions exist in the full dataset, independent of which filter
 	// was chosen.
-	DistinctObserversTotal int
+	DistinctObserversTotal int `json:"distinct_observers_total"`
 
 	// ShadowElements is the list of elements (source/target names) that appear
 	// in excluded traces but not in any included trace. These are the elements
 	// that this cut cannot see. Sorted alphabetically so that the shadow is not
 	// implicitly ranked by order of appearance.
-	ShadowElements []ShadowElement
+	ShadowElements []ShadowElement `json:"shadow_elements"`
 
 	// ExcludedObserverPositions lists the distinct observer strings in the full
 	// dataset that are NOT in ObserverPositions. Stored in Articulate where the
 	// full observer set is known — PrintArticulation uses this directly rather
 	// than reconstructing it from graph structure. Empty when no filter was
 	// applied (full cut). Sorted alphabetically.
-	ExcludedObserverPositions []string
+	ExcludedObserverPositions []string `json:"excluded_observer_positions"`
 }
 
 // ShadowElement is an element that exists in the dataset but falls outside
@@ -233,7 +238,7 @@ type Cut struct {
 // calls. This is consistent with the defensive-copy guarantee on Edge.Tags.
 type ShadowElement struct {
 	// Name is the element string as it appeared in shadow trace source/target slices.
-	Name string
+	Name string `json:"name"`
 
 	// SeenFrom lists the distinct observer strings of the shadow traces in which
 	// this element appears. Sorted alphabetically. This records which positions
@@ -241,7 +246,7 @@ type ShadowElement struct {
 	// When the element was excluded only by the time-window filter (and no
 	// observer filter was set), SeenFrom may be empty because there is no
 	// excluded-observer set to derive it from — only the time dimension cut.
-	SeenFrom []string
+	SeenFrom []string `json:"seen_from"`
 
 	// Reasons lists why this element is in the shadow. May contain
 	// ShadowReasonObserver, ShadowReasonTimeWindow, or both. The reasons are
@@ -252,7 +257,7 @@ type ShadowElement struct {
 	// trace fails both filters simultaneously. Always sorted deterministically
 	// (observer before time-window). Non-empty whenever the element is in
 	// ShadowElements.
-	Reasons []ShadowReason
+	Reasons []ShadowReason `json:"reasons"`
 }
 
 // excludedTrace pairs a trace with the filter(s) it failed, for shadow reason tracking.
