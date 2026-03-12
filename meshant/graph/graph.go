@@ -556,6 +556,12 @@ func shadowElementLine(se ShadowElement) string {
 // values containing ANSI control sequences from an untrusted dataset could
 // affect terminal state. For trusted local datasets this is not a concern;
 // re-evaluate if the tool is ever exposed to external or user-supplied data.
+// M7 reflexive traces add a persistence path: ArticulationTrace and DiffTrace
+// embed observer position strings (and time window bounds) directly in the
+// WhatChanged field of a schema.Trace. If reflexive traces are re-ingested
+// and re-printed, attacker-controlled observer strings in the original dataset
+// can reach this writer via that route — not only through direct Articulate
+// calls on a live dataset.
 //
 // Returns the first write error encountered, if any.
 func PrintArticulation(w io.Writer, g MeshGraph) error {

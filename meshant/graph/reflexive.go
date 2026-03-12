@@ -135,11 +135,11 @@ func articulationWhatChanged(c Cut) string {
 	if !c.TimeWindow.IsZero() {
 		startStr := "(unbounded)"
 		if !c.TimeWindow.Start.IsZero() {
-			startStr = c.TimeWindow.Start.UTC().Format("2006-01-02T15:04:05Z")
+			startStr = c.TimeWindow.Start.UTC().Format(time.RFC3339)
 		}
 		endStr := "(unbounded)"
 		if !c.TimeWindow.End.IsZero() {
-			endStr = c.TimeWindow.End.UTC().Format("2006-01-02T15:04:05Z")
+			endStr = c.TimeWindow.End.UTC().Format(time.RFC3339)
 		}
 		parts = append(parts, fmt.Sprintf("window=%s\u2013%s", startStr, endStr))
 	}

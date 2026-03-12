@@ -459,3 +459,27 @@ func TestArticulationTrace_WhatChanged_TimeWindowOnly(t *testing.T) {
 		t.Errorf("trace with time-window-only cut failed schema.Validate(): %v", err)
 	}
 }
+
+// TestArticulationTrace_WhatChanged_BothFilters verifies that when the graph's
+// cut has both ObserverPositions and a TimeWindow set, the what_changed field
+// contains both "observer=" and "window=" components. This exercises the
+// combined branch in articulationWhatChanged.
+func TestArticulationTrace_WhatChanged_BothFilters(t *testing.T) {
+	g := identifiedGraph(graph.ArticulationOptions{
+		ObserverPositions: []string{"analyst"},
+		TimeWindow: graph.TimeWindow{
+			Start: time.Date(2026, 4, 14, 0, 0, 0, 0, time.UTC),
+			End:   time.Date(2026, 4, 14, 23, 59, 59, 0, time.UTC),
+		},
+	})
+	tr, err := graph.ArticulationTrace(g, "meshant", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(tr.WhatChanged, "observer=") {
+		t.Errorf("WhatChanged %q missing observer= component", tr.WhatChanged)
+	}
+	if !strings.Contains(tr.WhatChanged, "window=") {
+		t.Errorf("WhatChanged %q missing window= component", tr.WhatChanged)
+	}
+}

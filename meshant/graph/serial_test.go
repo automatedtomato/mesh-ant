@@ -195,8 +195,6 @@ func TestTimeWindow_RoundTrip_NonZero(t *testing.T) {
 // The graph has one node, one edge, and a zero TimeWindow.
 func minimalGraph(t *testing.T) graph.MeshGraph {
 	t.Helper()
-	traces := []interface{}{} // not used; build directly
-	_ = traces
 	return graph.MeshGraph{
 		Nodes: map[string]graph.Node{
 			"element-alpha": {Name: "element-alpha", AppearanceCount: 2, ShadowCount: 0},
@@ -828,16 +826,6 @@ func TestTimeWindow_UnmarshalJSON_WrongTypeForEndField(t *testing.T) {
 	}
 }
 
-// TestTimeWindow_UnmarshalJSON_WrongTypeForTimeField verifies that a non-string,
-// non-null value for a time field (e.g., a number) returns an error.
-func TestTimeWindow_UnmarshalJSON_WrongTypeForTimeField(t *testing.T) {
-	var tw graph.TimeWindow
-	err := json.Unmarshal([]byte(`{"start":42,"end":null}`), &tw)
-	if err == nil {
-		t.Error("want error for numeric time field, got nil")
-	}
-}
-
 // TestTimeWindow_UnmarshalJSON_InvalidTimeString verifies that a non-RFC3339
 // string for a time field returns an error.
 func TestTimeWindow_UnmarshalJSON_InvalidTimeString(t *testing.T) {
@@ -859,12 +847,13 @@ func TestTimeWindow_UnmarshalJSON_InvalidEndTimeString(t *testing.T) {
 }
 
 // TestTimeWindow_UnmarshalJSON_MalformedStringValue verifies that a start
-// field containing a syntactically malformed JSON string (truncated quote)
-// returns an error. This exercises the json.Unmarshal(raw, &s) error path
-// inside decodeTimeField that is otherwise unreachable via normal JSON inputs.
-//
-// We call UnmarshalJSON directly with crafted bytes to inject raw[0]=='"' but
-// invalid JSON string content — bypassing the outer tokenizer.
+// field containing a Unicode escape with missing hex digits ("\u") returns
+// an error. What actually happens: the outer json.Unmarshal decodes the
+// Unicode escape sequence into a replacement character (U+FFFD); the
+// resulting string is then passed to time.Parse as an RFC3339 value;
+// time.Parse rejects it because the replacement character is not a valid
+// timestamp character. The error comes from time.Parse, not from the JSON
+// tokenizer or decodeTimeField’s string-unmarshal path.
 func TestTimeWindow_UnmarshalJSON_MalformedStringValue(t *testing.T) {
 	// Construct JSON where start appears to be a string token (begins with '"')
 	// but is actually truncated — the json.Unmarshal of the string will fail.
