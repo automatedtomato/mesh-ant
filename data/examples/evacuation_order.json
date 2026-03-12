@@ -1,0 +1,277 @@
+[
+  {
+    "id": "e0000001-0000-4000-8000-000000000001",
+    "timestamp": "2026-04-14T06:12:00Z",
+    "what_changed": "Atlantic basin buoy array registered sustained wind speed 148 km/h and central pressure 954 hPa; storm-track-model-nhc ingested readings and classified system as Category 3 hurricane on the Saffir-Simpson scale",
+    "source": ["buoy-array-atlantic-sector-7"],
+    "target": ["storm-track-model-nhc"],
+    "mediation": "saffir-simpson-classification-algorithm",
+    "tags": ["translation"],
+    "observer": "meteorological-analyst"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000002",
+    "timestamp": "2026-04-14T07:45:00Z",
+    "what_changed": "storm-track-model-nhc generated ensemble of 42 projected landfall corridors; median track intersects coastal-zone-4 within 68-hour window with 62% confidence; uncertainty cone spans 280 km at predicted landfall",
+    "source": ["storm-track-model-nhc"],
+    "target": ["nhc-forecast-bulletin-14apr-0745"],
+    "mediation": "ensemble-track-averaging-procedure",
+    "tags": ["translation"],
+    "observer": "meteorological-analyst"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000003",
+    "timestamp": "2026-04-14T08:30:00Z",
+    "what_changed": "Tide gauge network recorded anomalous surge precursor of +0.4m above mean sea level along coastal-zone-4 shoreline, 61 hours ahead of projected landfall; surge-inundation-model flagged early resonance with shelf bathymetry",
+    "source": ["tide-gauge-sensor-network"],
+    "target": ["surge-inundation-model"],
+    "mediation": "coastal-bathymetry-resonance-detector",
+    "tags": ["threshold"],
+    "observer": "meteorological-analyst"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000004",
+    "timestamp": "2026-04-14T09:15:00Z",
+    "what_changed": "nhc-forecast-bulletin-14apr-0745 translated into Tropical Storm Watch for coastal-zone-4; national-meteorological-service issued public advisory NMS-ADV-001 specifying 68-hour landfall window and 62% confidence bound",
+    "source": ["national-meteorological-service"],
+    "target": ["public-advisory-nms-adv-001"],
+    "mediation": "nhc-forecast-bulletin-14apr-0745",
+    "tags": ["translation"],
+    "observer": "emergency-management-director"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000005",
+    "timestamp": "2026-04-14T10:00:00Z",
+    "what_changed": "public-advisory-nms-adv-001 relayed by media-broadcast-network across regional channels; framing emphasised 62% probability rather than 280 km uncertainty cone, compressing perceived confidence interval",
+    "source": ["media-broadcast-network"],
+    "target": ["coastal-resident-association"],
+    "mediation": "public-advisory-nms-adv-001",
+    "tags": ["translation", "friction"],
+    "observer": "media-correspondent"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000006",
+    "timestamp": "2026-04-14T11:20:00Z",
+    "what_changed": "coastal-resident-association recalled 2019 false alarm evacuation that caused 3 road fatalities and no storm; prior experience introduced institutional distrust; voluntary preparedness compliance rate estimated at 34% by community liaison",
+    "source": ["coastal-resident-association"],
+    "target": ["community-compliance-estimate-14apr"],
+    "tags": ["friction"],
+    "observer": "coastal-resident"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000007",
+    "timestamp": "2026-04-14T12:05:00Z",
+    "what_changed": "federal-emergency-management-agency activated pre-positioning protocol; shelter-database queried for coastal-zone-4 capacity — 4,200 registered beds across 7 facilities; road-capacity-model loaded current traffic baseline",
+    "source": ["federal-emergency-management-agency"],
+    "target": ["shelter-database", "road-capacity-model"],
+    "tags": ["translation"],
+    "observer": "emergency-management-director"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000008",
+    "timestamp": "2026-04-14T13:30:00Z",
+    "what_changed": "hospital-administrator initiated patient census review: 312 patients in coastal-zone-4 facilities, 47 classified as non-ambulatory requiring specialised medical transport; medical-convoy-requirement-estimate logged as 12 dedicated vehicles",
+    "source": ["hospital-administrator"],
+    "target": ["medical-convoy-requirement-estimate"],
+    "tags": ["translation"],
+    "observer": "hospital-administrator"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000009",
+    "timestamp": "2026-04-14T15:00:00Z",
+    "what_changed": "emergency-management-director requested mutual-aid agreement activation from two neighbouring districts to supplement medical transport fleet; request entered inter-agency coordination queue with 18-hour processing lag, blocking timely medical transport pre-positioning",
+    "source": ["emergency-management-director"],
+    "target": ["mutual-aid-request-apr14"],
+    "mediation": "inter-agency-coordination-protocol",
+    "tags": ["delay", "blockage"],
+    "observer": "emergency-management-director"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000010",
+    "timestamp": "2026-04-14T17:45:00Z",
+    "what_changed": "local-mayor received NMS advisory and FEMA pre-positioning notice; legal counsel confirmed mandatory evacuation authority requires Category 3 landfall probability ≥70% within 48 hours per coastal-zone-ordinance-2021; current probability 62% at 68 hours — threshold not met",
+    "source": ["local-mayor", "legal-counsel-office"],
+    "target": ["evacuation-authority-threshold-assessment"],
+    "mediation": "coastal-zone-ordinance-2021",
+    "tags": ["threshold"],
+    "observer": "local-mayor"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000011",
+    "timestamp": "2026-04-15T05:30:00Z",
+    "what_changed": "storm-track-model-nhc 06:00 UTC run ingested overnight dropsondes from NOAA reconnaissance flight; rapid intensification detected — central pressure dropped from 954 to 938 hPa in 11 hours; storm upgraded to Category 4",
+    "source": ["storm-track-model-nhc", "noaa-reconnaissance-flight-14"],
+    "target": ["nhc-forecast-bulletin-15apr-0600"],
+    "mediation": "rapid-intensification-detection-algorithm",
+    "tags": ["threshold"],
+    "observer": "meteorological-analyst"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000012",
+    "timestamp": "2026-04-15T07:00:00Z",
+    "what_changed": "surge-inundation-model rerun with Category 4 parameters projected maximum inundation of 4.1m above mean sea level for coastal-zone-4 low-lying sectors; previous 3m threshold crossed — model output reclassified as life-threatening surge scenario",
+    "source": ["surge-inundation-model"],
+    "target": ["surge-scenario-report-15apr"],
+    "mediation": "inundation-severity-classification-matrix",
+    "tags": ["threshold", "translation"],
+    "observer": "meteorological-analyst"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000013",
+    "timestamp": "2026-04-15T08:15:00Z",
+    "what_changed": "national-meteorological-service escalated from Tropical Storm Watch to Hurricane Warning for coastal-zone-4; landfall probability revised to 81% within 36 hours; NMS-WARNING-002 issued",
+    "source": ["national-meteorological-service"],
+    "target": ["hurricane-warning-nms-warning-002"],
+    "mediation": "nhc-forecast-bulletin-15apr-0600",
+    "tags": ["translation", "threshold"],
+    "observer": "emergency-management-director"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000014",
+    "timestamp": "2026-04-15T09:00:00Z",
+    "what_changed": "federal-emergency-management-agency elevated response level to Level 2; emergency-management-director convened inter-agency call; road-capacity-model projected 22-hour clearance time for coastal-zone-4 population under voluntary compliance",
+    "source": ["federal-emergency-management-agency", "emergency-management-director"],
+    "target": ["evacuation-clearance-time-estimate"],
+    "mediation": "road-capacity-model",
+    "tags": ["translation"],
+    "observer": "emergency-management-director"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000015",
+    "timestamp": "2026-04-15T10:30:00Z",
+    "what_changed": "local-mayor convened emergency session; probability now 81% at 36-hour window satisfies coastal-zone-ordinance-2021 threshold; political advisors flagged tourism revenue impact — 3 coastal resorts lobbied against mandatory order via chamber-of-commerce-letter-apr15",
+    "source": ["local-mayor", "chamber-of-commerce"],
+    "target": ["evacuation-decision-deliberation-15apr"],
+    "mediation": "chamber-of-commerce-letter-apr15",
+    "tags": ["friction"],
+    "observer": "local-mayor"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000016",
+    "timestamp": "2026-04-15T12:00:00Z",
+    "what_changed": "local-mayor issued voluntary evacuation recommendation for Zone A (lowest-lying sector, pop. 8,400); mandatory order held pending 14:00 briefing with emergency-management-director; media-broadcast-network aired recommendation as 'possible mandatory order imminent'",
+    "source": ["local-mayor"],
+    "target": ["voluntary-evacuation-recommendation-zone-a"],
+    "tags": ["translation"],
+    "observer": "local-mayor"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000017",
+    "timestamp": "2026-04-15T13:45:00Z",
+    "what_changed": "hospital-administrator confirmed mutual-aid-request-apr14 partially fulfilled: 8 of 12 required medical transport vehicles secured; 4-vehicle gap remains; non-ambulatory patient evacuation timeline now extends to 19 hours from order issuance",
+    "source": ["hospital-administrator"],
+    "target": ["medical-transport-gap-report"],
+    "tags": ["blockage"],
+    "observer": "hospital-administrator"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000018",
+    "timestamp": "2026-04-15T14:30:00Z",
+    "what_changed": "shelter-database queried against projected voluntary compliance (estimated 34%): 1,430 residents anticipated at shelters, within 4,200-bed capacity; however road-capacity-model projected traffic surge beginning T-30h would reduce effective capacity by 18% due to contra-flow setup time",
+    "source": ["shelter-database", "road-capacity-model"],
+    "target": ["shelter-capacity-stress-assessment"],
+    "mediation": "contra-flow-deployment-schedule",
+    "tags": ["threshold"],
+    "observer": "emergency-management-director"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000019",
+    "timestamp": "2026-04-16T04:00:00Z",
+    "what_changed": "storm-track-model-nhc 00:00 UTC run confirmed rapid intensification continuing; track shifted 40 km northward placing coastal-zone-4 urban core directly in projected eyewall; landfall probability revised to 94% within 24 hours",
+    "source": ["storm-track-model-nhc"],
+    "target": ["nhc-forecast-bulletin-16apr-0000"],
+    "mediation": "track-shift-detection-algorithm",
+    "tags": ["threshold", "translation"],
+    "observer": "meteorological-analyst"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000020",
+    "timestamp": "2026-04-16T06:00:00Z",
+    "what_changed": "local-mayor signed mandatory evacuation order for Zones A–C (pop. 41,000) effective 08:00 local time; coastal-zone-ordinance-2021 authority invoked; order transmitted to federal-emergency-management-agency, media-broadcast-network, and coastal-resident-association simultaneously",
+    "source": ["local-mayor"],
+    "target": ["mandatory-evacuation-order-zones-abc"],
+    "mediation": "coastal-zone-ordinance-2021",
+    "tags": ["translation"],
+    "observer": "local-mayor"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000021",
+    "timestamp": "2026-04-16T06:30:00Z",
+    "what_changed": "media-broadcast-network broadcast mandatory-evacuation-order-zones-abc on all regional channels with zone maps and shelter locations; emergency alert system activated; coastal-resident-association fractured — 22% of members publicly stated intent to shelter-in-place citing prior false alarm",
+    "source": ["media-broadcast-network"],
+    "target": ["coastal-resident-association"],
+    "mediation": "mandatory-evacuation-order-zones-abc",
+    "tags": ["friction", "blockage"],
+    "observer": "media-correspondent"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000022",
+    "timestamp": "2026-04-16T07:15:00Z",
+    "what_changed": "road-capacity-model activated contra-flow protocol on highway-coast-91; projected clearance time 18 hours from 08:00 order activation, placing last vehicles inland by 02:00 on 2026-04-17 — 4 hours before projected landfall",
+    "source": ["road-capacity-model"],
+    "target": ["contra-flow-activation-highway-coast-91"],
+    "mediation": "contra-flow-deployment-schedule",
+    "tags": ["translation"],
+    "observer": "emergency-management-director"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000023",
+    "timestamp": "2026-04-16T08:00:00Z",
+    "what_changed": "shelter-database registered intake at 6 of 7 facilities at T+0h; Facility-3 flagged structural inspection backlog — building had failed 2024 wind-load assessment but remediation was deferred pending budget approval; facility removed from active shelter list by emergency-management-director",
+    "source": ["shelter-database"],
+    "target": ["shelter-capacity-revised-16apr"],
+    "mediation": "facility-safety-inspection-registry",
+    "tags": ["blockage", "friction"],
+    "observer": "emergency-management-director"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000024",
+    "timestamp": "2026-04-16T09:00:00Z",
+    "what_changed": "hospital-administrator initiated non-ambulatory patient evacuation convoy; 4-vehicle gap partially resolved — 2 additional vehicles sourced from military-reserve-pool; 2 patients requiring ventilator transport still unallocated; transfer window closure estimated at T+16h",
+    "source": ["hospital-administrator"],
+    "target": ["patient-evacuation-convoy-16apr"],
+    "mediation": "military-reserve-pool-request",
+    "tags": ["delay", "friction"],
+    "observer": "hospital-administrator"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000025",
+    "timestamp": "2026-04-16T10:30:00Z",
+    "what_changed": "utility-grid-operator initiated pre-emptive rolling shutdown of coastal-zone-4 grid sectors per emergency-grid-protocol-2023; shutdown sequence began with non-critical infrastructure; estimated full de-energisation by T+6h to prevent post-storm electrocution risk from downed lines",
+    "source": ["utility-grid-operator"],
+    "target": ["grid-shutdown-sequence-coastal-zone-4"],
+    "mediation": "emergency-grid-protocol-2023",
+    "tags": ["translation"],
+    "observer": "emergency-management-director"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000026",
+    "timestamp": "2026-04-16T11:45:00Z",
+    "what_changed": "shelter-capacity-revised-16apr (3,780 beds after Facility-3 removal) crossed 80% occupancy threshold at T+3h45m; shelter-database triggered overflow protocol — overflow-shelter-highschool-inland activated, adding 320 beds; total capacity now 4,100",
+    "source": ["shelter-database"],
+    "target": ["overflow-shelter-highschool-inland"],
+    "mediation": "shelter-overflow-activation-protocol",
+    "tags": ["threshold"],
+    "observer": "emergency-management-director"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000027",
+    "timestamp": "2026-04-16T13:00:00Z",
+    "what_changed": "local-mayor received compliance report from emergency-management-director: 76% of Zone A–C residents departed; 24% shelter-in-place; enforcement closure report drafted but blocked pending signature from both federal-emergency-management-agency regional director and state-governor-office — neither official reachable within standard communications window",
+    "source": ["local-mayor", "emergency-management-director"],
+    "target": ["enforcement-closure-report-draft"],
+    "mediation": "dual-signature-requirement-protocol",
+    "tags": ["blockage", "delay"],
+    "observer": "local-mayor"
+  },
+  {
+    "id": "e0000001-0000-4000-8000-000000000028",
+    "timestamp": "2026-04-15T15:00:00Z",
+    "what_changed": "meshgraph:a1b2c3d4-e5f6-4000-8000-000000000001 produced by articulation of meteorological-analyst cut at T-72h entered mesh as source; the act of observing the storm network became itself a node in the coordination network — partial closure of Principle 8 loop, pending M7-B",
+    "source": ["meshgraph:a1b2c3d4-e5f6-4000-8000-000000000001"],
+    "target": ["reflexivity-marker-evacuation-demo"],
+    "mediation": "graph-as-actor-principle",
+    "tags": ["translation"],
+    "observer": "meteorological-analyst"
+  }
+]
