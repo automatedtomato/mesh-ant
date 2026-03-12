@@ -379,11 +379,25 @@ func TestTagConstants_MatchExpectedStrings(t *testing.T) {
 		{schema.TagAmplification, "amplification"},
 		{schema.TagRedirection, "redirection"},
 		{schema.TagTranslation, "translation"},
+		{schema.TagValueArticulation, "articulation"},
 	}
 	for _, tc := range cases {
 		if string(tc.constant) != tc.expected {
 			t.Errorf("TagValue %q: got %q, want %q", tc.constant, string(tc.constant), tc.expected)
 		}
+	}
+}
+
+// TestTraceWithArticulationTag_PassesValidate verifies that a trace carrying the
+// "articulation" tag passes schema.Validate(). This is the first new tag constant
+// added since M1 (M7.2 — reflexive tracing). The tag vocabulary is open: any
+// string is accepted by Validate, so this test confirms the constant exists and
+// does not break the schema.
+func TestTraceWithArticulationTag_PassesValidate(t *testing.T) {
+	tr := validTrace()
+	tr.Tags = []string{string(schema.TagValueArticulation)}
+	if err := tr.Validate(); err != nil {
+		t.Errorf("trace with TagValueArticulation should pass Validate, got: %v", err)
 	}
 }
 
