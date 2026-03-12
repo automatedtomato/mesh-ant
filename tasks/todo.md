@@ -184,20 +184,20 @@ The demo binary accepts a path argument; the Docker image supports volume mount.
   - Cut B: `local-mayor`, 2026-04-16 only (T-24h)
   - Chosen for maximal epistemic asymmetry; non-human actants central; structural blindness made visible by diff
 
-- [ ] **M6.2 — Write the evacuation order dataset**
+- [x] **M6.2 — Write the evacuation order dataset**
   - Branch: `feat/m6-dataset`
   - `data/examples/evacuation_order.json` — 28 traces, 3 days (2026-04-14/15/16), 6 observer positions
   - 14 actants including 5 non-human; all 6 tag types; mediation on ≥40% of traces; ≥1 graph-ref trace
   - `meshant/loader/evacuation_test.go` — validation tests
 
-- [ ] **M6.3 — Write the demo entry point**
+- [x] **M6.3 — Write the demo entry point**
   - Branch: `feat/m6-demo`
   - `meshant/cmd/demo/main.go` — `run(io.Writer, string) error` + thin `main()`
   - `meshant/cmd/demo/main_test.go` — 7 tests (black-box, package `demo_test`)
   - Pipeline: Load → PrintSummary → Articulate A → PrintArticulation → Articulate B → PrintArticulation → Diff → PrintDiff → closing note naming the shadow
   - Stdlib only: no new dependencies
 
-- [ ] **M6.4 — Docker environment + tag release v0.2.0**
+- [x] **M6.4 — Docker environment + tag release v0.2.0**
   - Branch: `feat/m6-docker`
   - `Dockerfile` — multi-stage build (golang:1.25-alpine builder, alpine:latest runtime)
   - `.dockerignore` — exclude .git, test files, dev artifacts

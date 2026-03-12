@@ -62,6 +62,50 @@ Instead, it asks:
 - where do thresholds, delays, and frictions appear?
 - under what conditions does something become actor-like?
 
-This is not a rejection of agents.  
+This is not a rejection of agents.
 It is an attempt to loosen the assumption that agency must always begin in person-like roles.
+
+## Demo
+
+The demo constructs two observer-position cuts on a coastal evacuation order dataset and diffs them to make the epistemic asymmetry between the two positions visible.
+
+**Cut A — meteorological-analyst, 2026-04-14 (T-72h):**
+sees the sensor and model chain that triggers the alert. The political and logistical network is in shadow.
+
+**Cut B — local-mayor, 2026-04-16 (T-24h):**
+sees the mandatory order, media broadcast, resident friction, shelter overflow, road constraints. The sensor and model chain is in shadow.
+
+The diff names both absences simultaneously — a provisional reading, not a god's-eye account.
+
+### Run with Docker
+
+```bash
+docker build -t mesh-ant-demo .
+docker run --rm mesh-ant-demo
+```
+
+### Run with alternate dataset (volume mount)
+
+```bash
+docker run --rm \
+  -v /path/to/your/dataset.json:/data/dataset.json \
+  mesh-ant-demo /data/dataset.json
+```
+
+### Run from source
+
+```bash
+cd meshant
+go run ./cmd/demo
+```
+
+A path argument overrides the default dataset:
+
+```bash
+go run ./cmd/demo /path/to/dataset.json
+```
+
+### Known gap — Principle 8
+
+The demo records observer positions (`meteorological-analyst`, `local-mayor`) but does not record its own position: the choice of these two cuts, these parameters, this rendering. Tracked as M7-B.
 
