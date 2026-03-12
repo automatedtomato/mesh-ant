@@ -385,3 +385,19 @@ func TestReadDiffJSON_InvalidJSON(t *testing.T) {
 		t.Fatal("expected error for invalid JSON, got nil")
 	}
 }
+
+// TestWriteJSON_MarshalError verifies that WriteJSON returns an error when
+// passed a value that cannot be marshalled to JSON, such as a channel.
+// This exercises the marshal error path in WriteJSON, which is unreachable
+// for MeshGraph/GraphDiff but reachable for arbitrary `any` inputs.
+func TestWriteJSON_MarshalError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.json")
+
+	// A channel cannot be marshalled to JSON — json.Marshal returns an error.
+	ch := make(chan int)
+	err := persist.WriteJSON(path, ch)
+	if err == nil {
+		t.Fatal("expected marshal error for channel value, got nil")
+	}
+}
