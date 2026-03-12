@@ -497,9 +497,14 @@ func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
 // timeWindowLabel returns a human-readable string for the time window stored in
 // a Cut. The label is always emitted in PrintArticulation so readers know the
 // temporal scope of the cut even when no filter was applied.
+//
+// A zero TimeWindow is labelled "(none — full temporal cut)" to name it as a
+// deliberate choice — the full temporal extent of the dataset — rather than
+// implying a neutral absence. This mirrors the "(all — full cut)" convention
+// used for observer positions (per articulation-v1.md Decision 3).
 func timeWindowLabel(tw TimeWindow) string {
 	if tw.IsZero() {
-		return "(none — no time filter)"
+		return "(none — full temporal cut)"
 	}
 	// Format both bounds in RFC3339 for unambiguous machine-readable output.
 	// A zero bound means unbounded; render it as "(unbounded)" so that
