@@ -41,6 +41,12 @@ const (
 	TagAmplification TagValue = "amplification"
 	TagRedirection   TagValue = "redirection"
 	TagTranslation   TagValue = "translation"
+
+	// TagValueArticulation marks a trace that records the act of articulation
+	// itself — i.e. a reflexive trace produced when graph.ArticulationTrace or
+	// graph.DiffTrace are called. Added in M7.2 to support reflexive tracing:
+	// the observation apparatus enters the mesh it observes.
+	TagValueArticulation TagValue = "articulation"
 )
 
 // Trace is a record of something that made a difference in a network.
