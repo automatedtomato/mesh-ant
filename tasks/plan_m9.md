@@ -140,11 +140,11 @@ Practical guide for users writing their own `traces.json` files. Independent of 
 
 ---
 
-### M9.5 — README + decision record + codemap + release
+### M9.5 — README + decision record
 
-**Branch:** `feat/m9-readme-release`
+**Branch:** `feat/m9-readme`
 
-Pulls everything together and tags the release.
+Documentation pass. Release tag comes after the quality gates (M9.6–M9.8).
 
 **Files:**
 
@@ -166,19 +166,102 @@ Pulls everything together and tags the release.
   5. All output to stdout; no `--output` file flag — Unix convention; redirect with `>`
   6. `diff --format` restricted to `text|json` — `PrintDiffDOT`/`PrintDiffMermaid` do not exist; deferred to future milestone
 
-- `docs/CODEMAPS/meshant.md` (modify) — add `cmd/meshant` package section
-
-- `tasks/todo.md` (modify) — add M9 section with all sub-milestones marked complete
-
 - `Dockerfile` (modify)
   - Add `go build -o /meshant ./meshant/cmd/meshant` to build stage
   - Copy CLI binary to `/usr/local/bin/meshant` in runtime image
   - Keep demo as default `CMD` (backwards compatibility)
   - CLI available inside container as `meshant`
 
+**Dependencies:** M9.1–M9.4 all merged to develop
+**Risk:** Low
+
+---
+
+### M9.6 — Refactor and clean pass (whole codebase)
+
+**Branch:** `feat/m9-refactor`
+
+This is a major release. Code delivered to users should be clean, consistent, and free of
+dead weight across the entire module — not just the new M9 additions.
+
+**Scope:** all packages under `meshant/`: `schema`, `loader`, `graph`, `persist`, `cmd/demo`, `cmd/meshant`
+
+**What to check and fix:**
+
+- Dead code — unexported functions, types, or constants that are defined but never used
+- Naming consistency — exported names should read naturally; internal names should be concise
+- File size — no file over 800 lines; extract where appropriate
+- Function length — flag any function over 50 lines
+- Error handling — no silently swallowed errors; all error paths explicit
+- Immutability — no unexpected in-place mutation of slice/map arguments
+- Test coverage — confirm all packages remain at their established coverage targets after refactoring
+- Comments — remove stale or misleading comments introduced during earlier milestones
+
+**Agent:** `refactor-cleaner` — runs analysis tools (`knip` equivalent for Go: `staticcheck`, `go vet`, `deadcode`), identifies candidates, removes safely.
+
+**Note:** This pass should not change external API signatures. Any API-level change would
+require a decision record and an update to `docs/CODEMAPS/meshant.md`.
+
+**Dependencies:** M9.5 merged to develop (all code present)
+**Risk:** Medium — broad scope; must not break tests
+
+---
+
+### M9.7 — Philosophical review
+
+**Branch:** `feat/m9-philosophical-review`
+
+Before shipping v1.0.0, confirm the implementation is consistent with the methodological
+commitments in `docs/principles.md` and `docs/manifesto.md`. This is not a code review —
+it is a conceptual alignment check.
+
+**What to review:**
+
+- Does the CLI surface the shadow as a first-class output, or does it make it easy to skip?
+- Does `meshant validate` reinforce the trace-first approach, or does it impose a schema
+  that feels like role-definition in disguise?
+- Does the authoring guide (`docs/authoring-traces.md`) lead users toward genuine
+  mediation tracking, or toward conventional log-style recording?
+- Are there any naming choices (subcommand names, flag names, output labels) that subtly
+  import god's-eye framing (e.g. "full graph", "all actors", "complete network")?
+- Does the README "Who is this for?" section accurately frame the tool without overclaiming?
+- Is there any new code that introduces a premature actor taxonomy or a fixed ontology?
+
+**Output:** a brief review note (`docs/reviews/review_philosophical_m9.md`) recording what
+was checked, what was found, and any corrections made or deferred.
+
+**Agent:** `.claude/skills/philosophical-review/` skill.
+
+**Dependencies:** M9.6 (clean codebase to review)
+**Risk:** Low — findings are likely small naming or framing corrections
+
+---
+
+### M9.8 — Codemap update + release v1.0.0
+
+**Branch:** `feat/m9-release`
+
+Final assembly: update the codemap, record M9 complete in `tasks/todo.md`, and tag the release.
+
+**Files:**
+
+- `docs/CODEMAPS/meshant.md` (modify)
+  - Add `cmd/meshant` package section with subcommand list and flag summary
+  - Reflect any renames or removals from M9.6 refactor pass
+  - Update cross-package relationships
+
+- `tasks/todo.md` (modify) — add M9 section with all sub-milestones marked complete
+
 - Tag `v1.0.0` on main after merge
 
-**Dependencies:** M9.1–M9.4 all merged to develop
+**Release notes should cover:**
+- CLI: four subcommands, stdlib only, stdin/stdout, all export formats
+- Authoring guide in `docs/`
+- Refactor pass: module-wide clean before first public release
+- Philosophical review: alignment with principles confirmed
+- What is not in v1.0.0 (interactive CLI, DOT/Mermaid for diffs, tag-filter axis) — see `docs/directions.md`
+
+**Dependencies:** M9.7 merged to develop
 **Risk:** Low
 
 ---
@@ -189,12 +272,16 @@ Pulls everything together and tags the release.
 M9.1 (CLI core: summarize + validate)
   └─> M9.2 (articulate)
         └─> M9.3 (diff)
-              └─> M9.5 (README + release)
+              └─> M9.5 (README + decision record)
+                    └─> M9.6 (refactor + clean, whole codebase)
+                          └─> M9.7 (philosophical review)
+                                └─> M9.8 (codemap + release v1.0.0)
 
-M9.4 (authoring guide)  ← independent; merge to develop at any point
+M9.4 (authoring guide)  ← independent; merge to develop at any point before M9.7
 ```
 
 M9.4 has no code dependencies and can be written and merged in parallel with any of M9.1–M9.3.
+M9.6, M9.7, M9.8 are sequential quality gates before the release tag.
 
 ---
 
@@ -229,12 +316,15 @@ Without it, the guide would have to say "write a Go program to check your traces
 ## Merge chain
 
 ```
-feat/m9-cli-core        → develop
-feat/m9-cli-articulate  → develop
-feat/m9-cli-diff        → develop
-feat/m9-authoring-guide → develop  (any order relative to CLI branches)
-feat/m9-readme-release  → develop  (after all above)
-develop                 → main
+feat/m9-cli-core              → develop
+feat/m9-cli-articulate        → develop
+feat/m9-cli-diff              → develop
+feat/m9-authoring-guide       → develop  (any order relative to CLI branches)
+feat/m9-readme                → develop  (after M9.1–M9.4)
+feat/m9-refactor              → develop  (after M9.5)
+feat/m9-philosophical-review  → develop  (after M9.6)
+feat/m9-release               → develop  (after M9.7)
+develop                       → main
 git tag v1.0.0
 ```
 
@@ -260,8 +350,12 @@ git tag v1.0.0
 - [ ] `docs/decisions/cli-v1.md` exists
 - [ ] `docs/CODEMAPS/meshant.md` updated with `cmd/meshant`
 - [ ] Docker image builds; `meshant` binary available inside container
+- [ ] `go vet ./...` and `staticcheck ./...` pass with no findings
+- [ ] No unexported dead code remaining in any package
+- [ ] Philosophical review note exists at `docs/reviews/review_philosophical_m9.md`
+- [ ] No god's-eye framing in CLI output labels, flag names, or README
 - [ ] `git tag v1.0.0` on main
 
 ---
 
-*Written: 2026-03-12. Awaiting confirmation before implementation begins.*
+*Written: 2026-03-12. Updated: 2026-03-12 (added M9.6 refactor, M9.7 philosophical review, M9.8 release). Confirmed by user — implementation in progress.*
