@@ -209,18 +209,31 @@ The demo binary accepts a path argument; the Docker image supports volume mount.
 
 ---
 
-## Provisional: M7
+## Milestone 7: Graph Serialisation + Reflexive Tracing — release v0.3.0
 
-Two directions from M6's shadow. Neither is scheduled yet — let M6 surface what matters.
+Closes the two gaps named at M6. M7-A makes graphs durable (immutable mobiles that travel
+without deforming). M7-B closes the Principle 8 loop: the act of articulation becomes a trace;
+the resulting graph enters the mesh as an actant. M7-B depends on M7-A.
 
-- **M7-A: Graph serialisation** — `json.Marshal`/`Unmarshal` for `MeshGraph` and `GraphDiff`.
-  Precondition for M7-B: without serialisation, graphs are ephemeral (session-only). Serialisation
-  makes graphs true immutable mobiles — forms that travel without deforming. A reflexive trace
-  referencing `meshgraph:<uuid>` points to nothing once the process ends; M7-A fixes that.
+**Full plan:** `tasks/plan_m7.md`
 
-- **M7-B: Reflexive tracing** — helper for recording the act of articulation as a trace.
-  Closes the Principle 8 loop: the framework observes itself observing. Depends on M7-A
-  for durability — the recorded trace must reference a graph that can be recovered.
+### Tasks
+
+- [x] **M7.1 — JSON codec**
+  - `meshant/graph/serial.go` — json tags on all graph types; custom TimeWindow codec (null for zero bounds)
+  - `meshant/graph/serial_test.go` — round-trip MeshGraph + GraphDiff; JSON snapshot; null/zero TimeWindow
+  - Branch: `feat/m7-codec`
+
+- [x] **M7.2 — Reflexive tracing**
+  - `meshant/schema/trace.go` — add `TagValueArticulation = "articulation"`
+  - `meshant/graph/reflexive.go` — `ArticulationTrace(g, observer, source)`, `DiffTrace(d, g1, g2, observer)`
+  - `meshant/graph/reflexive_test.go` — produced traces pass Validate(); error cases
+  - Branch: `feat/m7-reflexive`
+
+- [x] **M7.3 — Decision record**
+  - `docs/decisions/m7-serialisation-reflexivity-v1.md`
+  - 8 decisions: codec scope, TimeWindow null, observer-as-param, absent source for articulation,
+    derived source for diff, new tag, mediation=function name, what M7 does not close
 
 ---
 

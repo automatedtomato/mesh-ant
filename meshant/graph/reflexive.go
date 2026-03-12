@@ -153,16 +153,44 @@ func articulationWhatChanged(c Cut) string {
 // diffWhatChanged derives a human-readable description of the diff for use in a
 // DiffTrace's WhatChanged field. The format is directional: "from → to".
 //
-// Format: "diff: [from-observers]→[to-observers]"
-// When observer lists are empty (full cut), the label is "(full cut)".
+// Each side includes both observer positions and time window (when set), so
+// the WhatChanged field is self-situated along both dimensions. Without the
+// time window, two cuts that differ only temporally would produce identical
+// WhatChanged strings, implying the cuts are equivalent in character — a
+// violation of Principle 2 (articulation-first: every output names its position).
+//
+// Format:
+//   - observers set, no window:   "diff: [from-obs]→[to-obs]"
+//   - observers set, window set:  "diff: [from-obs window=START–END]→[to-obs window=START–END]"
+//   - no observers, window set:   "diff: [full cut window=START–END]→[full cut window=START–END]"
+//   - neither set (full cut):     "diff: [(full cut)]→[(full cut)]"
 func diffWhatChanged(from, to Cut) string {
-	fromLabel := "(full cut)"
-	if len(from.ObserverPositions) > 0 {
-		fromLabel = strings.Join(from.ObserverPositions, ", ")
+	return fmt.Sprintf("diff: [%s]\u2192[%s]", cutLabel(from), cutLabel(to))
+}
+
+// cutLabel builds the label for one side of a diff's WhatChanged string.
+// It includes observer positions and time window when set, so the label is
+// fully self-situated rather than omitting the temporal dimension.
+func cutLabel(c Cut) string {
+	var parts []string
+
+	if len(c.ObserverPositions) > 0 {
+		parts = append(parts, strings.Join(c.ObserverPositions, ", "))
+	} else {
+		parts = append(parts, "full cut")
 	}
-	toLabel := "(full cut)"
-	if len(to.ObserverPositions) > 0 {
-		toLabel = strings.Join(to.ObserverPositions, ", ")
+
+	if !c.TimeWindow.IsZero() {
+		startStr := "(unbounded)"
+		if !c.TimeWindow.Start.IsZero() {
+			startStr = c.TimeWindow.Start.UTC().Format(time.RFC3339)
+		}
+		endStr := "(unbounded)"
+		if !c.TimeWindow.End.IsZero() {
+			endStr = c.TimeWindow.End.UTC().Format(time.RFC3339)
+		}
+		parts = append(parts, fmt.Sprintf("window=%s\u2013%s", startStr, endStr))
 	}
-	return fmt.Sprintf("diff: [%s]\u2192[%s]", fromLabel, toLabel)
+
+	return strings.Join(parts, " ")
 }
