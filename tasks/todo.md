@@ -237,6 +237,100 @@ the resulting graph enters the mesh as an actant. M7-B depends on M7-A.
 
 ---
 
+## Milestone 8: Structured Export (JSON, DOT, Mermaid) — release v0.3.0
+
+Export graphs to multiple formats for integration with external tools and visualization.
+Core library feature; does not depend on CLI or demo.
+
+**Full plan:** `tasks/plan_m8.md`
+
+### Tasks
+
+- [x] **M8.1 — JSON export**
+  - `meshant/graph/export.go` — `PrintGraphJSON`, `PrintDiffJSON`
+  - `meshant/graph/export_test.go` — round-trip validation, JSON snapshot
+  - Branch: `feat/m8-json-export`
+
+- [x] **M8.2 — DOT and Mermaid export**
+  - `meshant/graph/export.go` — `PrintGraphDOT`, `PrintGraphMermaid`
+  - `meshant/graph/export_test.go` — format validation, sanitized label generation
+  - Quoted node labels, truncated labels, edge cardinality; Mermaid flowchart syntax
+  - Branch: `feat/m8-dot-mermaid`
+
+- [x] **M8.3 — Persist package**
+  - `meshant/persist/persist.go` — `WriteJSON`, `ReadGraphJSON`, `ReadDiffJSON`
+  - `meshant/persist/persist_test.go` — file I/O, permission validation, error handling
+  - Branch: `feat/m8-persist`
+
+- [x] **M8.4 — Incident response dataset**
+  - `data/examples/incident_response.json` — 22 traces, postmortem scenario, 5 observers, 8 actants
+  - `meshant/loader/incident_test.go` — validation tests
+  - `meshant/graph/incident_e2e_test.go` — E2E export and diff tests
+  - Branch: `feat/m8-incident-dataset`
+
+- [x] **M8.5 — Decision record**
+  - `docs/decisions/structured-export-v1.md`
+
+---
+
+## Milestone 9: CLI + Docs + Release v1.0.0
+
+Library + CLI form. The framework can be used without writing Go. Closes the form-factor question
+(for now) and readies v1.0.0 release.
+
+**Full plan:** `tasks/plan_m9.md`
+
+### Tasks
+
+- [x] **M9.1 — CLI core: `summarize` and `validate`**
+  - `meshant/cmd/meshant/main.go` — CLI skeleton: `run()`, `cmdSummarize()`, `cmdValidate()`, `usage()`
+  - `meshant/cmd/meshant/main_test.go` — 10 tests, foundational command routing
+  - Branch: `feat/m9-cli`
+
+- [x] **M9.2 — CLI `articulate` subcommand**
+  - `--observer` (repeatable), `--from`, `--to`, `--format text|json|dot|mermaid`
+  - `stringSliceFlag` custom flag.Value; `parseTimeFlag` helper
+  - 20 tests total (groups 2–3 in main_test.go)
+  - Integration: integrates with `graph.Articulate()`, all export functions
+
+- [x] **M9.3 — CLI `diff` subcommand**
+  - `--observer-a/b`, per-side time windows, `--format text|json`
+  - `parseTimeWindow` helper; explicit rejection of dot/mermaid for diffs
+  - 30 tests total (groups 4–6 in main_test.go)
+  - Rationale: diff records relational change, not spatial layout; DOT/Mermaid unsuitable
+
+- [x] **M9.4 — Trace authoring guide**
+  - `docs/authoring-traces.md` — 188 lines, 8 sections, worked example
+  - Audience: domain experts writing traces without Go knowledge
+  - Covers: schema, field by field; media types; validation; worked scenario
+
+- [x] **M9.5 — README, decision record, Dockerfile**
+  - README: "Who is this for?", CLI usage, removed stale Principle 8 gap note
+  - `docs/decisions/cli-v1.md` — 6 decisions: subcommand design, flag repeatable-values, time parsing, export format rules
+  - Dockerfile: CLI binary at `/usr/local/bin/meshant`; `go install ./cmd/meshant`
+  - Release tagged as v1.0.0 (main)
+
+- [x] **M9.6 — Refactor and clean pass (whole codebase)**
+  - Removed milestone-tracking comments, stale cross-references
+  - `go vet ./...` clean; all tests pass; coverage maintained
+  - Branch: `feat/m9-refactor`
+
+- [x] **M9.7 — Philosophical review**
+  - Two violations found and fixed: `"no time filter"` → `"full temporal cut"` (B1, B2)
+  - Vocabulary aligned with Latour and Principle 6 (articulation-as-cut)
+  - `docs/reviews/review_philosophical_m9.md` — 266 lines, findings and fixes
+  - Verdict: VIOLATION FOUND — REFACTORED; framework now passes review
+  - Branch: `feat/m9-philosophical-review`
+
+- [x] **M9.8 — Codemap + release v1.0.0**
+  - `docs/CODEMAPS/meshant.md` updated with cmd/meshant package, new docs references
+  - `tasks/todo.md` updated with M8 and M9 task tracking
+  - All tests pass; `go vet` clean; ready for merge to main and release
+
+37 CLI tests, 92.9% `cmd/meshant` coverage; `go vet` clean across all packages.
+
+---
+
 ## Notes
 
 - Do not begin simulation, persona generation, or LLM integration until the framework is stable.
@@ -245,3 +339,4 @@ the resulting graph enters the mesh as an actant. M7-B depends on M7-A.
 - Do not lock in a form factor (CLI / web app / agent framework). Let it emerge.
 - Tag-filter cut axis deferred to M5+ (not implemented in M3, M4, or M5).
 - Graph-as-actor fulfilled in M5; graph-diff fulfilled in M4.
+- Form factor (CLI) emerged in M9; now suitable for users who code in other languages or prefer CLI use.

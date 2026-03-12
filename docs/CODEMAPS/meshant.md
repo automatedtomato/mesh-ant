@@ -14,6 +14,7 @@
 | `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff` subcommands. |
 
 ## Package: schema
 
@@ -74,7 +75,7 @@
 | `actor.go` | Graph-as-actor identity: `IdentifyGraph`, `IdentifyDiff`, `GraphRef`, `DiffRef`, `newUUID4`. |
 | `serial.go` | Custom JSON codec for `TimeWindow`: `MarshalJSON`, `UnmarshalJSON`. Null encoding for unbounded bounds. |
 | `reflexive.go` | Reflexive tracing: `ArticulationTrace`, `DiffTrace`. Functions that record articulation and diffing as traces. |
-| `export.go` | Export functions: `PrintGraphJSON`, `PrintDiffJSON`, `PrintGraphDOT`, `PrintGraphMermaid`. Also internal helpers for DOT/Mermaid formatting. |
+| `export.go` | Export functions: `PrintGraphJSON`, `PrintDiffJSON`, `PrintGraphDOT`, `PrintGraphMermaid`. Internal helpers for DOT/Mermaid formatting. `stripNewlines()` security helper (M9) prevents injection in output from crafted trace values. |
 
 ### Types
 
@@ -151,6 +152,46 @@ None (persist carries no domain types; wraps graph types).
 | `main` | `func main()` | Entry point. Accepts dataset path argument or uses default. Logs errors. |
 | `run` | `func run(w io.Writer, datasetPath string) error` | Full pipeline: Load → Summary → Articulate (Cut A: meteorological-analyst, 2026-04-14) → Articulate (Cut B: local-mayor, 2026-04-16) → Diff → Closing note. |
 | `printClosingNote` | `func printClosingNote(w io.Writer) error` | Write methodological coda naming observer positions, shadows, and Principle 8 gap. |
+
+## Package: cmd/meshant
+
+### Files
+
+| File | Contains |
+|------|----------|
+| `main.go` | CLI entry point (380 lines): subcommand dispatcher, helper types and functions. |
+| `main_test.go` | 37 tests, 92.9% coverage: all subcommands, flag parsing, error handling. |
+
+### Types
+
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `stringSliceFlag` | `[]string` (implements flag.Value) | Custom flag collector for repeatable flags (e.g. `--observer a --observer b`). String() and Set() methods; rejects empty values. |
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `stringSliceFlag.String` | `(f *stringSliceFlag) String() string` | Return comma-joined slice representation (flag.Value interface). |
+| `stringSliceFlag.Set` | `(f *stringSliceFlag) Set(v string) error` | Append value to slice; reject empty or whitespace-only values. |
+| `parseTimeFlag` | `func parseTimeFlag(name, value string) (time.Time, error)` | Parse RFC3339 string to time.Time with contextual error message naming the flag. |
+| `parseTimeWindow` | `func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error)` | Parse two RFC3339 strings (one or both may be empty) into a TimeWindow. Validates only when both bounds are set. |
+| `main` | `func main()` | Entry point. Calls `run(os.Stdout, os.Args[1:])` and exits non-zero on error. |
+| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, or `cmdDiff()`. |
+| `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
+| `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
+| `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`. Applies `graph.Articulate()` and exports via `graph.PrintArticulation()` or one of the export functions. |
+| `cmdDiff` | `func cmdDiff(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts (`--observer-a`, `--observer-b`, per-side `--from-a`, `--to-a`, etc.), compute diff via `graph.Diff()`. `--format text\|json` (dot/mermaid not supported for diffs). |
+| `usage` | `func usage()` | Print CLI usage message listing all subcommands and flags. |
+
+### Key Design Notes
+
+- **Stdlib only**: No external dependencies; uses only Go standard library (`flag`, `time`, `io`, `fmt`, `errors`, etc.)
+- **Testable structure**: Core logic in `run()`, `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`; `main()` is thin wrapper that wires os.Stdout/os.Args and exits non-zero on error
+- **Flag parsing**: Uses stdlib `flag.FlagSet` for subcommand isolation; `stringSliceFlag` enables repeatable `--observer` flags without comma-separation
+- **Time handling**: RFC3339 timestamps throughout; `parseTimeFlag()` and `parseTimeWindow()` provide clear error messages with formatting hints
+- **Format options**: `articulate` supports text/json/dot/mermaid; `diff` supports text/json only (graphs are spatial, diffs are relational)
+- **Binary installation**: `go install ./cmd/meshant` produces `meshant` binary at $GOPATH/bin; used in Dockerfile at `/usr/local/bin/meshant`
 
 ## Cross-Package Relationships
 
@@ -306,7 +347,7 @@ cmd/demo/
 - **Trace Stats:** 22 traces, 86% mediated, all 6 tag types represented, 1 graph-ref, 1 absent-source
 - **Use Case:** Incident lifecycle (detection to postmortem); demonstrates observer positioning across operational roles
 
-## Related Decision Records
+## Related Decision Records and Guides
 
 - `docs/decisions/trace-schema-v1.md` — core Trace type rationale
 - `docs/decisions/articulation-v1.md` — observer position and shadow design
@@ -315,6 +356,9 @@ cmd/demo/
 - `docs/decisions/graph-as-actor-v1.md` — identified graphs as actants
 - `docs/decisions/m7-serialisation-reflexivity-v1.md` — TimeWindow JSON codec and reflexive tracing
 - `docs/decisions/structured-export-v1.md` — graph export to JSON, DOT, Mermaid formats
+- `docs/decisions/cli-v1.md` — CLI design decisions (M9)
+- `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
+- `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 
 ## Test Coverage
 
@@ -332,3 +376,4 @@ cmd/demo/
 - `graph/incident_e2e_test.go` — E2E tests using incident response dataset
 - `persist/persist_test.go` — tests for file I/O functions
 - `cmd/demo/main_test.go` — E2E test
+- `cmd/meshant/main_test.go` — 37 tests, 92.9% coverage (M9 CLI subcommands, flag parsing, error handling)
