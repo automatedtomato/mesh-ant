@@ -19,7 +19,7 @@
 //
 // Known gap (Principle 8): this demo records observer positions
 // (meteorological-analyst, local-mayor) but does not record its own
-// position: which cuts were chosen, by whom, and from where. Tracked as M7-B.
+// position: which cuts were chosen, by whom, and from where.
 //
 // Usage:
 //
@@ -151,9 +151,9 @@ standing outside; it is already a participant.
 
 Known gap — Principle 8:
 This demo records observer positions but not its own position: the choice
-of these two cuts, these parameters, this rendering. Graph-as-actor (M5)
-gives articulations stable identities; recording the act of running this
-demo as a trace would close that loop. Tracked as M7-B.
+of these two cuts, these parameters, this rendering. Graph-as-actor gives
+articulations stable identities; recording the act of running this demo
+as a trace would close that loop.
 
 `
 	_, err := fmt.Fprint(w, note)

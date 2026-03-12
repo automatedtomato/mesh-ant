@@ -457,7 +457,6 @@ func TestIncident_Summarise_ElementCount(t *testing.T) {
 
 // TestIncident_Summarise_GraphRefsPopulated verifies that Summarise
 // populates GraphRefs with the graph-ref strings present in the dataset.
-// This exercises the M5.3 loader addition against the incident dataset.
 func TestIncident_Summarise_GraphRefsPopulated(t *testing.T) {
 	traces := loadIncident(t)
 	s := loader.Summarise(traces)

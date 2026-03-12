@@ -18,7 +18,6 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
-
 // maxFileBytes caps the size of a JSON file accepted by Load.
 // This prevents accidental memory exhaustion from an unexpectedly large file.
 // 50 MB is generous for any realistic trace dataset at this stage.
