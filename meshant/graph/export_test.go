@@ -1,4 +1,5 @@
-// Package graph_test — export_test.go tests PrintGraphJSON and PrintDiffJSON.
+// Package graph_test — export_test.go tests PrintGraphJSON, PrintDiffJSON,
+// PrintGraphDOT, and PrintGraphMermaid.
 //
 // All tests follow the black-box convention: they use only the exported API of
 // the graph package and json.Unmarshal from the standard library to verify
@@ -344,3 +345,399 @@ func TestPrintGraphJSON_NonZeroTimeWindowRoundTrip(t *testing.T) {
 		t.Errorf("TimeWindow.End: got %v, want %v", got.Cut.TimeWindow.End, end)
 	}
 }
+
+// --- DOT export tests ---
+
+// buildGraphWithShadow constructs a MeshGraph that has visible nodes, edges,
+// and at least one shadow element, suitable for testing shadow rendering.
+func buildGraphWithShadow(t *testing.T) graph.MeshGraph {
+	t.Helper()
+	return graph.MeshGraph{
+		ID: "graph-with-shadow",
+		Nodes: map[string]graph.Node{
+			"api-gateway":  {Name: "api-gateway", AppearanceCount: 3},
+			"order-service": {Name: "order-service", AppearanceCount: 2},
+		},
+		Edges: []graph.Edge{
+			{
+				TraceID:     "aaaaaaaa-0000-4000-8000-000000000001",
+				WhatChanged: "request routed to order service",
+				Sources:     []string{"api-gateway"},
+				Targets:     []string{"order-service"},
+			},
+		},
+		Cut: graph.Cut{
+			ObserverPositions: []string{"api-gateway"},
+			TracesIncluded:    5,
+			TracesTotal:       10,
+			ShadowElements: []graph.ShadowElement{
+				{Name: "database-primary", SeenFrom: []string{"db-admin"}, Reasons: []graph.ShadowReason{graph.ShadowReasonObserver}},
+			},
+		},
+	}
+}
+
+// buildMultiSourceEdgeGraph constructs a MeshGraph with a single edge that has
+// 2 sources and 2 targets, used to verify Cartesian product arc rendering.
+func buildMultiSourceEdgeGraph(t *testing.T) graph.MeshGraph {
+	t.Helper()
+	return graph.MeshGraph{
+		Nodes: map[string]graph.Node{
+			"src-a": {Name: "src-a", AppearanceCount: 1},
+			"src-b": {Name: "src-b", AppearanceCount: 1},
+			"tgt-x": {Name: "tgt-x", AppearanceCount: 1},
+			"tgt-y": {Name: "tgt-y", AppearanceCount: 1},
+		},
+		Edges: []graph.Edge{
+			{
+				TraceID:     "bbbbbbbb-0000-4000-8000-000000000001",
+				WhatChanged: "multi source action",
+				Sources:     []string{"src-a", "src-b"},
+				Targets:     []string{"tgt-x", "tgt-y"},
+			},
+		},
+	}
+}
+
+// TestPrintGraphDOT_Basic verifies that PrintGraphDOT produces valid DOT output
+// containing the expected structural markers: digraph block, at least one quoted
+// node, at least one arc, and a shadow subgraph for a graph that has shadow elements.
+func TestPrintGraphDOT_Basic(t *testing.T) {
+	g := buildGraphWithShadow(t)
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphDOT(&buf, g); err != nil {
+		t.Fatalf("PrintGraphDOT: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "digraph {") {
+		t.Errorf("expected 'digraph {' in DOT output, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"api-gateway"`) {
+		t.Errorf("expected quoted node 'api-gateway' in DOT output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "->") {
+		t.Errorf("expected '->' arc in DOT output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "cluster_shadow") {
+		t.Errorf("expected 'cluster_shadow' subgraph in DOT output for graph with shadow, got:\n%s", out)
+	}
+}
+
+// TestPrintGraphDOT_EmptyGraph verifies that an empty MeshGraph produces a
+// valid (though empty) DOT digraph without error.
+func TestPrintGraphDOT_EmptyGraph(t *testing.T) {
+	var buf bytes.Buffer
+	if err := graph.PrintGraphDOT(&buf, graph.MeshGraph{}); err != nil {
+		t.Fatalf("PrintGraphDOT on empty graph: unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "digraph {") {
+		t.Errorf("expected 'digraph {' even for empty graph, got:\n%s", out)
+	}
+	if strings.Contains(out, "cluster_shadow") {
+		t.Errorf("expected no shadow subgraph for graph with no shadow elements, got:\n%s", out)
+	}
+}
+
+// TestPrintGraphDOT_ShadowSubgraph verifies that shadow elements appear inside
+// the cluster_shadow subgraph with dashed style.
+func TestPrintGraphDOT_ShadowSubgraph(t *testing.T) {
+	g := buildGraphWithShadow(t)
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphDOT(&buf, g); err != nil {
+		t.Fatalf("PrintGraphDOT: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "cluster_shadow") {
+		t.Errorf("expected cluster_shadow in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "style=dashed") {
+		t.Errorf("expected style=dashed for shadow subgraph, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"database-primary"`) {
+		t.Errorf("expected shadow element 'database-primary' in output, got:\n%s", out)
+	}
+}
+
+// TestPrintGraphDOT_MultiSourceEdge verifies that an edge with 2 sources and 2
+// targets produces exactly 4 arcs (2×2 Cartesian product).
+func TestPrintGraphDOT_MultiSourceEdge(t *testing.T) {
+	g := buildMultiSourceEdgeGraph(t)
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphDOT(&buf, g); err != nil {
+		t.Fatalf("PrintGraphDOT: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	// Count the number of arcs produced.
+	arcCount := strings.Count(out, "->")
+	if arcCount != 4 {
+		t.Errorf("expected 4 arcs for 2×2 Cartesian product, got %d arcs in:\n%s", arcCount, out)
+	}
+}
+
+// TestPrintGraphDOT_WriteError verifies that PrintGraphDOT propagates a write
+// error from the underlying io.Writer back to the caller.
+func TestPrintGraphDOT_WriteError(t *testing.T) {
+	sentinel := errors.New("disk full")
+	w := errWriter{err: sentinel}
+
+	err := graph.PrintGraphDOT(w, graph.MeshGraph{})
+	if err == nil {
+		t.Fatal("PrintGraphDOT: expected error from failing writer, got nil")
+	}
+}
+
+// --- Mermaid export tests ---
+
+// TestPrintGraphMermaid_Basic verifies that PrintGraphMermaid produces valid
+// Mermaid flowchart output containing structural markers.
+func TestPrintGraphMermaid_Basic(t *testing.T) {
+	g := buildGraphWithShadow(t)
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphMermaid(&buf, g); err != nil {
+		t.Fatalf("PrintGraphMermaid: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "flowchart LR") {
+		t.Errorf("expected 'flowchart LR' in Mermaid output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "-->") {
+		t.Errorf("expected '-->' arrow in Mermaid output, got:\n%s", out)
+	}
+}
+
+// TestPrintGraphMermaid_EmptyGraph verifies that an empty MeshGraph produces a
+// valid Mermaid flowchart header without error.
+func TestPrintGraphMermaid_EmptyGraph(t *testing.T) {
+	var buf bytes.Buffer
+	if err := graph.PrintGraphMermaid(&buf, graph.MeshGraph{}); err != nil {
+		t.Fatalf("PrintGraphMermaid on empty graph: unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "flowchart LR") {
+		t.Errorf("expected 'flowchart LR' even for empty graph, got:\n%s", out)
+	}
+	if strings.Contains(out, "subgraph Shadow") {
+		t.Errorf("expected no shadow subgraph for graph with no shadow elements, got:\n%s", out)
+	}
+}
+
+// TestPrintGraphMermaid_ShadowSubgraph verifies that shadow elements appear
+// inside a 'subgraph Shadow' block.
+func TestPrintGraphMermaid_ShadowSubgraph(t *testing.T) {
+	g := buildGraphWithShadow(t)
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphMermaid(&buf, g); err != nil {
+		t.Fatalf("PrintGraphMermaid: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "subgraph Shadow") {
+		t.Errorf("expected 'subgraph Shadow' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "end") {
+		t.Errorf("expected 'end' closing the subgraph, got:\n%s", out)
+	}
+	// The shadow element name should appear as a label somewhere in the subgraph.
+	if !strings.Contains(out, "database-primary") {
+		t.Errorf("expected shadow element label 'database-primary' in output, got:\n%s", out)
+	}
+}
+
+// TestPrintGraphMermaid_NodeIDSanitization verifies that node names containing
+// hyphens are sanitized to underscores in the Mermaid node ID, while the
+// original name is preserved as the display label.
+func TestPrintGraphMermaid_NodeIDSanitization(t *testing.T) {
+	g := graph.MeshGraph{
+		Nodes: map[string]graph.Node{
+			"storm-sensor-network": {Name: "storm-sensor-network", AppearanceCount: 2},
+		},
+		Edges: []graph.Edge{
+			{
+				TraceID:     "cccccccc-0000-4000-8000-000000000001",
+				WhatChanged: "sensor reading",
+				Sources:     []string{"storm-sensor-network"},
+				Targets:     []string{"storm-sensor-network"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphMermaid(&buf, g); err != nil {
+		t.Fatalf("PrintGraphMermaid: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	// Sanitized ID should appear (hyphens → underscores).
+	if !strings.Contains(out, "storm_sensor_network") {
+		t.Errorf("expected sanitized node ID 'storm_sensor_network' in Mermaid output, got:\n%s", out)
+	}
+	// Original name should appear as the label.
+	if !strings.Contains(out, "storm-sensor-network") {
+		t.Errorf("expected original label 'storm-sensor-network' in Mermaid output, got:\n%s", out)
+	}
+}
+
+// TestPrintGraphMermaid_WriteError verifies that PrintGraphMermaid propagates
+// a write error from the underlying io.Writer back to the caller.
+func TestPrintGraphMermaid_WriteError(t *testing.T) {
+	sentinel := errors.New("disk full")
+	w := errWriter{err: sentinel}
+
+	err := graph.PrintGraphMermaid(w, graph.MeshGraph{})
+	if err == nil {
+		t.Fatal("PrintGraphMermaid: expected error from failing writer, got nil")
+	}
+}
+
+// --- helper coverage tests ---
+
+// TestPrintGraphDOT_TruncatesLongEdgeLabel verifies that edge labels longer
+// than 40 runes are truncated with "..." in DOT output.
+func TestPrintGraphDOT_TruncatesLongEdgeLabel(t *testing.T) {
+	longLabel := strings.Repeat("x", 50)
+	g := graph.MeshGraph{
+		Nodes: map[string]graph.Node{
+			"a": {Name: "a", AppearanceCount: 1},
+			"b": {Name: "b", AppearanceCount: 1},
+		},
+		Edges: []graph.Edge{
+			{
+				TraceID:     "dddddddd-0000-4000-8000-000000000001",
+				WhatChanged: longLabel,
+				Sources:     []string{"a"},
+				Targets:     []string{"b"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphDOT(&buf, g); err != nil {
+		t.Fatalf("PrintGraphDOT: unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "...") {
+		t.Errorf("expected truncated label with '...' for 50-char label, got:\n%s", buf.String())
+	}
+}
+
+// TestPrintGraphDOT_TimeWindowComment verifies that a non-zero TimeWindow
+// appears in the DOT comment block, so the observer position and time window
+// are recorded in the output file.
+func TestPrintGraphDOT_TimeWindowComment(t *testing.T) {
+	g := graph.MeshGraph{
+		Cut: graph.Cut{
+			ObserverPositions: []string{"meteorological-analyst"},
+			TimeWindow: graph.TimeWindow{
+				Start: mustParseTime(t, "2026-04-14T00:00:00Z"),
+				End:   mustParseTime(t, "2026-04-14T23:59:59Z"),
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphDOT(&buf, g); err != nil {
+		t.Fatalf("PrintGraphDOT: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "2026-04-14") {
+		t.Errorf("expected date '2026-04-14' in DOT comment, got:\n%s", out)
+	}
+	if !strings.Contains(out, "meteorological-analyst") {
+		t.Errorf("expected observer name in DOT comment, got:\n%s", out)
+	}
+}
+
+// TestPrintGraphDOT_HalfOpenTimeWindow verifies that a half-open TimeWindow
+// (Start only, no End) renders "(unbounded)" for the missing bound.
+func TestPrintGraphDOT_HalfOpenTimeWindow(t *testing.T) {
+	g := graph.MeshGraph{
+		Cut: graph.Cut{
+			TimeWindow: graph.TimeWindow{
+				Start: mustParseTime(t, "2026-04-14T00:00:00Z"),
+				// End is zero — unbounded.
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphDOT(&buf, g); err != nil {
+		t.Fatalf("PrintGraphDOT: unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "(unbounded)") {
+		t.Errorf("expected '(unbounded)' for half-open window, got:\n%s", buf.String())
+	}
+}
+
+// TestPrintGraphMermaid_CollisionResolution verifies that two node names that
+// sanitize to the same Mermaid ID both appear in the output with distinct IDs.
+func TestPrintGraphMermaid_CollisionResolution(t *testing.T) {
+	// "a-b" and "a_b" both sanitize to "a_b" — the second should get "a_b_2".
+	g := graph.MeshGraph{
+		Nodes: map[string]graph.Node{
+			"a-b": {Name: "a-b", AppearanceCount: 1},
+			"a_b": {Name: "a_b", AppearanceCount: 1},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphMermaid(&buf, g); err != nil {
+		t.Fatalf("PrintGraphMermaid: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	// One ID should be "a_b" and another "a_b_2" (or similar collision suffix).
+	if !strings.Contains(out, "a_b_2") {
+		t.Errorf("expected collision-resolved ID 'a_b_2' in output, got:\n%s", out)
+	}
+}
+
+// TestPrintGraphMermaid_DigitPrefixedName verifies that a node name starting
+// with a digit gets the "n_" prefix in its sanitized Mermaid ID.
+func TestPrintGraphMermaid_DigitPrefixedName(t *testing.T) {
+	g := graph.MeshGraph{
+		Nodes: map[string]graph.Node{
+			"3rd-party-api": {Name: "3rd-party-api", AppearanceCount: 1},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphMermaid(&buf, g); err != nil {
+		t.Fatalf("PrintGraphMermaid: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "n_3rd_party_api") {
+		t.Errorf("expected 'n_3rd_party_api' (digit-prefixed ID) in output, got:\n%s", out)
+	}
+}
+
+// TestPrintGraphMermaid_EmptyNodeName verifies that a node with an empty name
+// gets the fallback "n_empty" Mermaid ID rather than an empty string.
+func TestPrintGraphMermaid_EmptyNodeName(t *testing.T) {
+	g := graph.MeshGraph{
+		Nodes: map[string]graph.Node{
+			"": {Name: "", AppearanceCount: 1},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphMermaid(&buf, g); err != nil {
+		t.Fatalf("PrintGraphMermaid: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "n_empty") {
+		t.Errorf("expected fallback ID 'n_empty' for empty node name, got:\n%s", out)
+	}
+}
+
