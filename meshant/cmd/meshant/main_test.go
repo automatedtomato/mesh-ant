@@ -315,15 +315,6 @@ func TestCmdArticulate_MissingPath(t *testing.T) {
 	}
 }
 
-// min returns the smaller of two ints. Used to safely truncate output in
-// error messages without panicking on short strings.
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // --- Group 5: cmdDiff ---
 
 // TestCmdDiff_HappyPath verifies that cmdDiff produces non-empty output when
@@ -499,5 +490,106 @@ func TestCmdDiff_MissingPath(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("cmdDiff() with no path: want non-nil error, got nil")
+	}
+}
+
+// TestCmdDiff_InvertedWindow verifies that cmdDiff returns an error when
+// --from-a is after --to-a (invalid time window for side A).
+func TestCmdDiff_InvertedWindow(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--from-a", "2026-04-16T00:00:00Z",
+		"--to-a", "2026-04-14T00:00:00Z",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() with inverted window A: want non-nil error, got nil")
+	}
+}
+
+// TestCmdArticulate_BadToTime verifies that cmdArticulate returns an error
+// containing "RFC3339" when --to is not a valid RFC3339 timestamp.
+func TestCmdArticulate_BadToTime(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--to", "notadate",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdArticulate() with bad --to: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "RFC3339") {
+		t.Errorf("cmdArticulate() error = %q; want it to contain \"RFC3339\"", err.Error())
+	}
+}
+
+// TestCmdDiff_BadToATime verifies that a malformed --to-a produces an error
+// containing "RFC3339".
+func TestCmdDiff_BadToATime(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--to-a", "notadate",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() with bad --to-a: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "RFC3339") {
+		t.Errorf("cmdDiff() error = %q; want it to contain \"RFC3339\"", err.Error())
+	}
+}
+
+// TestCmdDiff_BadFromBTime verifies that a malformed --from-b produces an
+// error containing "RFC3339".
+func TestCmdDiff_BadFromBTime(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--from-b", "notadate",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() with bad --from-b: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "RFC3339") {
+		t.Errorf("cmdDiff() error = %q; want it to contain \"RFC3339\"", err.Error())
+	}
+}
+
+// TestCmdDiff_BadToBTime verifies that a malformed --to-b produces an error
+// containing "RFC3339".
+func TestCmdDiff_BadToBTime(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--to-b", "notadate",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() with bad --to-b: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "RFC3339") {
+		t.Errorf("cmdDiff() error = %q; want it to contain \"RFC3339\"", err.Error())
+	}
+}
+
+// TestStringSliceFlag_EmptyValueRejected verifies that passing an empty string
+// to --observer is rejected with an error rather than silently producing an
+// empty-observer articulation that yields a zero-node graph.
+func TestStringSliceFlag_EmptyValueRejected(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdArticulate() with --observer \"\": want non-nil error, got nil")
 	}
 }

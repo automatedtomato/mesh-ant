@@ -17,6 +17,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -37,21 +38,57 @@ type stringSliceFlag []string
 // String returns the accumulated values joined by commas. Required by flag.Value.
 func (f *stringSliceFlag) String() string { return strings.Join(*f, ",") }
 
-// Set appends a new value to the slice. Required by flag.Value.
+// Set appends a new non-empty value to the slice. Required by flag.Value.
+// Returns an error if v is empty or blank so that --observer "" is rejected
+// early rather than silently producing an empty-observer articulation.
 func (f *stringSliceFlag) Set(v string) error {
+	if strings.TrimSpace(v) == "" {
+		return errors.New("observer value must not be empty")
+	}
 	*f = append(*f, v)
 	return nil
 }
 
 // parseTimeFlag parses an RFC3339 timestamp string for a named flag.
 // Returns a clear error message with the flag name and a formatting hint
-// so users understand exactly what format is expected.
+// so users understand exactly what format is expected. The underlying parse
+// error is wrapped so callers can inspect it with errors.Is/errors.As.
 func parseTimeFlag(name, value string) (time.Time, error) {
 	t, err := time.Parse(time.RFC3339, value)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid --%s value %q: expected RFC3339 (e.g. 2026-04-14T00:00:00Z)", name, value)
+		return time.Time{}, fmt.Errorf("invalid --%s value %q: expected RFC3339 (e.g. 2026-04-14T00:00:00Z): %w", name, value, err)
 	}
 	return t, nil
+}
+
+// parseTimeWindow parses a pair of RFC3339 strings into a graph.TimeWindow.
+// fromName/toName are the flag names used in error messages.
+// Either string may be empty (half-open window). Both ends are validated
+// together only when both are non-zero.
+func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error) {
+	var tw graph.TimeWindow
+	if fromStr != "" {
+		t, err := parseTimeFlag(fromName, fromStr)
+		if err != nil {
+			return graph.TimeWindow{}, err
+		}
+		tw.Start = t
+	}
+	if toStr != "" {
+		t, err := parseTimeFlag(toName, toStr)
+		if err != nil {
+			return graph.TimeWindow{}, err
+		}
+		tw.End = t
+	}
+	// Validate only when both bounds are set; a half-open window is valid
+	// (e.g. --from only means "from this point onward").
+	if !tw.Start.IsZero() && !tw.End.IsZero() {
+		if err := tw.Validate(); err != nil {
+			return graph.TimeWindow{}, err
+		}
+	}
+	return tw, nil
 }
 
 func main() {
@@ -67,7 +104,7 @@ func main() {
 // unknown, or if the subcommand handler itself returns an error.
 func run(w io.Writer, args []string) error {
 	if len(args) == 0 {
-		return usageError()
+		return errors.New(usage())
 	}
 	switch args[0] {
 	case "summarize":
@@ -99,13 +136,6 @@ Commands:
   diff        diff two articulations (flags: --observer-a, --observer-b, --from-a, --to-a, --from-b, --to-b, --format)
 
 Run 'meshant <command> --help' for command-specific flags.`
-}
-
-// usageError wraps the usage text in an error. Returned when run() is called
-// with no arguments so the caller always gets a non-nil error and the usage
-// text is the error message.
-func usageError() error {
-	return fmt.Errorf("%s", usage())
 }
 
 // cmdSummarize implements the "summarize" subcommand.
@@ -169,13 +199,9 @@ func cmdValidate(w io.Writer, args []string) error {
 //
 // The positional argument (after all flags) must be the path to a traces JSON file.
 //
-// The time window is applied as an AND filter with the observer filter. Providing
-// only --from or only --to sets a half-open window (the other end is zero, which
-// graph.TimeWindow treats as unbounded for that side).
-//
 // Returns an error if: no --observer is given, a time flag is not RFC3339,
-// the time window is invalid (Start > End), the path is missing or unloadable,
-// or the format is unrecognised.
+// the time window is invalid (Start > End), --format is unrecognised,
+// the path is missing or unloadable, or writing to w fails.
 func cmdArticulate(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("articulate", flag.ContinueOnError)
 
@@ -201,29 +227,18 @@ func cmdArticulate(w io.Writer, args []string) error {
 		return fmt.Errorf("articulate: --observer is required")
 	}
 
-	// Parse optional time window flags.
-	var tw graph.TimeWindow
-	if fromStr != "" {
-		t, err := parseTimeFlag("from", fromStr)
-		if err != nil {
-			return err
-		}
-		tw.Start = t
-	}
-	if toStr != "" {
-		t, err := parseTimeFlag("to", toStr)
-		if err != nil {
-			return err
-		}
-		tw.End = t
+	// Reject unknown formats before file I/O so the error is immediate.
+	switch format {
+	case "text", "json", "dot", "mermaid":
+		// valid
+	default:
+		return fmt.Errorf("articulate: unknown --format %q (text|json|dot|mermaid)", format)
 	}
 
-	// Validate the window only when both ends are set; a half-open window is
-	// valid (e.g. --from only means "from this point onward").
-	if !tw.Start.IsZero() && !tw.End.IsZero() {
-		if err := tw.Validate(); err != nil {
-			return fmt.Errorf("articulate: %w", err)
-		}
+	// Parse optional time window flags.
+	tw, err := parseTimeWindow("from", fromStr, "to", toStr)
+	if err != nil {
+		return fmt.Errorf("articulate: %w", err)
 	}
 
 	// The positional argument after all flags is the path to the dataset.
@@ -252,10 +267,8 @@ func cmdArticulate(w io.Writer, args []string) error {
 		return graph.PrintGraphJSON(w, g)
 	case "dot":
 		return graph.PrintGraphDOT(w, g)
-	case "mermaid":
+	default: // "mermaid"
 		return graph.PrintGraphMermaid(w, g)
-	default:
-		return fmt.Errorf("articulate: unknown --format %q (text|json|dot|mermaid)", format)
 	}
 }
 
@@ -276,10 +289,6 @@ func cmdArticulate(w io.Writer, args []string) error {
 // Note: DOT and Mermaid output are NOT available for diffs (PrintDiffDOT and
 // PrintDiffMermaid do not exist). Requesting them returns an explicit error.
 //
-// The positional argument (after all flags) must be the path to a traces JSON
-// file. Both articulations are derived from the same trace set; the cut axes
-// (observer + time window) are independent per side.
-//
 // Returns an error if: --observer-a or --observer-b is missing, a time flag
 // is not RFC3339, a time window is invalid (Start > End), --format is "dot"
 // or "mermaid" (not supported), --format is unrecognised, the path is missing
@@ -288,22 +297,18 @@ func cmdDiff(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 
 	// --observer-a and --observer-b are both repeatable and required.
-	// They define the observer positions for each side of the diff.
 	var observersA, observersB stringSliceFlag
 	fs.Var(&observersA, "observer-a", "observer position for graph A (repeatable)")
 	fs.Var(&observersB, "observer-b", "observer position for graph B (repeatable)")
 
-	// Per-side time window flags. Each side may have a different window, which
-	// is the key feature that enables temporal diff analysis (e.g. day 1 vs
-	// day 3 of the same observer network).
+	// Per-side time window flags.
 	var fromAStr, toAStr, fromBStr, toBStr string
 	fs.StringVar(&fromAStr, "from-a", "", "start of time window for graph A (RFC3339)")
 	fs.StringVar(&toAStr, "to-a", "", "end of time window for graph A (RFC3339)")
 	fs.StringVar(&fromBStr, "from-b", "", "start of time window for graph B (RFC3339)")
 	fs.StringVar(&toBStr, "to-b", "", "end of time window for graph B (RFC3339)")
 
-	// --format selects the output renderer; only text and json are supported
-	// for diffs (DOT/Mermaid renderers do not exist for GraphDiff).
+	// --format selects the output renderer; only text and json are supported.
 	var format string
 	fs.StringVar(&format, "format", "text", "output format: text|json")
 
@@ -319,60 +324,25 @@ func cmdDiff(w io.Writer, args []string) error {
 		return fmt.Errorf("diff: --observer-b is required")
 	}
 
-	// Parse and validate the time window for graph A.
-	var twA graph.TimeWindow
-	if fromAStr != "" {
-		t, err := parseTimeFlag("from-a", fromAStr)
-		if err != nil {
-			return err
-		}
-		twA.Start = t
-	}
-	if toAStr != "" {
-		t, err := parseTimeFlag("to-a", toAStr)
-		if err != nil {
-			return err
-		}
-		twA.End = t
-	}
-	if !twA.Start.IsZero() && !twA.End.IsZero() {
-		if err := twA.Validate(); err != nil {
-			return fmt.Errorf("diff: %w", err)
-		}
-	}
-
-	// Parse and validate the time window for graph B.
-	var twB graph.TimeWindow
-	if fromBStr != "" {
-		t, err := parseTimeFlag("from-b", fromBStr)
-		if err != nil {
-			return err
-		}
-		twB.Start = t
-	}
-	if toBStr != "" {
-		t, err := parseTimeFlag("to-b", toBStr)
-		if err != nil {
-			return err
-		}
-		twB.End = t
-	}
-	if !twB.Start.IsZero() && !twB.End.IsZero() {
-		if err := twB.Validate(); err != nil {
-			return fmt.Errorf("diff: %w", err)
-		}
-	}
-
-	// Reject DOT and Mermaid explicitly before touching the dataset, so the
-	// error is immediate and does not depend on file I/O. The message
-	// distinguishes "not supported for diffs" from a plain unknown format.
+	// Reject DOT and Mermaid explicitly before touching the dataset; the
+	// message distinguishes "not supported for diffs" from a plain unknown format.
 	switch format {
 	case "dot", "mermaid":
 		return fmt.Errorf("diff: --format %q not supported (text|json only)", format)
 	case "text", "json":
-		// valid; handled below
+		// valid
 	default:
 		return fmt.Errorf("diff: unknown --format %q (text|json)", format)
+	}
+
+	// Parse and validate per-side time windows.
+	twA, err := parseTimeWindow("from-a", fromAStr, "to-a", toAStr)
+	if err != nil {
+		return fmt.Errorf("diff: %w", err)
+	}
+	twB, err := parseTimeWindow("from-b", fromBStr, "to-b", toBStr)
+	if err != nil {
+		return fmt.Errorf("diff: %w", err)
 	}
 
 	// The positional argument after all flags is the shared trace dataset.
@@ -389,8 +359,6 @@ func cmdDiff(w io.Writer, args []string) error {
 		return fmt.Errorf("diff: %w", err)
 	}
 
-	// Articulate graph A and graph B from the same trace set using their
-	// respective observer positions and time windows.
 	optsA := graph.ArticulationOptions{
 		ObserverPositions: []string(observersA),
 		TimeWindow:        twA,
@@ -401,18 +369,12 @@ func cmdDiff(w io.Writer, args []string) error {
 	}
 	gA := graph.Articulate(traces, optsA)
 	gB := graph.Articulate(traces, optsB)
-
-	// Compute the structural diff between the two articulations.
 	d := graph.Diff(gA, gB)
 
-	// Dispatch to the requested output renderer.
 	switch format {
 	case "text":
 		return graph.PrintDiff(w, d)
-	case "json":
+	default: // "json"
 		return graph.PrintDiffJSON(w, d)
-	default:
-		// Unreachable: the format switch above already guards all cases.
-		return fmt.Errorf("diff: unknown --format %q (text|json)", format)
 	}
 }
