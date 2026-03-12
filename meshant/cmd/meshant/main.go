@@ -1,17 +1,14 @@
 // Package main is the meshant CLI entry point.
 //
-// It provides two subcommands for the current milestone (M9.1):
-//   - summarize: load traces from a JSON file and print a mesh summary
-//   - validate:  load and validate all traces, reporting success or error
+// It provides subcommands for trace-first network analysis:
+//   - summarize:  load traces from a JSON file and print a mesh summary
+//   - validate:   load and validate all traces, reporting success or error
+//   - articulate: articulate an observer-situated graph from traces
 //
-// Two additional commands are listed in the usage text (articulate, diff) but
-// are not implemented in this milestone. They appear in usage so users can see
-// the intended full surface area of the CLI.
-//
-// The testable logic lives in run(), cmdSummarize(), and cmdValidate().
-// main() itself is a thin wrapper that wires os.Stdout and os.Args, then
-// exits non-zero on error — a pattern that makes every meaningful path
-// independently testable without I/O redirection.
+// The testable logic lives in run(), cmdSummarize(), cmdValidate(), and
+// cmdArticulate(). main() itself is a thin wrapper that wires os.Stdout and
+// os.Args, then exits non-zero on error — a pattern that makes every
+// meaningful path independently testable without I/O redirection.
 //
 // Usage:
 //
@@ -19,12 +16,42 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strings"
+	"time"
 
+	"github.com/automatedtomato/mesh-ant/meshant/graph"
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
 )
+
+// stringSliceFlag is a custom flag.Value that accumulates string values on
+// each Set() call. This enables repeatable flags like --observer a --observer b,
+// which is more ergonomic than a single comma-separated value for names that
+// may themselves contain commas.
+type stringSliceFlag []string
+
+// String returns the accumulated values joined by commas. Required by flag.Value.
+func (f *stringSliceFlag) String() string { return strings.Join(*f, ",") }
+
+// Set appends a new value to the slice. Required by flag.Value.
+func (f *stringSliceFlag) Set(v string) error {
+	*f = append(*f, v)
+	return nil
+}
+
+// parseTimeFlag parses an RFC3339 timestamp string for a named flag.
+// Returns a clear error message with the flag name and a formatting hint
+// so users understand exactly what format is expected.
+func parseTimeFlag(name, value string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid --%s value %q: expected RFC3339 (e.g. 2026-04-14T00:00:00Z)", name, value)
+	}
+	return t, nil
+}
 
 func main() {
 	if err := run(os.Stdout, os.Args[1:]); err != nil {
@@ -46,6 +73,8 @@ func run(w io.Writer, args []string) error {
 		return cmdSummarize(w, args[1:])
 	case "validate":
 		return cmdValidate(w, args[1:])
+	case "articulate":
+		return cmdArticulate(w, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
@@ -125,4 +154,104 @@ func cmdValidate(w io.Writer, args []string) error {
 
 	fmt.Fprintf(w, "%d traces: all valid\n", len(traces))
 	return nil
+}
+
+// cmdArticulate implements the "articulate" subcommand.
+//
+// It accepts the following flags:
+//   - --observer (repeatable, required) — one or more observer positions to include
+//   - --from     (optional, RFC3339)    — start of time window
+//   - --to       (optional, RFC3339)    — end of time window
+//   - --format   (optional, default "text") — output format: text|json|dot|mermaid
+//
+// The positional argument (after all flags) must be the path to a traces JSON file.
+//
+// The time window is applied as an AND filter with the observer filter. Providing
+// only --from or only --to sets a half-open window (the other end is zero, which
+// graph.TimeWindow treats as unbounded for that side).
+//
+// Returns an error if: no --observer is given, a time flag is not RFC3339,
+// the time window is invalid (Start > End), the path is missing or unloadable,
+// or the format is unrecognised.
+func cmdArticulate(w io.Writer, args []string) error {
+	fs := flag.NewFlagSet("articulate", flag.ContinueOnError)
+
+	// --observer is repeatable; collected by stringSliceFlag.
+	var observers stringSliceFlag
+	fs.Var(&observers, "observer", "observer position to include (repeatable)")
+
+	// --from / --to are optional RFC3339 timestamps for time-window filtering.
+	var fromStr, toStr string
+	fs.StringVar(&fromStr, "from", "", "start of time window (RFC3339)")
+	fs.StringVar(&toStr, "to", "", "end of time window (RFC3339)")
+
+	// --format selects the output renderer; defaults to "text".
+	var format string
+	fs.StringVar(&format, "format", "text", "output format: text|json|dot|mermaid")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	// --observer is mandatory: a graph requires at least one observer position.
+	if len(observers) == 0 {
+		return fmt.Errorf("articulate: --observer is required")
+	}
+
+	// Parse optional time window flags.
+	var tw graph.TimeWindow
+	if fromStr != "" {
+		t, err := parseTimeFlag("from", fromStr)
+		if err != nil {
+			return err
+		}
+		tw.Start = t
+	}
+	if toStr != "" {
+		t, err := parseTimeFlag("to", toStr)
+		if err != nil {
+			return err
+		}
+		tw.End = t
+	}
+
+	// Validate the window only when both ends are set; a half-open window is
+	// valid (e.g. --from only means "from this point onward").
+	if !tw.Start.IsZero() && !tw.End.IsZero() {
+		if err := tw.Validate(); err != nil {
+			return fmt.Errorf("articulate: %w", err)
+		}
+	}
+
+	// The positional argument after all flags is the path to the dataset.
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		return fmt.Errorf("articulate: path to traces.json required\n\nUsage: meshant articulate --observer <pos> [--from RFC3339] [--to RFC3339] [--format text|json|dot|mermaid] <traces.json>")
+	}
+	path := remaining[0]
+
+	traces, err := loader.Load(path)
+	if err != nil {
+		return fmt.Errorf("articulate: %w", err)
+	}
+
+	opts := graph.ArticulationOptions{
+		ObserverPositions: []string(observers),
+		TimeWindow:        tw,
+	}
+	g := graph.Articulate(traces, opts)
+
+	// Dispatch to the requested output renderer.
+	switch format {
+	case "text":
+		return graph.PrintArticulation(w, g)
+	case "json":
+		return graph.PrintGraphJSON(w, g)
+	case "dot":
+		return graph.PrintGraphDOT(w, g)
+	case "mermaid":
+		return graph.PrintGraphMermaid(w, g)
+	default:
+		return fmt.Errorf("articulate: unknown --format %q (text|json|dot|mermaid)", format)
+	}
 }

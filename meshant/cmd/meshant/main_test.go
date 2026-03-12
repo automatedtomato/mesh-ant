@@ -152,3 +152,174 @@ func TestRun_Validate_Integration(t *testing.T) {
 		t.Errorf("run([\"validate\", path]) output does not contain \"all valid\"; got: %q", buf.String())
 	}
 }
+
+// --- Group 4: cmdArticulate ---
+
+// evacuationDataset is the path to the evacuation_order.json dataset relative
+// to the meshant/cmd/meshant/ test execution directory.
+const evacuationDataset = "../../../data/examples/evacuation_order.json"
+
+// TestCmdArticulate_HappyPath verifies that cmdArticulate produces non-empty
+// output when given a valid --observer and a valid dataset path.
+// Uses the meteorological-analyst observer from evacuation_order.json.
+func TestCmdArticulate_HappyPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() returned unexpected error: %v", err)
+	}
+	if len(buf.String()) == 0 {
+		t.Error("cmdArticulate() produced empty output; want non-empty")
+	}
+}
+
+// TestCmdArticulate_WithTimeWindow verifies that cmdArticulate accepts --from
+// and --to RFC3339 flags alongside --observer without error.
+func TestCmdArticulate_WithTimeWindow(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--from", "2026-04-14T00:00:00Z",
+		"--to", "2026-04-14T23:59:59Z",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() with time window returned unexpected error: %v", err)
+	}
+}
+
+// TestCmdArticulate_FormatJSON verifies that --format json produces output
+// that begins with '{' (JSON object).
+func TestCmdArticulate_FormatJSON(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--format", "json",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --format json returned unexpected error: %v", err)
+	}
+	out := strings.TrimSpace(buf.String())
+	if !strings.HasPrefix(out, "{") {
+		t.Errorf("cmdArticulate() --format json: output does not start with '{'; got: %q", out[:min(len(out), 40)])
+	}
+}
+
+// TestCmdArticulate_FormatDOT verifies that --format dot produces output
+// containing "digraph" (DOT language graph declaration).
+func TestCmdArticulate_FormatDOT(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--format", "dot",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --format dot returned unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "digraph") {
+		t.Errorf("cmdArticulate() --format dot: output does not contain \"digraph\"; got:\n%s", buf.String())
+	}
+}
+
+// TestCmdArticulate_FormatMermaid verifies that --format mermaid produces
+// output containing "flowchart" (Mermaid graph declaration).
+func TestCmdArticulate_FormatMermaid(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--format", "mermaid",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --format mermaid returned unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "flowchart") {
+		t.Errorf("cmdArticulate() --format mermaid: output does not contain \"flowchart\"; got:\n%s", buf.String())
+	}
+}
+
+// TestCmdArticulate_MissingObserver verifies that cmdArticulate returns an
+// error containing "required" when no --observer flag is provided.
+func TestCmdArticulate_MissingObserver(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{evacuationDataset})
+	if err == nil {
+		t.Fatal("cmdArticulate() with no --observer: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "required") {
+		t.Errorf("cmdArticulate() error = %q; want it to contain \"required\"", err.Error())
+	}
+}
+
+// TestCmdArticulate_BadFromTime verifies that cmdArticulate returns an error
+// containing "RFC3339" when --from is not a valid RFC3339 timestamp.
+func TestCmdArticulate_BadFromTime(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--from", "notadate",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdArticulate() with bad --from: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "RFC3339") {
+		t.Errorf("cmdArticulate() error = %q; want it to contain \"RFC3339\"", err.Error())
+	}
+}
+
+// TestCmdArticulate_InvertedWindow verifies that cmdArticulate returns an
+// error when --from is after --to (invalid time window).
+func TestCmdArticulate_InvertedWindow(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--from", "2026-04-16T00:00:00Z",
+		"--to", "2026-04-14T00:00:00Z",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdArticulate() with inverted time window: want non-nil error, got nil")
+	}
+}
+
+// TestCmdArticulate_UnknownFormat verifies that cmdArticulate returns an error
+// containing "unknown" when --format is not one of text|json|dot|mermaid.
+func TestCmdArticulate_UnknownFormat(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--format", "xml",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdArticulate() with unknown --format: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown") {
+		t.Errorf("cmdArticulate() error = %q; want it to contain \"unknown\"", err.Error())
+	}
+}
+
+// TestCmdArticulate_MissingPath verifies that cmdArticulate returns an error
+// when no positional path argument is provided.
+func TestCmdArticulate_MissingPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{"--observer", "meteorological-analyst"})
+	if err == nil {
+		t.Fatal("cmdArticulate() with no path: want non-nil error, got nil")
+	}
+}
+
+// min returns the smaller of two ints. Used to safely truncate output in
+// error messages without panicking on short strings.
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
