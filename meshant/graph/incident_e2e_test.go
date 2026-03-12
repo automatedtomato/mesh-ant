@@ -8,9 +8,14 @@
 //
 // Two demo cuts expose structural blindness between observer positions:
 //   - Cut A: observer "monitoring-service", day 2026-05-10
-//     The automated detection chain is visible; human coordination is invisible.
+//     The automated detection chain is visible. product-manager and database-admin
+//     are in shadow (they never appear in monitoring-service traces). Note that
+//     on-call-engineer and incident-commander do appear as targets of monitoring-service
+//     traces, so they are visible nodes in this cut, not shadow elements.
 //   - Cut B: observer "incident-commander", day 2026-05-11
-//     Postmortem deliberations are visible; the automated metric chain is invisible.
+//     Postmortem deliberations are visible. The automated metric detection chain
+//     (connection-pool-monitor, alerting-pipeline) is in shadow — those actors
+//     only appear in Day 1 monitoring-service traces, outside this cut's window.
 //
 // Diffing Cut A against Cut B makes the near-disjoint structure of these
 // two epistemic positions visible — neither observer can see the full mesh.
@@ -30,7 +35,9 @@ const incidentDatasetPath = "../../data/examples/incident_response.json"
 // articulateIncidentCutA returns a graph articulated for monitoring-service
 // on Day 1 (2026-05-10). This cut sees the automated detection chain:
 // connection-pool-monitor, alerting-pipeline, pagerduty-webhook.
-// Human coordination (incident-commander, product-manager) is invisible.
+// on-call-engineer and incident-commander appear as targets of monitoring-service
+// traces and are therefore visible nodes. product-manager and database-admin
+// never appear in monitoring-service traces and are in shadow.
 func articulateIncidentCutA(t *testing.T) graph.MeshGraph {
 	t.Helper()
 	traces, err := loader.Load(incidentDatasetPath)
@@ -68,8 +75,8 @@ func articulateIncidentCutB(t *testing.T) graph.MeshGraph {
 
 // TestIncident_CutA_MonitoringService_Day1 articulates with observer
 // "monitoring-service" on 2026-05-10 and verifies the graph contains the
-// automated detection actors. Human coordination should be in the shadow
-// because it is invisible to the monitoring system.
+// automated detection actors. product-manager and database-admin should be
+// in shadow (they never appear in monitoring-service traces).
 func TestIncident_CutA_MonitoringService_Day1(t *testing.T) {
 	g := articulateIncidentCutA(t)
 
@@ -92,11 +99,11 @@ func TestIncident_CutA_MonitoringService_Day1(t *testing.T) {
 			"expected as detection chain origin")
 	}
 
-	// The shadow must be non-empty: human coordination (incident-commander,
+	// The shadow must be non-empty: product-manager and database-admin
 	// product-manager) happens outside the monitoring-service's view.
 	if len(g.Cut.ShadowElements) == 0 {
 		t.Error("ShadowElements: want non-empty for monitoring-service cut; " +
-			"human coordination actors should be invisible to the monitoring system")
+			"product-manager and database-admin should be in shadow for monitoring-service cut")
 	}
 }
 
@@ -155,15 +162,15 @@ func TestIncident_Diff_CutA_CutB(t *testing.T) {
 }
 
 // TestIncident_CutA_HasShadow verifies that the monitoring-service cut
-// has shadow elements. Human coordination (incident-commander, product-manager,
-// customer-support) is invisible to the monitoring system — they never appear
+// has shadow elements. product-manager and database-admin never appear
+// in monitoring-service traces — they never appear
 // in the automated detection chain traces.
 func TestIncident_CutA_HasShadow(t *testing.T) {
 	g := articulateIncidentCutA(t)
 
 	if len(g.Cut.ShadowElements) == 0 {
 		t.Error("ShadowElements: want non-empty for monitoring-service cut; " +
-			"human coordination actors are structurally invisible to automated monitoring")
+			"product-manager and database-admin are structurally invisible to automated monitoring")
 	}
 }
 
