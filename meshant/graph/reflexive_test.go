@@ -483,3 +483,78 @@ func TestArticulationTrace_WhatChanged_BothFilters(t *testing.T) {
 		t.Errorf("WhatChanged %q missing window= component", tr.WhatChanged)
 	}
 }
+
+// --- Group A5: WhatChanged includes tag filter ---
+
+// TestArticulationTrace_WhatChanged_TagsOnly verifies that when the graph's
+// Cut has Tags set but no other filters, the WhatChanged string includes
+// a tags= component.
+func TestArticulationTrace_WhatChanged_TagsOnly(t *testing.T) {
+	g := identifiedGraph(graph.ArticulationOptions{
+		Tags: []string{"critical", "delay"},
+	})
+	tr, err := graph.ArticulationTrace(g, "analyst-1", nil)
+	if err != nil {
+		t.Fatalf("ArticulationTrace returned unexpected error: %v", err)
+	}
+	if !strings.Contains(tr.WhatChanged, "tags=") {
+		t.Errorf("WhatChanged %q does not contain 'tags='; want tag filter description", tr.WhatChanged)
+	}
+	if !strings.Contains(tr.WhatChanged, "critical") {
+		t.Errorf("WhatChanged %q missing tag 'critical'", tr.WhatChanged)
+	}
+}
+
+// TestArticulationTrace_WhatChanged_AllThreeAxes verifies that when all three
+// cut axes are set, all appear in WhatChanged.
+func TestArticulationTrace_WhatChanged_AllThreeAxes(t *testing.T) {
+	g := identifiedGraph(graph.ArticulationOptions{
+		ObserverPositions: []string{"pos-A"},
+		TimeWindow: graph.TimeWindow{
+			Start: time.Date(2026, 4, 14, 0, 0, 0, 0, time.UTC),
+			End:   time.Date(2026, 4, 14, 23, 59, 59, 0, time.UTC),
+		},
+		Tags: []string{"threshold"},
+	})
+	tr, err := graph.ArticulationTrace(g, "analyst-1", nil)
+	if err != nil {
+		t.Fatalf("ArticulationTrace returned unexpected error: %v", err)
+	}
+	if !strings.Contains(tr.WhatChanged, "observer=") {
+		t.Errorf("WhatChanged %q missing observer= component", tr.WhatChanged)
+	}
+	if !strings.Contains(tr.WhatChanged, "window=") {
+		t.Errorf("WhatChanged %q missing window= component", tr.WhatChanged)
+	}
+	if !strings.Contains(tr.WhatChanged, "tags=") {
+		t.Errorf("WhatChanged %q missing tags= component", tr.WhatChanged)
+	}
+}
+
+// TestDiffTrace_WhatChanged_TagsIncluded verifies that cutLabel includes tags
+// when the Cut has Tags set, so diff WhatChanged distinguishes tag-filtered
+// cuts from unfiltered ones.
+func TestDiffTrace_WhatChanged_TagsIncluded(t *testing.T) {
+	g1 := identifiedGraph(graph.ArticulationOptions{
+		ObserverPositions: []string{"pos-A"},
+		Tags:              []string{"critical"},
+	})
+	g2 := identifiedGraph(graph.ArticulationOptions{
+		ObserverPositions: []string{"pos-B"},
+		Tags:              []string{"delay"},
+	})
+	d := graph.IdentifyDiff(graph.Diff(g1, g2))
+	tr, err := graph.DiffTrace(d, g1, g2, "analyst-1")
+	if err != nil {
+		t.Fatalf("DiffTrace returned unexpected error: %v", err)
+	}
+	if !strings.Contains(tr.WhatChanged, "tags=") {
+		t.Errorf("WhatChanged %q missing tags= component", tr.WhatChanged)
+	}
+	if !strings.Contains(tr.WhatChanged, "critical") {
+		t.Errorf("WhatChanged %q missing 'critical' tag", tr.WhatChanged)
+	}
+	if !strings.Contains(tr.WhatChanged, "delay") {
+		t.Errorf("WhatChanged %q missing 'delay' tag", tr.WhatChanged)
+	}
+}

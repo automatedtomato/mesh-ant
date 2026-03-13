@@ -123,6 +123,7 @@ func DiffTrace(d GraphDiff, g1, g2 MeshGraph, observer string) (schema.Trace, er
 // Format:
 //   - observers set, no window:   "articulate: observer=[pos1, pos2]"
 //   - observers set, window set:  "articulate: observer=[pos1, pos2] window=START–END"
+//   - tags set:                   "articulate: observer=[pos1] tags=[delay, threshold]"
 //   - no observers, window set:   "articulate: window=START–END"
 //   - neither set (full cut):     "articulate: full cut"
 func articulationWhatChanged(c Cut) string {
@@ -142,6 +143,10 @@ func articulationWhatChanged(c Cut) string {
 			endStr = c.TimeWindow.End.UTC().Format(time.RFC3339)
 		}
 		parts = append(parts, fmt.Sprintf("window=%s\u2013%s", startStr, endStr))
+	}
+
+	if len(c.Tags) > 0 {
+		parts = append(parts, fmt.Sprintf("tags=[%s]", strings.Join(c.Tags, ", ")))
 	}
 
 	if len(parts) == 0 {
@@ -169,8 +174,8 @@ func diffWhatChanged(from, to Cut) string {
 }
 
 // cutLabel builds the label for one side of a diff's WhatChanged string.
-// It includes observer positions and time window when set, so the label is
-// fully self-situated rather than omitting the temporal dimension.
+// It includes observer positions, time window, and tag filter when set, so
+// the label is fully self-situated across all cut axes.
 func cutLabel(c Cut) string {
 	var parts []string
 
@@ -190,6 +195,10 @@ func cutLabel(c Cut) string {
 			endStr = c.TimeWindow.End.UTC().Format(time.RFC3339)
 		}
 		parts = append(parts, fmt.Sprintf("window=%s\u2013%s", startStr, endStr))
+	}
+
+	if len(c.Tags) > 0 {
+		parts = append(parts, fmt.Sprintf("tags=[%s]", strings.Join(c.Tags, ", ")))
 	}
 
 	return strings.Join(parts, " ")
