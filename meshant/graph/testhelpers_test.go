@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/automatedtomato/mesh-ant/meshant/graph"
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
@@ -20,6 +21,28 @@ func mustParseTime(t *testing.T, s string) time.Time {
 		t.Fatalf("mustParseTime: parse %q: %v", s, err)
 	}
 	return ts
+}
+
+// buildGraph creates a MeshGraph from edges for testing purposes.
+// Nodes are derived from edge Sources and Targets automatically.
+func buildGraph(edges []graph.Edge) graph.MeshGraph {
+	nodes := make(map[string]graph.Node)
+	for _, e := range edges {
+		for _, s := range e.Sources {
+			if _, ok := nodes[s]; !ok {
+				nodes[s] = graph.Node{Name: s, AppearanceCount: 1}
+			}
+		}
+		for _, t := range e.Targets {
+			if _, ok := nodes[t]; !ok {
+				nodes[t] = graph.Node{Name: t, AppearanceCount: 1}
+			}
+		}
+	}
+	return graph.MeshGraph{
+		Nodes: nodes,
+		Edges: edges,
+	}
 }
 
 // validTraceWithElements builds a valid schema.Trace with the given id,

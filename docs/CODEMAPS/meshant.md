@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-13
+**Last Updated:** 2026-03-13 (M10.5 Translation Chain + Classification)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -11,10 +11,10 @@
 |---------|---------|
 | `schema` | Core trace types, graph-reference predicates, and validators. |
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
-| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, export to JSON/DOT/Mermaid. |
+| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff` subcommands. |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow` subcommands. |
 
 ## Package: schema
 
@@ -75,6 +75,9 @@
 | `actor.go` | Graph-as-actor identity: `IdentifyGraph`, `IdentifyDiff`, `GraphRef`, `DiffRef`, `newUUID4`. |
 | `serial.go` | Custom JSON codec for `TimeWindow`: `MarshalJSON`, `UnmarshalJSON`. Null encoding for unbounded bounds. |
 | `reflexive.go` | Reflexive tracing: `ArticulationTrace`, `DiffTrace`. Functions that record articulation and diffing as traces. |
+| `chain.go` | Translation chain traversal: `TranslationChain`, `ChainStep`, `ChainBreak`, `Direction`, `FollowOptions`. `FollowTranslation()` function and unexported helpers. |
+| `classify.go` | Chain classification: `ClassifiedChain`, `ClassifiedStep`, `StepClassification`, `StepKind`, `ClassifyOptions`. `ClassifyChain()` function. Heuristic classification (intermediary, mediator, translation). |
+| `chain_print.go` | Chain output formatting: `PrintChain`, `PrintChainJSON`. Text and JSON rendering of classified chains. |
 | `export.go` | Export functions: `PrintGraphJSON`, `PrintDiffJSON`, `PrintGraphDOT`, `PrintGraphMermaid`, `PrintDiffDOT`, `PrintDiffMermaid`. Internal helpers for DOT/Mermaid formatting. `stripNewlines()` security helper prevents injection from crafted trace values. |
 
 ### Types
@@ -93,6 +96,17 @@
 | `ShadowShift` | `Name`, `Kind` (ShadowShiftKind), `FromReasons`, `ToReasons` ([]ShadowReason) | Element movement across shadow boundary between two graphs (emerged, submerged, reason-changed). |
 | `ShadowShiftKind` | (string constant: `ShadowShiftEmerged`, `ShadowShiftSubmerged`, `ShadowShiftReasonChanged`) | Direction of element movement. |
 | `PersistedNode` | `Name`, `CountFrom`, `CountTo` (int) | Node present in both graphs with appearance count from each. |
+| `Direction` | (string constant: `DirectionForward`, `DirectionBackward`) | Direction of chain traversal: follow edges as targets (forward) or sources (backward). |
+| `ChainStep` | `Step` (int, 0-indexed), `Edge` (Edge), `TargetNode` (string) | One edge in a translation chain; the element we arrived at. |
+| `ChainBreak` | `Step` (ChainStep), `Kind` (ChainBreakKind) | Alternative edge not followed, cycle detected, or depth exceeded. |
+| `ChainBreakKind` | (string constant: `BranchNotTaken`, `DepthExceeded`, `CycleDetected`) | Reason why the chain stopped at this point. |
+| `TranslationChain` | `Element` (string), `Direction` (Direction), `Steps` ([]ChainStep), `Breaks` ([]ChainBreak), `Observer` (string), `GraphID` (string) | Path through a graph from starting element to terminal node, with branches and breaks. |
+| `FollowOptions` | `Direction` (Direction), `DepthLimit` (int, 0=unlimited) | Parameters for translation chain traversal. |
+| `StepKind` | (string constant: `StepKindIntermediary`, `StepKindMediator`, `StepKindTranslation`) | Classification of a chain step based on mediation presence and tags. |
+| `StepClassification` | `Kind` (StepKind), `Rationale` (string) | Classification and explanation for a single chain step. |
+| `ClassifiedStep` | `Step` (ChainStep), `Classification` (StepClassification) | Chain step with its classification. |
+| `ClassifiedChain` | `Chain` (TranslationChain), `ClassifiedSteps` ([]ClassifiedStep), `StepCount` (int) | Translation chain with step-by-step classifications. |
+| `ClassifyOptions` | (empty struct) | Parameters for chain classification; extension point for future equivalence criteria. |
 
 ### Functions
 
@@ -118,6 +132,10 @@
 | `PrintGraphMermaid` | `func PrintGraphMermaid(w io.Writer, g MeshGraph) error` | Export `MeshGraph` as Mermaid flowchart syntax. Sanitized IDs and truncated labels for readability. |
 | `PrintDiffDOT` | `func PrintDiffDOT(w io.Writer, d GraphDiff) error` | Export `GraphDiff` as Graphviz DOT format. Added=green/bold, removed=red/dashed, persisted with count labels, shadow shifts in cluster subgraph. |
 | `PrintDiffMermaid` | `func PrintDiffMermaid(w io.Writer, d GraphDiff) error` | Export `GraphDiff` as Mermaid flowchart. Same visual conventions as DOT diff; style directives for color coding. |
+| `FollowTranslation` | `func FollowTranslation(g MeshGraph, element string, opts FollowOptions) TranslationChain` | Traverse graph from starting element via first-match branching; record alternatives and cycles as breaks. |
+| `ClassifyChain` | `func ClassifyChain(chain TranslationChain, opts ClassifyOptions) ClassifiedChain` | Apply heuristic classification (intermediary, mediator, translation) to each step in a chain. |
+| `PrintChain` | `func PrintChain(w io.Writer, cc ClassifiedChain) error` | Write human-readable classified chain to io.Writer. Includes steps with classifications and breaks with reasons. |
+| `PrintChainJSON` | `func PrintChainJSON(w io.Writer, cc ClassifiedChain) error` | Export `ClassifiedChain` as JSON to io.Writer. |
 
 ## Package: persist
 
@@ -184,6 +202,7 @@ None (persist carries no domain types; wraps graph types).
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
 | `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. |
 | `cmdDiff` | `func cmdDiff(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts (`--observer-a/b`, `--tag-a/b`, per-side time windows), compute diff via `graph.Diff()`. `--format text\|json\|dot\|mermaid`, `--output <file>`. |
+| `cmdFollow` | `func cmdFollow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, follow translation chain from --element with `--direction forward\|backward`, `--depth N`, `--observer`, `--tag`, `--from`, `--to`. Classify and print via `PrintChain()`. `--format text\|json`, `--output <file>`. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
 | `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
 | `usage` | `func usage()` | Print CLI usage message listing all subcommands and flags. |
@@ -285,6 +304,9 @@ cmd/demo/
 | Get graph-reference string | `graph/actor.go` → `GraphRef()` |
 | Record articulation in traces | `graph/reflexive.go` → `ArticulationTrace()` |
 | Record diff in traces | `graph/reflexive.go` → `DiffTrace()` |
+| Follow translation chain | `graph/chain.go` → `FollowTranslation()` |
+| Classify chain steps | `graph/classify.go` → `ClassifyChain()` |
+| Print chain output | `graph/chain_print.go` → `PrintChain()` |
 | TimeWindow JSON encoding | `graph/serial.go` → `MarshalJSON()`, `UnmarshalJSON()` |
 | Export graph to JSON | `graph/export.go` → `PrintGraphJSON()` |
 | Export diff to JSON | `graph/export.go` → `PrintDiffJSON()` |
@@ -338,6 +360,17 @@ cmd/demo/
 - `PrintGraphMermaid()` produces Mermaid flowchart syntax with sanitized IDs and truncated labels
 - All export functions accept `io.Writer` for flexibility (file, buffer, stdout)
 
+### Translation Chains (M10.5)
+- `FollowTranslation()` reads *through* a graph via first-match branching (Layer 4 operation)
+- When multiple edges leave a node, first is followed (by dataset order); others recorded as `branch-not-taken` breaks
+- Breaks record alternatives (branch-not-taken), cycles (cycle-detected), and depth limits (depth-exceeded)
+- Cycle detection includes the closing step in `Steps` before adding a break (asymmetry documented)
+- Classification is observer-position dependent; same chain under different cuts may differ
+- `ClassifyChain()` applies heuristic classification (intermediary/mediator/translation) based on `Mediation` field presence and tags
+- Classification outsources judgment to trace author: if author wrote mediation, we acknowledge it
+- `ClassifyOptions{}` empty in v1; future extension point for equivalence criterion
+- `PrintChain()` always shows breaks (named absence); consistent with shadow philosophy
+
 ## Example Datasets
 
 | Dataset | Location | Size | Observers | Actants | Notes |
@@ -365,6 +398,7 @@ cmd/demo/
 - `docs/decisions/structured-export-v1.md` — graph export to JSON, DOT, Mermaid formats
 - `docs/decisions/cli-v1.md` — CLI design decisions (M9)
 - `docs/decisions/m10-tag-filter-diff-export-cli-v1.md` — Tag-filter axis, diff visual export, CLI integration (M10)
+- `docs/decisions/translation-chain-v1.md` — Translation chain traversal, classification heuristics, first-match branching (M10.5)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 
@@ -381,7 +415,11 @@ cmd/demo/
 - `graph/serial_test.go` — 19 tests, 100%
 - `graph/reflexive_test.go` — 19 tests, 100%
 - `graph/export_test.go` — tests for JSON, DOT, Mermaid export functions
+- `graph/chain_test.go` — unit tests for translation chain traversal (first-match, cycle detection, direction reversal, depth limit)
+- `graph/classify_test.go` — unit tests for chain classification heuristics (intermediary, mediator, translation)
+- `graph/chain_print_test.go` — tests for chain text and JSON output formatting
+- `graph/chain_e2e_test.go` — E2E tests using deforestation, evacuation_order, and incident_response datasets
 - `graph/incident_e2e_test.go` — E2E tests using incident response dataset
 - `persist/persist_test.go` — tests for file I/O functions
 - `cmd/demo/main_test.go` — E2E test
-- `cmd/meshant/main_test.go` — 37 tests, 92.9% coverage (M9 CLI subcommands, flag parsing, error handling)
+- `cmd/meshant/main_test.go` — tests covering all CLI subcommands including follow, flag parsing, file output, error handling
