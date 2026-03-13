@@ -105,4 +105,45 @@ tool needs to stand on. Do that work before adding LLM.
 
 ---
 
-*Last updated: 2026-03-12. This is a note, not a spec. Supersedes `docs/potential-forms.md` (removed).*
+## Post-v1.0.0: what the review surfaced (2026-03-13)
+
+The v1.0.0 review (`docs/reviews/release_v1_review_13-mar-26.md`) identified v1.0.0 as a
+strong Layer 2 — the analytical kernel — surrounded by two thin layers that need thickening:
+
+**Layer 1 — Ingestion / authoring support.**
+How do raw materials become usable traces? The current input model is conceptually elegant
+but practically demanding. It assumes a user who can already think in MeshAnt's terms.
+The central proposal: an intermediate representation (working name: candidate trace / draft
+trace) that sits between unstructured material and canonical `Trace`. It would carry
+uncertainty, evidence spans, confidence flags, provenance — making the authoring cut itself
+inspectable. This is deeply aligned with the method.
+
+**Layer 3 — Interpretation / rendering support.**
+How do MeshAnt outputs become actionable results? The current outputs are methodologically
+rich but demand specialised MeshAnt literacy. Shadow summaries, bottleneck reports,
+observer-gap analysis, re-articulation suggestions — these bridge the gap between the
+analytical object and a practical result.
+
+The review's key constraint for LLM integration:
+
+> Do not hide the cut in the name of usability.
+
+The interactive layer (v2.0.0) should begin as a **trace-authoring companion** — not an
+autonomous analyst. It should suggest candidate traces, surface ambiguity, show provenance,
+and let the user confirm or reject. Assisted authoring with visible uncertainty, not
+automated truth.
+
+### Deferred technical work (kernel deepening)
+
+The review also names work that deepens Layer 2 itself, deferred across multiple milestones:
+
+- Tag-filter cut axis (deferred since M3)
+- GraphDiff DOT / Mermaid export (deferred since M8)
+- Shadow analysis operations (named in sequencing note above)
+- Re-articulation operations
+
+These are not opposed to the Layer 1/3 work. Deepening and extending proceed together.
+
+---
+
+*Last updated: 2026-03-13. This is a note, not a spec. Supersedes `docs/potential-forms.md` (removed).*

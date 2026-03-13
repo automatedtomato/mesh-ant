@@ -73,6 +73,12 @@ const (
 	// that mentioned it did not match the ObserverPositions filter.
 	ShadowReasonObserver ShadowReason = "observer"
 
+	// ShadowReasonTagFilter means the element was excluded because the trace
+	// that mentioned it did not contain any of the Tags in the filter.
+	// Alphabetically between "observer" and "time-window" — this ordering is
+	// preserved in ShadowElement.Reasons slices.
+	ShadowReasonTagFilter ShadowReason = "tag-filter"
+
 	// ShadowReasonTimeWindow means the element was excluded because the trace
 	// that mentioned it fell outside the TimeWindow filter.
 	ShadowReasonTimeWindow ShadowReason = "time-window"
@@ -88,8 +94,12 @@ const (
 // TimeWindow filters traces to those whose Timestamp falls within the window
 // (inclusive on both bounds). A zero TimeWindow means no time filter.
 //
-// When both ObserverPositions and TimeWindow are set, a trace must satisfy BOTH
-// filters to be included (AND semantics).
+// Tags filters traces to those whose Tags slice contains at least one of the
+// listed tag strings (set intersection / any-match semantics). An empty slice
+// means no filter: all traces are included (full tag cut).
+//
+// When multiple filter fields are set, a trace must satisfy ALL active filters
+// (AND semantics across ObserverPositions, TimeWindow, and Tags).
 type ArticulationOptions struct {
 	// ObserverPositions is a list of observer strings to include. When empty,
 	// all traces are included (full cut). When non-empty, only traces whose
@@ -101,6 +111,12 @@ type ArticulationOptions struct {
 	// TimeWindow is a value type — it is copied automatically when opts is
 	// passed by value, so no explicit deep-copy is needed.
 	TimeWindow TimeWindow
+
+	// Tags restricts the cut to traces whose Tags slice contains at least one
+	// of the listed strings (any-match). When empty, all traces are included
+	// (full tag cut). A defensive copy is made in Articulate so that mutations
+	// to this slice after the call do not affect Cut.Tags.
+	Tags []string
 }
 
 // MeshGraph is a provisional, observer-positioned rendering of a trace dataset.
@@ -202,6 +218,11 @@ type Cut struct {
 	// Stored verbatim (value copy) from ArticulationOptions.TimeWindow.
 	TimeWindow TimeWindow `json:"time_window"`
 
+	// Tags lists the tag filter used. Empty means no filter (full tag cut).
+	// A defensive copy of ArticulationOptions.Tags — mutations after the call
+	// do not affect this slice.
+	Tags []string `json:"tags"`
+
 	// TracesIncluded is the number of traces that passed the filter.
 	TracesIncluded int `json:"traces_included"`
 
@@ -249,14 +270,15 @@ type ShadowElement struct {
 	SeenFrom []string `json:"seen_from"`
 
 	// Reasons lists why this element is in the shadow. May contain
-	// ShadowReasonObserver, ShadowReasonTimeWindow, or both. The reasons are
-	// accumulated across all excluded traces that mention this element: if any
-	// excluding trace fails the observer filter, ShadowReasonObserver is present;
-	// if any excluding trace fails the time-window filter, ShadowReasonTimeWindow
-	// is present. This means an element can have both reasons even if no single
-	// trace fails both filters simultaneously. Always sorted deterministically
-	// (observer before time-window). Non-empty whenever the element is in
-	// ShadowElements.
+	// ShadowReasonObserver, ShadowReasonTagFilter, ShadowReasonTimeWindow, or
+	// any combination. The reasons are accumulated across all excluded traces
+	// that mention this element: if any excluding trace fails the observer
+	// filter, ShadowReasonObserver is present; if any fails the tag filter,
+	// ShadowReasonTagFilter is present; if any fails the time-window filter,
+	// ShadowReasonTimeWindow is present. This means an element can have
+	// multiple reasons even if no single trace fails all filters simultaneously.
+	// Always sorted deterministically (observer < tag-filter < time-window).
+	// Non-empty whenever the element is in ShadowElements.
 	Reasons []ShadowReason `json:"reasons"`
 }
 
@@ -264,18 +286,21 @@ type ShadowElement struct {
 type excludedTrace struct {
 	trace           schema.Trace
 	failsObserver   bool
+	failsTagFilter  bool
 	failsTimeWindow bool
 }
 
 // shadowInfo accumulates data about an element that appears in excluded traces.
 // Reasons are accumulated across all excluded traces that mention the element:
 // if any such trace fails the observer filter, failsObserver is set true;
+// if any fails the tag filter, failsTagFilter is set true;
 // if any fails the time-window filter, failsTimeWindow is set true.
-// An element can have both reasons even if no single trace fails both filters.
+// An element can have multiple reasons even if no single trace fails all filters.
 type shadowInfo struct {
 	seenFrom        map[string]bool
 	count           int  // number of excluded traces that mention this element
 	failsObserver   bool // at least one excluding trace failed the observer filter
+	failsTagFilter  bool // at least one excluding trace failed the tag filter
 	failsTimeWindow bool // at least one excluding trace failed the time-window filter
 }
 
@@ -326,6 +351,9 @@ func buildShadowData(excluded []excludedTrace) map[string]*shadowInfo {
 			if ex.failsObserver {
 				data[e].failsObserver = true
 			}
+			if ex.failsTagFilter {
+				data[e].failsTagFilter = true
+			}
 			if ex.failsTimeWindow {
 				data[e].failsTimeWindow = true
 			}
@@ -367,10 +395,13 @@ func buildShadowElements(shadow map[string]*shadowInfo, includedElements map[str
 		}
 		sort.Strings(seenFrom)
 
-		// Reasons are in stable sorted order: observer before time-window.
+		// Reasons are in stable alphabetical order: observer < tag-filter < time-window.
 		var reasons []ShadowReason
 		if sd.failsObserver {
 			reasons = append(reasons, ShadowReasonObserver)
+		}
+		if sd.failsTagFilter {
+			reasons = append(reasons, ShadowReasonTagFilter)
 		}
 		if sd.failsTimeWindow {
 			reasons = append(reasons, ShadowReasonTimeWindow)
@@ -420,6 +451,10 @@ func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
 	// TimeWindow is a value type — opts copy is automatic. No deep-copy needed.
 	tw := opts.TimeWindow
 
+	// Copy Tags for the same defensive-copy reason as ObserverPositions.
+	tagsCopy := make([]string, len(opts.Tags))
+	copy(tagsCopy, opts.Tags)
+
 	// Build observer filter set for O(1) lookup.
 	filterSet := make(map[string]bool, len(positionsCopy))
 	for _, op := range positionsCopy {
@@ -428,13 +463,21 @@ func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
 	observerFiltered := len(filterSet) > 0
 	timeFiltered := !tw.IsZero()
 
+	// Build tag filter set for O(1) lookup.
+	tagFilterSet := make(map[string]bool, len(tagsCopy))
+	for _, tag := range tagsCopy {
+		tagFilterSet[tag] = true
+	}
+	tagFiltered := len(tagFilterSet) > 0
+
 	// Count distinct observers across ALL traces before filtering.
 	allObservers := make(map[string]bool)
 	for _, t := range traces {
 		allObservers[t.Observer] = true
 	}
 
-	// Split traces: a trace is included only if it passes BOTH filters.
+	// Split traces: a trace is included only if it passes ALL active filters
+	// (AND semantics across observer, tag, and time-window axes).
 	var included []schema.Trace
 	var excluded []excludedTrace
 	for _, t := range traces {
@@ -442,12 +485,24 @@ func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
 		passesTime := !timeFiltered ||
 			(tw.Start.IsZero() || !t.Timestamp.Before(tw.Start)) &&
 				(tw.End.IsZero() || !t.Timestamp.After(tw.End))
-		if passesObs && passesTime {
+		// Tag filter: passes if no filter is active, or if any of the trace's
+		// tags appear in the filter set (set-intersection / any-match semantics).
+		passesTags := !tagFiltered
+		if tagFiltered {
+			for _, tag := range t.Tags {
+				if tagFilterSet[tag] {
+					passesTags = true
+					break
+				}
+			}
+		}
+		if passesObs && passesTime && passesTags {
 			included = append(included, t)
 		} else {
 			excluded = append(excluded, excludedTrace{
 				trace:           t,
 				failsObserver:   !passesObs,
+				failsTagFilter:  !passesTags,
 				failsTimeWindow: !passesTime,
 			})
 		}
@@ -485,6 +540,7 @@ func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph {
 		Cut: Cut{
 			ObserverPositions:         positionsCopy,
 			TimeWindow:                tw,
+			Tags:                      tagsCopy,
 			TracesIncluded:            len(included),
 			TracesTotal:               len(traces),
 			DistinctObserversTotal:    len(allObservers),
@@ -521,9 +577,9 @@ func timeWindowLabel(tw TimeWindow) string {
 }
 
 // shadowElementLine formats a single ShadowElement into a printable line.
-// The reason annotation ([observer], [time-window], or [observer, time-window])
-// is appended inline on the same line for compactness. Reasons are in the
-// sorted order guaranteed by Articulate (observer before time-window).
+// The reason annotation (e.g. [observer], [tag-filter, time-window]) is
+// appended inline on the same line for compactness. Reasons are in the
+// sorted order guaranteed by Articulate (observer < tag-filter < time-window).
 func shadowElementLine(se ShadowElement) string {
 	reasonStrs := make([]string, len(se.Reasons))
 	for i, r := range se.Reasons {
@@ -598,6 +654,19 @@ func PrintArticulation(w io.Writer, g MeshGraph) error {
 	// whether a window was set, so readers always know the temporal scope.
 	twLabel := timeWindowLabel(g.Cut.TimeWindow)
 
+	// Tag filter label. Shown on every articulation output so readers know which
+	// tags were used as a filter — or that no filter was applied (full tag cut).
+	// A zero Tags slice is named explicitly to mirror the observer "(all — full cut)"
+	// convention and the time-window "(none — full temporal cut)" convention.
+	tagLabel := "(none — full tag cut)"
+	if len(g.Cut.Tags) > 0 {
+		sanitizedTags := make([]string, len(g.Cut.Tags))
+		for i, tag := range g.Cut.Tags {
+			sanitizedTags[i] = stripNewlines(tag)
+		}
+		tagLabel = strings.Join(sanitizedTags, ", ")
+	}
+
 	// Excluded observer positions are pre-computed in Articulate where the full
 	// observer set is known. Use them directly rather than approximating from
 	// graph structure.
@@ -608,6 +677,7 @@ func PrintArticulation(w io.Writer, g MeshGraph) error {
 		"",
 		fmt.Sprintf("Observer position(s): %s", obsLabel),
 		fmt.Sprintf("Time window:          %s", twLabel),
+		fmt.Sprintf("Tag filter:           %s", tagLabel),
 		fmt.Sprintf("Traces included: %d of %d (distinct observers in full dataset: %d)",
 			g.Cut.TracesIncluded, g.Cut.TracesTotal, g.Cut.DistinctObserversTotal),
 		"",
@@ -625,7 +695,11 @@ func PrintArticulation(w io.Writer, g MeshGraph) error {
 		if len(id) > 8 {
 			id = id[:8] + "..."
 		}
-		lines = append(lines, fmt.Sprintf("  %s  %v  %s", id, e.Tags, e.WhatChanged))
+		sanitizedEdgeTags := make([]string, len(e.Tags))
+		for i, tag := range e.Tags {
+			sanitizedEdgeTags[i] = stripNewlines(tag)
+		}
+		lines = append(lines, fmt.Sprintf("  %s  %v  %s", id, sanitizedEdgeTags, e.WhatChanged))
 	}
 
 	lines = append(lines, "")

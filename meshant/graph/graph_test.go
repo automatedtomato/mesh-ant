@@ -1563,3 +1563,561 @@ func TestArticulate_TimeWindow_ShadowCount_FromTimeExcludedTraces(t *testing.T) 
 		}
 	}
 }
+
+// --- Group 12: Tag filter logic ---
+
+// traceWithTags returns a minimal valid schema.Trace with the given id, observer,
+// and tags slice. Used by Group 12/13 tests to exercise tag-filter filtering.
+func traceWithTags(id, observer string, tags []string) schema.Trace {
+	return schema.Trace{
+		ID:          id,
+		Timestamp:   time.Date(2026, 3, 11, 10, 0, 0, 0, time.UTC),
+		WhatChanged: "something changed",
+		Observer:    observer,
+		Tags:        tags,
+	}
+}
+
+// TestArticulate_TagFilter_EmptyTags_FullCut verifies that an empty Tags slice
+// in ArticulationOptions includes all traces (backward compat: zero = no filter).
+func TestArticulate_TagFilter_EmptyTags_FullCut(t *testing.T) {
+	traces := []schema.Trace{
+		traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"}),
+		traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", []string{"delay"}),
+		traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", "obs-a", nil),
+	}
+	opts := graph.ArticulationOptions{Tags: nil}
+	g := graph.Articulate(traces, opts)
+	if g.Cut.TracesIncluded != 3 {
+		t.Errorf("TracesIncluded: want 3 (empty Tags = full cut), got %d", g.Cut.TracesIncluded)
+	}
+}
+
+// TestArticulate_TagFilter_SingleTag_Match verifies that a single-tag filter
+// includes only traces whose Tags contain that value.
+func TestArticulate_TagFilter_SingleTag_Match(t *testing.T) {
+	t1 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"})
+	t1.Source = []string{"elem-a"}
+	t2 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", []string{"delay"})
+	t2.Source = []string{"elem-b"}
+
+	opts := graph.ArticulationOptions{Tags: []string{"critical"}}
+	g := graph.Articulate([]schema.Trace{t1, t2}, opts)
+	if g.Cut.TracesIncluded != 1 {
+		t.Errorf("TracesIncluded: want 1, got %d", g.Cut.TracesIncluded)
+	}
+	if _, ok := g.Nodes["elem-a"]; !ok {
+		t.Error("elem-a: want in Nodes (matched critical tag), not found")
+	}
+}
+
+// TestArticulate_TagFilter_MultiTag_Union verifies that any overlap between a
+// trace's tags and the filter Tags includes the trace (set-intersection / any-match).
+func TestArticulate_TagFilter_MultiTag_Union(t *testing.T) {
+	t1 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"})
+	t1.Source = []string{"elem-a"}
+	t2 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", []string{"delay"})
+	t2.Source = []string{"elem-b"}
+	t3 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", "obs-a", []string{"translation"})
+	t3.Source = []string{"elem-c"}
+
+	opts := graph.ArticulationOptions{Tags: []string{"critical", "delay"}}
+	g := graph.Articulate([]schema.Trace{t1, t2, t3}, opts)
+	if g.Cut.TracesIncluded != 2 {
+		t.Errorf("TracesIncluded: want 2 (critical OR delay), got %d", g.Cut.TracesIncluded)
+	}
+}
+
+// TestArticulate_TagFilter_NoMatch_ZeroTraces verifies that a tag filter that
+// matches no traces produces TracesIncluded == 0 and all elements in shadow.
+func TestArticulate_TagFilter_NoMatch_ZeroTraces(t *testing.T) {
+	t1 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"})
+	t1.Source = []string{"elem-a"}
+	t1.Target = []string{"elem-b"}
+
+	opts := graph.ArticulationOptions{Tags: []string{"no-such-tag"}}
+	g := graph.Articulate([]schema.Trace{t1}, opts)
+	if g.Cut.TracesIncluded != 0 {
+		t.Errorf("TracesIncluded: want 0, got %d", g.Cut.TracesIncluded)
+	}
+	if len(g.Cut.ShadowElements) == 0 {
+		t.Error("ShadowElements: want non-empty when all traces excluded by tag filter")
+	}
+}
+
+// TestArticulate_TagFilter_EmptyTraceTags_Excluded verifies that a trace with
+// no tags (nil Tags) is excluded when a tag filter is active.
+func TestArticulate_TagFilter_EmptyTraceTags_Excluded(t *testing.T) {
+	t1 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", nil)
+	t1.Source = []string{"elem-no-tags"}
+
+	opts := graph.ArticulationOptions{Tags: []string{"critical"}}
+	g := graph.Articulate([]schema.Trace{t1}, opts)
+	if g.Cut.TracesIncluded != 0 {
+		t.Errorf("TracesIncluded: want 0 for trace with no tags when filter is active, got %d", g.Cut.TracesIncluded)
+	}
+}
+
+// TestArticulate_TagFilter_ShadowPopulated verifies that elements from
+// tag-excluded traces appear in Cut.ShadowElements.
+func TestArticulate_TagFilter_ShadowPopulated(t *testing.T) {
+	t1 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"})
+	t1.Source = []string{"included-elem"}
+	t2 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", []string{"delay"})
+	t2.Source = []string{"shadow-elem"}
+
+	opts := graph.ArticulationOptions{Tags: []string{"critical"}}
+	g := graph.Articulate([]schema.Trace{t1, t2}, opts)
+
+	found := false
+	for _, se := range g.Cut.ShadowElements {
+		if se.Name == "shadow-elem" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("ShadowElements: shadow-elem should appear when its trace was excluded by tag filter")
+	}
+}
+
+// TestArticulate_TagFilter_ShadowElementsNotInNodes verifies that elements
+// exclusively in tag-excluded traces do not appear in the Nodes map.
+func TestArticulate_TagFilter_ShadowElementsNotInNodes(t *testing.T) {
+	t1 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"})
+	t1.Source = []string{"included-elem"}
+	t2 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", []string{"delay"})
+	t2.Source = []string{"shadow-only-elem"}
+
+	opts := graph.ArticulationOptions{Tags: []string{"critical"}}
+	g := graph.Articulate([]schema.Trace{t1, t2}, opts)
+
+	if _, ok := g.Nodes["shadow-only-elem"]; ok {
+		t.Error("Nodes: shadow-only-elem must not appear in Nodes (tag-excluded trace)")
+	}
+}
+
+// TestArticulate_TagFilter_CutTagsStoredVerbatim verifies that Cut.Tags contains
+// exactly the tags slice passed in ArticulationOptions.
+func TestArticulate_TagFilter_CutTagsStoredVerbatim(t *testing.T) {
+	traces := []schema.Trace{
+		traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"}),
+	}
+	opts := graph.ArticulationOptions{Tags: []string{"critical", "delay"}}
+	g := graph.Articulate(traces, opts)
+
+	if len(g.Cut.Tags) != 2 {
+		t.Fatalf("Cut.Tags length: want 2, got %d", len(g.Cut.Tags))
+	}
+	if g.Cut.Tags[0] != "critical" || g.Cut.Tags[1] != "delay" {
+		t.Errorf("Cut.Tags: want [critical delay], got %v", g.Cut.Tags)
+	}
+}
+
+// TestArticulate_TagFilter_DefensiveCopy verifies that mutating opts.Tags after
+// calling Articulate does not affect the stored Cut.Tags.
+func TestArticulate_TagFilter_DefensiveCopy(t *testing.T) {
+	tags := []string{"critical", "delay"}
+	traces := []schema.Trace{
+		traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"}),
+	}
+	opts := graph.ArticulationOptions{Tags: tags}
+	g := graph.Articulate(traces, opts)
+
+	// Mutate the original slice after the call
+	tags[0] = "MUTATED"
+
+	if g.Cut.Tags[0] != "critical" {
+		t.Errorf("Cut.Tags[0]: mutation of opts.Tags must not affect stored Cut.Tags; got %q", g.Cut.Tags[0])
+	}
+}
+
+// TestArticulate_TagFilter_CombinedWithObserver_AND verifies that observer and
+// tag filters use AND semantics: a trace must pass BOTH to be included.
+func TestArticulate_TagFilter_CombinedWithObserver_AND(t *testing.T) {
+	// passes observer, passes tag
+	t1 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"})
+	t1.Source = []string{"elem-passes-both"}
+	// passes observer, fails tag
+	t2 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", []string{"delay"})
+	t2.Source = []string{"elem-passes-obs-only"}
+	// fails observer, passes tag
+	t3 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", "obs-b", []string{"critical"})
+	t3.Source = []string{"elem-passes-tag-only"}
+
+	opts := graph.ArticulationOptions{
+		ObserverPositions: []string{"obs-a"},
+		Tags:              []string{"critical"},
+	}
+	g := graph.Articulate([]schema.Trace{t1, t2, t3}, opts)
+
+	if g.Cut.TracesIncluded != 1 {
+		t.Errorf("TracesIncluded: want 1 (AND: obs-a AND critical), got %d", g.Cut.TracesIncluded)
+	}
+	if _, ok := g.Nodes["elem-passes-both"]; !ok {
+		t.Error("elem-passes-both: want in Nodes (passes both filters)")
+	}
+}
+
+// TestArticulate_TagFilter_CombinedWithTimeWindow_AND verifies that time-window
+// and tag filters use AND semantics.
+func TestArticulate_TagFilter_CombinedWithTimeWindow_AND(t *testing.T) {
+	inWindow := mustParseTime(t, "2026-03-11T10:00:00Z")
+	outWindow := mustParseTime(t, "2026-03-18T10:00:00Z")
+
+	// passes time window, passes tag
+	t1 := schema.Trace{
+		ID: "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", Timestamp: inWindow,
+		WhatChanged: "test", Observer: "obs-a",
+		Tags: []string{"critical"}, Source: []string{"elem-passes-both"},
+	}
+	// passes time window, fails tag
+	t2 := schema.Trace{
+		ID: "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", Timestamp: inWindow,
+		WhatChanged: "test", Observer: "obs-a",
+		Tags: []string{"delay"}, Source: []string{"elem-passes-time-only"},
+	}
+	// fails time window, passes tag
+	t3 := schema.Trace{
+		ID: "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", Timestamp: outWindow,
+		WhatChanged: "test", Observer: "obs-a",
+		Tags: []string{"critical"}, Source: []string{"elem-passes-tag-only"},
+	}
+
+	opts := graph.ArticulationOptions{
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTime(t, "2026-03-11T09:00:00Z"),
+			End:   mustParseTime(t, "2026-03-11T11:00:00Z"),
+		},
+		Tags: []string{"critical"},
+	}
+	g := graph.Articulate([]schema.Trace{t1, t2, t3}, opts)
+
+	if g.Cut.TracesIncluded != 1 {
+		t.Errorf("TracesIncluded: want 1 (AND: time-window AND critical), got %d", g.Cut.TracesIncluded)
+	}
+}
+
+// TestArticulate_TagFilter_CombinedAllThree_AND verifies that observer,
+// time-window, and tag filters all use AND semantics together.
+func TestArticulate_TagFilter_CombinedAllThree_AND(t *testing.T) {
+	inWindow := mustParseTime(t, "2026-03-11T10:00:00Z")
+	outWindow := mustParseTime(t, "2026-03-18T10:00:00Z")
+
+	// passes all three
+	t1 := schema.Trace{
+		ID: "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", Timestamp: inWindow,
+		WhatChanged: "test", Observer: "obs-a",
+		Tags: []string{"critical"}, Source: []string{"elem-all-pass"},
+	}
+	// fails observer only
+	t2 := schema.Trace{
+		ID: "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", Timestamp: inWindow,
+		WhatChanged: "test", Observer: "obs-b",
+		Tags: []string{"critical"}, Source: []string{"elem-fails-obs"},
+	}
+	// fails time window only
+	t3 := schema.Trace{
+		ID: "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", Timestamp: outWindow,
+		WhatChanged: "test", Observer: "obs-a",
+		Tags: []string{"critical"}, Source: []string{"elem-fails-time"},
+	}
+	// fails tag only
+	t4 := schema.Trace{
+		ID: "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee04", Timestamp: inWindow,
+		WhatChanged: "test", Observer: "obs-a",
+		Tags: []string{"delay"}, Source: []string{"elem-fails-tag"},
+	}
+
+	opts := graph.ArticulationOptions{
+		ObserverPositions: []string{"obs-a"},
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTime(t, "2026-03-11T09:00:00Z"),
+			End:   mustParseTime(t, "2026-03-11T11:00:00Z"),
+		},
+		Tags: []string{"critical"},
+	}
+	g := graph.Articulate([]schema.Trace{t1, t2, t3, t4}, opts)
+
+	if g.Cut.TracesIncluded != 1 {
+		t.Errorf("TracesIncluded: want 1 (all three AND), got %d", g.Cut.TracesIncluded)
+	}
+}
+
+// --- Group 13: Shadow reasons with tag-filter ---
+
+// TestArticulate_ShadowReason_TagFilterOnly verifies that an element excluded
+// solely by the tag filter has Reasons == [ShadowReasonTagFilter].
+func TestArticulate_ShadowReason_TagFilterOnly(t *testing.T) {
+	t1 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"})
+	t1.Source = []string{"visible-elem"}
+	t2 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", []string{"delay"})
+	t2.Source = []string{"shadow-elem"}
+
+	opts := graph.ArticulationOptions{Tags: []string{"critical"}}
+	g := graph.Articulate([]schema.Trace{t1, t2}, opts)
+
+	var found *graph.ShadowElement
+	for i := range g.Cut.ShadowElements {
+		if g.Cut.ShadowElements[i].Name == "shadow-elem" {
+			found = &g.Cut.ShadowElements[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("ShadowElements: shadow-elem not found")
+	}
+	if len(found.Reasons) != 1 || found.Reasons[0] != graph.ShadowReasonTagFilter {
+		t.Errorf("Reasons: want [tag-filter], got %v", found.Reasons)
+	}
+}
+
+// TestArticulate_ShadowReason_ObserverAndTagFilter verifies that an element
+// excluded by both observer and tag filters has Reasons == [observer, tag-filter]
+// in alphabetical order.
+func TestArticulate_ShadowReason_ObserverAndTagFilter(t *testing.T) {
+	t1 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"})
+	t1.Source = []string{"visible-elem"}
+	// fails observer (obs-b, not obs-a) AND fails tag (no "critical")
+	t2 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-b", []string{"delay"})
+	t2.Source = []string{"shadow-elem-both"}
+
+	opts := graph.ArticulationOptions{
+		ObserverPositions: []string{"obs-a"},
+		Tags:              []string{"critical"},
+	}
+	g := graph.Articulate([]schema.Trace{t1, t2}, opts)
+
+	var found *graph.ShadowElement
+	for i := range g.Cut.ShadowElements {
+		if g.Cut.ShadowElements[i].Name == "shadow-elem-both" {
+			found = &g.Cut.ShadowElements[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("ShadowElements: shadow-elem-both not found")
+	}
+	// Alphabetical: "observer" < "tag-filter"
+	if len(found.Reasons) != 2 ||
+		found.Reasons[0] != graph.ShadowReasonObserver ||
+		found.Reasons[1] != graph.ShadowReasonTagFilter {
+		t.Errorf("Reasons: want [observer tag-filter], got %v", found.Reasons)
+	}
+}
+
+// TestArticulate_ShadowReason_TagFilterAndTimeWindow verifies that an element
+// excluded by both tag filter and time window has Reasons == [tag-filter, time-window]
+// in alphabetical order.
+func TestArticulate_ShadowReason_TagFilterAndTimeWindow(t *testing.T) {
+	inWindow := mustParseTime(t, "2026-03-11T10:00:00Z")
+	outWindow := mustParseTime(t, "2026-03-18T10:00:00Z")
+
+	// included trace (passes time window, passes tag)
+	t1 := schema.Trace{
+		ID: "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", Timestamp: inWindow,
+		WhatChanged: "test", Observer: "obs-a",
+		Tags: []string{"critical"}, Source: []string{"visible-elem"},
+	}
+	// fails time window AND fails tag
+	t2 := schema.Trace{
+		ID: "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", Timestamp: outWindow,
+		WhatChanged: "test", Observer: "obs-a",
+		Tags: []string{"delay"}, Source: []string{"shadow-elem"},
+	}
+
+	opts := graph.ArticulationOptions{
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTime(t, "2026-03-11T09:00:00Z"),
+			End:   mustParseTime(t, "2026-03-11T11:00:00Z"),
+		},
+		Tags: []string{"critical"},
+	}
+	g := graph.Articulate([]schema.Trace{t1, t2}, opts)
+
+	var found *graph.ShadowElement
+	for i := range g.Cut.ShadowElements {
+		if g.Cut.ShadowElements[i].Name == "shadow-elem" {
+			found = &g.Cut.ShadowElements[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("ShadowElements: shadow-elem not found")
+	}
+	// Alphabetical: "tag-filter" < "time-window"
+	if len(found.Reasons) != 2 ||
+		found.Reasons[0] != graph.ShadowReasonTagFilter ||
+		found.Reasons[1] != graph.ShadowReasonTimeWindow {
+		t.Errorf("Reasons: want [tag-filter time-window], got %v", found.Reasons)
+	}
+}
+
+// TestArticulate_ShadowReason_AllThree verifies that an element excluded by all
+// three filters accumulates all three reasons in alphabetical order:
+// [observer, tag-filter, time-window].
+func TestArticulate_ShadowReason_AllThree(t *testing.T) {
+	inWindow := mustParseTime(t, "2026-03-11T10:00:00Z")
+	outWindow := mustParseTime(t, "2026-03-18T10:00:00Z")
+
+	// included trace
+	t1 := schema.Trace{
+		ID: "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", Timestamp: inWindow,
+		WhatChanged: "test", Observer: "obs-a",
+		Tags: []string{"critical"}, Source: []string{"visible-elem"},
+	}
+	// fails all three: wrong observer, wrong tag, out of time window
+	t2 := schema.Trace{
+		ID: "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", Timestamp: outWindow,
+		WhatChanged: "test", Observer: "obs-b",
+		Tags: []string{"delay"}, Source: []string{"shadow-all-three"},
+	}
+
+	opts := graph.ArticulationOptions{
+		ObserverPositions: []string{"obs-a"},
+		TimeWindow: graph.TimeWindow{
+			Start: mustParseTime(t, "2026-03-11T09:00:00Z"),
+			End:   mustParseTime(t, "2026-03-11T11:00:00Z"),
+		},
+		Tags: []string{"critical"},
+	}
+	g := graph.Articulate([]schema.Trace{t1, t2}, opts)
+
+	var found *graph.ShadowElement
+	for i := range g.Cut.ShadowElements {
+		if g.Cut.ShadowElements[i].Name == "shadow-all-three" {
+			found = &g.Cut.ShadowElements[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("ShadowElements: shadow-all-three not found")
+	}
+	// Alphabetical: observer < tag-filter < time-window
+	if len(found.Reasons) != 3 ||
+		found.Reasons[0] != graph.ShadowReasonObserver ||
+		found.Reasons[1] != graph.ShadowReasonTagFilter ||
+		found.Reasons[2] != graph.ShadowReasonTimeWindow {
+		t.Errorf("Reasons: want [observer tag-filter time-window], got %v", found.Reasons)
+	}
+}
+
+// TestArticulate_ShadowReason_TagFilter_CrossTraceAccumulation verifies that an
+// element accumulates ShadowReasonTagFilter when it appears in tag-excluded traces
+// from multiple separate traces.
+func TestArticulate_ShadowReason_TagFilter_CrossTraceAccumulation(t *testing.T) {
+	// included trace
+	t1 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01", "obs-a", []string{"critical"})
+	t1.Source = []string{"visible-elem"}
+	// excluded by tag, trace 2
+	t2 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee02", "obs-a", []string{"delay"})
+	t2.Source = []string{"shared-shadow-elem"}
+	// excluded by tag, trace 3 (different tag, same element)
+	t3 := traceWithTags("aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee03", "obs-a", []string{"translation"})
+	t3.Source = []string{"shared-shadow-elem"}
+
+	opts := graph.ArticulationOptions{Tags: []string{"critical"}}
+	g := graph.Articulate([]schema.Trace{t1, t2, t3}, opts)
+
+	var found *graph.ShadowElement
+	for i := range g.Cut.ShadowElements {
+		if g.Cut.ShadowElements[i].Name == "shared-shadow-elem" {
+			found = &g.Cut.ShadowElements[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("ShadowElements: shared-shadow-elem not found")
+	}
+	// Accumulated from 2 excluded traces — reason should still be just [tag-filter]
+	if len(found.Reasons) != 1 || found.Reasons[0] != graph.ShadowReasonTagFilter {
+		t.Errorf("Reasons: want [tag-filter], got %v", found.Reasons)
+	}
+}
+
+// --- Group 14: PrintArticulation tag-filter output ---
+
+// newGraphForPrintWithTagFilter builds a MeshGraph with a tag-filter cut for
+// PrintArticulation output tests.
+func newGraphForPrintWithTagFilter() graph.MeshGraph {
+	return graph.MeshGraph{
+		Nodes: map[string]graph.Node{
+			"element-alpha": {Name: "element-alpha", AppearanceCount: 1},
+		},
+		Edges: []graph.Edge{
+			{
+				TraceID:     "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01",
+				WhatChanged: "something changed",
+				Observer:    "observer-a",
+				Tags:        []string{"critical"},
+			},
+		},
+		Cut: graph.Cut{
+			ObserverPositions:      []string{"observer-a"},
+			Tags:                   []string{"critical"},
+			TracesIncluded:         1,
+			TracesTotal:            2,
+			DistinctObserversTotal: 1,
+			ShadowElements: []graph.ShadowElement{
+				{
+					Name:    "shadow-element",
+					Reasons: []graph.ShadowReason{graph.ShadowReasonTagFilter},
+				},
+			},
+		},
+	}
+}
+
+// TestPrintArticulation_TagFilter_LinePresent verifies that PrintArticulation
+// output contains a "Tag filter:" line when Tags is non-empty.
+func TestPrintArticulation_TagFilter_LinePresent(t *testing.T) {
+	var buf bytes.Buffer
+	if err := graph.PrintArticulation(&buf, newGraphForPrintWithTagFilter()); err != nil {
+		t.Fatalf("PrintArticulation returned error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Tag filter:") {
+		t.Errorf("output missing %q line\nGot:\n%s", "Tag filter:", out)
+	}
+	if !strings.Contains(out, "critical") {
+		t.Errorf("output missing tag value %q in tag filter line\nGot:\n%s", "critical", out)
+	}
+}
+
+// TestPrintArticulation_TagFilter_FullCutWhenEmpty verifies that PrintArticulation
+// output shows a "(none — full tag cut)" marker when Tags is nil.
+func TestPrintArticulation_TagFilter_FullCutWhenEmpty(t *testing.T) {
+	g := graph.MeshGraph{
+		Nodes: map[string]graph.Node{},
+		Edges: []graph.Edge{},
+		Cut: graph.Cut{
+			Tags:           nil, // empty = full tag cut
+			TracesIncluded: 0,
+			TracesTotal:    0,
+		},
+	}
+	var buf bytes.Buffer
+	if err := graph.PrintArticulation(&buf, g); err != nil {
+		t.Fatalf("PrintArticulation returned error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Tag filter:") {
+		t.Errorf("output missing %q line\nGot:\n%s", "Tag filter:", out)
+	}
+	if !strings.Contains(out, "full tag cut") {
+		t.Errorf("output missing %q marker for empty Tags\nGot:\n%s", "full tag cut", out)
+	}
+}
+
+// TestPrintArticulation_TagFilter_ShadowReasonAnnotation verifies that a shadow
+// element with Reasons=[tag-filter] renders [tag-filter] in the output.
+func TestPrintArticulation_TagFilter_ShadowReasonAnnotation(t *testing.T) {
+	var buf bytes.Buffer
+	if err := graph.PrintArticulation(&buf, newGraphForPrintWithTagFilter()); err != nil {
+		t.Fatalf("PrintArticulation returned error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "[tag-filter]") {
+		t.Errorf("output missing %q annotation\nGot:\n%s", "[tag-filter]", out)
+	}
+}

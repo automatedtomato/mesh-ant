@@ -6,7 +6,7 @@
 //
 // Coverage note: main() itself is untestable from Go tests (Go cannot cover
 // the main function). The testable surface — run(), cmdSummarize(),
-// cmdValidate(), usage(), usageError() — should exceed 80% coverage.
+// cmdValidate(), usage() — should exceed 80% coverage.
 //
 // Dataset paths are relative to the test execution directory
 // (meshant/cmd/meshant/). The module root is meshant/, so three levels up
@@ -16,6 +16,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -407,42 +408,8 @@ func TestCmdDiff_MissingObserverB(t *testing.T) {
 	}
 }
 
-// TestCmdDiff_FormatDOT_Rejected verifies that --format dot is rejected with
-// an error containing "not supported", because PrintDiffDOT does not exist.
-func TestCmdDiff_FormatDOT_Rejected(t *testing.T) {
-	var buf bytes.Buffer
-	err := cmdDiff(&buf, []string{
-		"--observer-a", "meteorological-analyst",
-		"--observer-b", "local-mayor",
-		"--format", "dot",
-		evacuationDataset,
-	})
-	if err == nil {
-		t.Fatal("cmdDiff() --format dot: want non-nil error, got nil")
-	}
-	if !strings.Contains(err.Error(), "not supported") {
-		t.Errorf("cmdDiff() --format dot error = %q; want it to contain \"not supported\"", err.Error())
-	}
-}
-
-// TestCmdDiff_FormatMermaid_Rejected verifies that --format mermaid is
-// rejected with an error containing "not supported", because
-// PrintDiffMermaid does not exist.
-func TestCmdDiff_FormatMermaid_Rejected(t *testing.T) {
-	var buf bytes.Buffer
-	err := cmdDiff(&buf, []string{
-		"--observer-a", "meteorological-analyst",
-		"--observer-b", "local-mayor",
-		"--format", "mermaid",
-		evacuationDataset,
-	})
-	if err == nil {
-		t.Fatal("cmdDiff() --format mermaid: want non-nil error, got nil")
-	}
-	if !strings.Contains(err.Error(), "not supported") {
-		t.Errorf("cmdDiff() --format mermaid error = %q; want it to contain \"not supported\"", err.Error())
-	}
-}
+// TestCmdDiff_FormatDOT_Rejected and TestCmdDiff_FormatMermaid_Rejected
+// removed: DOT and Mermaid are now supported for diffs (M10.2/M10.3).
 
 // TestCmdDiff_UnknownFormat verifies that an unrecognised --format value
 // returns an error containing "unknown".
@@ -458,7 +425,7 @@ func TestCmdDiff_UnknownFormat(t *testing.T) {
 		t.Fatal("cmdDiff() --format xml: want non-nil error, got nil")
 	}
 	if !strings.Contains(err.Error(), "unknown") {
-		t.Errorf("cmdDiff() --format xml error = %q; want it to contain \"unknown\"", err.Error())
+		t.Errorf("cmdDiff() error = %q; want it to contain \"unknown\"", err.Error())
 	}
 }
 
@@ -591,5 +558,283 @@ func TestStringSliceFlag_EmptyValueRejected(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("cmdArticulate() with --observer \"\": want non-nil error, got nil")
+	}
+}
+
+// --- Group 6: --tag flag on articulate (M10.3) ---
+
+// TestCmdArticulate_WithTag verifies that --tag is accepted and produces
+// non-empty output when the tag exists in the dataset. The evacuation dataset
+// has traces tagged "delay".
+func TestCmdArticulate_WithTag(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--tag", "delay",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --tag delay returned unexpected error: %v", err)
+	}
+	if len(buf.String()) == 0 {
+		t.Error("cmdArticulate() --tag delay produced empty output; want non-empty")
+	}
+}
+
+// TestCmdArticulate_WithMultipleTags verifies that --tag is repeatable and
+// passes multiple tags to ArticulationOptions.Tags (any-match / OR semantics).
+func TestCmdArticulate_WithMultipleTags(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--tag", "delay",
+		"--tag", "threshold",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --tag x --tag y returned unexpected error: %v", err)
+	}
+}
+
+// TestCmdArticulate_TagEmptyRejected verifies that --tag "" is rejected.
+func TestCmdArticulate_TagEmptyRejected(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--tag", "",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdArticulate() --tag \"\": want non-nil error, got nil")
+	}
+}
+
+// --- Group 7: diff --format dot|mermaid unlocked (M10.3) ---
+
+// TestCmdDiff_FormatDOT verifies that --format dot now produces output
+// containing "digraph" (DOT language). Previously rejected; unlocked by M10.2.
+func TestCmdDiff_FormatDOT(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--format", "dot",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff() --format dot returned unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "digraph") {
+		t.Errorf("cmdDiff() --format dot: output does not contain \"digraph\"; got:\n%s", buf.String())
+	}
+}
+
+// TestCmdDiff_FormatMermaid verifies that --format mermaid now produces output
+// containing "flowchart" (Mermaid graph declaration).
+func TestCmdDiff_FormatMermaid(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--format", "mermaid",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff() --format mermaid returned unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "flowchart") {
+		t.Errorf("cmdDiff() --format mermaid: output does not contain \"flowchart\"; got:\n%s", buf.String())
+	}
+}
+
+// --- Group 8: --tag-a / --tag-b on diff (M10.3) ---
+
+// TestCmdDiff_WithTagA verifies that --tag-a is accepted and passes tag
+// filters to side A's ArticulationOptions.
+func TestCmdDiff_WithTagA(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--tag-a", "delay",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff() --tag-a delay returned unexpected error: %v", err)
+	}
+}
+
+// TestCmdDiff_WithTagB verifies that --tag-b is accepted and passes tag
+// filters to side B's ArticulationOptions.
+func TestCmdDiff_WithTagB(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--tag-b", "delay",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff() --tag-b delay returned unexpected error: %v", err)
+	}
+}
+
+// TestCmdDiff_WithBothTags verifies that --tag-a and --tag-b can be used
+// together to filter each side independently.
+func TestCmdDiff_WithBothTags(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--tag-a", "delay",
+		"--tag-b", "threshold",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff() --tag-a + --tag-b returned unexpected error: %v", err)
+	}
+}
+
+// TestCmdDiff_TagAEmptyRejected verifies that --tag-a "" is rejected.
+func TestCmdDiff_TagAEmptyRejected(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--tag-a", "",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() --tag-a \"\": want non-nil error, got nil")
+	}
+}
+
+// TestCmdDiff_TagBEmptyRejected verifies that --tag-b "" is rejected.
+func TestCmdDiff_TagBEmptyRejected(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--tag-b", "",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() --tag-b \"\": want non-nil error, got nil")
+	}
+}
+
+// --- Group 9: --output flag (M10.3) ---
+
+// TestCmdArticulate_Output verifies that --output writes the articulation to
+// the specified file instead of stdout. The buffer (stdout) should receive a
+// confirmation message, not the articulation output.
+func TestCmdArticulate_Output(t *testing.T) {
+	outFile := t.TempDir() + "/test.dot"
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--format", "dot",
+		"--output", outFile,
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --output returned unexpected error: %v", err)
+	}
+	// stdout should have a confirmation message naming the file.
+	if !strings.Contains(buf.String(), outFile) {
+		t.Errorf("cmdArticulate() --output: stdout does not mention output file; got: %q", buf.String())
+	}
+	// The file should exist and contain DOT output.
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if !strings.Contains(string(data), "digraph") {
+		t.Errorf("output file does not contain \"digraph\"; got:\n%s", string(data))
+	}
+}
+
+// TestCmdArticulate_OutputMermaid verifies --output with --format mermaid.
+func TestCmdArticulate_OutputMermaid(t *testing.T) {
+	outFile := t.TempDir() + "/test.mmd"
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--format", "mermaid",
+		"--output", outFile,
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --output mermaid returned unexpected error: %v", err)
+	}
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if !strings.Contains(string(data), "flowchart") {
+		t.Errorf("output file does not contain \"flowchart\"; got:\n%s", string(data))
+	}
+}
+
+// TestCmdDiff_Output verifies that --output writes the diff to a file.
+func TestCmdDiff_Output(t *testing.T) {
+	outFile := t.TempDir() + "/diff.dot"
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--format", "dot",
+		"--output", outFile,
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDiff() --output returned unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), outFile) {
+		t.Errorf("cmdDiff() --output: stdout does not mention output file; got: %q", buf.String())
+	}
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if !strings.Contains(string(data), "digraph") {
+		t.Errorf("output file does not contain \"digraph\"; got:\n%s", string(data))
+	}
+}
+
+// TestCmdArticulate_OutputBadPath verifies that --output with an invalid path
+// returns an error rather than silently failing.
+func TestCmdArticulate_OutputBadPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--format", "dot",
+		"--output", "/nonexistent/dir/file.dot",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdArticulate() --output bad path: want non-nil error, got nil")
+	}
+}
+
+// TestCmdArticulate_OutputText verifies that --output works with --format text
+// (default format), not just DOT/Mermaid.
+func TestCmdArticulate_OutputText(t *testing.T) {
+	outFile := t.TempDir() + "/graph.txt"
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--output", outFile,
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --output text returned unexpected error: %v", err)
+	}
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("output file is empty; want non-empty")
 	}
 }

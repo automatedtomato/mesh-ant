@@ -43,7 +43,7 @@ func (f *stringSliceFlag) String() string { return strings.Join(*f, ",") }
 // early rather than silently producing an empty-observer articulation.
 func (f *stringSliceFlag) Set(v string) error {
 	if strings.TrimSpace(v) == "" {
-		return errors.New("observer value must not be empty")
+		return errors.New("value must not be empty")
 	}
 	*f = append(*f, v)
 	return nil
@@ -91,6 +91,32 @@ func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow,
 	return tw, nil
 }
 
+// outputWriter returns the destination writer for command output.
+// If outputPath is empty, it returns w (stdout). Otherwise it creates the
+// file at outputPath and returns the *os.File. The caller must call
+// closeAndConfirm after writing to handle file closing and confirmation.
+func outputWriter(w io.Writer, outputPath string) (io.Writer, error) {
+	if outputPath == "" {
+		return w, nil
+	}
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create output file: %w", err)
+	}
+	return f, nil
+}
+
+// confirmOutput writes a confirmation message to stdout (w) when output was
+// written to a file. If outputPath is empty (stdout mode), this is a no-op.
+// File closing is handled by the caller's deferred Close.
+func confirmOutput(w io.Writer, outputPath string) error {
+	if outputPath == "" {
+		return nil
+	}
+	fmt.Fprintf(w, "wrote %s\n", outputPath)
+	return nil
+}
+
 func main() {
 	if err := run(os.Stdout, os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -132,8 +158,8 @@ Usage:
 Commands:
   summarize   load traces and print mesh summary
   validate    validate all traces and report errors
-  articulate  articulate an observer-situated graph (flags: --observer, --from, --to, --format)
-  diff        diff two articulations (flags: --observer-a, --observer-b, --from-a, --to-a, --from-b, --to-b, --format)
+  articulate  articulate an observer-situated graph (flags: --observer, --tag, --from, --to, --format, --output)
+  diff        diff two articulations (flags: --observer-a, --observer-b, --tag-a, --tag-b, --from-a, --to-a, --from-b, --to-b, --format, --output)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }
@@ -193,9 +219,11 @@ func cmdValidate(w io.Writer, args []string) error {
 //
 // It accepts the following flags:
 //   - --observer (repeatable, required) — one or more observer positions to include
+//   - --tag      (repeatable, optional) — tag filter (any-match / OR semantics)
 //   - --from     (optional, RFC3339)    — start of time window
 //   - --to       (optional, RFC3339)    — end of time window
 //   - --format   (optional, default "text") — output format: text|json|dot|mermaid
+//   - --output   (optional)             — write output to file instead of stdout
 //
 // The positional argument (after all flags) must be the path to a traces JSON file.
 //
@@ -209,6 +237,10 @@ func cmdArticulate(w io.Writer, args []string) error {
 	var observers stringSliceFlag
 	fs.Var(&observers, "observer", "observer position to include (repeatable)")
 
+	// --tag is repeatable; any-match / OR semantics — a trace passes if it carries any of the specified tags.
+	var tags stringSliceFlag
+	fs.Var(&tags, "tag", "tag filter (repeatable, any-match / OR semantics)")
+
 	// --from / --to are optional RFC3339 timestamps for time-window filtering.
 	var fromStr, toStr string
 	fs.StringVar(&fromStr, "from", "", "start of time window (RFC3339)")
@@ -217,6 +249,10 @@ func cmdArticulate(w io.Writer, args []string) error {
 	// --format selects the output renderer; defaults to "text".
 	var format string
 	fs.StringVar(&format, "format", "text", "output format: text|json|dot|mermaid")
+
+	// --output writes output to a file instead of stdout.
+	var outputPath string
+	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. graph.dot)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -244,7 +280,7 @@ func cmdArticulate(w io.Writer, args []string) error {
 	// The positional argument after all flags is the path to the dataset.
 	remaining := fs.Args()
 	if len(remaining) == 0 {
-		return fmt.Errorf("articulate: path to traces.json required\n\nUsage: meshant articulate --observer <pos> [--from RFC3339] [--to RFC3339] [--format text|json|dot|mermaid] <traces.json>")
+		return fmt.Errorf("articulate: path to traces.json required\n\nUsage: meshant articulate --observer <pos> [--tag <tag>] [--from RFC3339] [--to RFC3339] [--format text|json|dot|mermaid] [--output <file>] <traces.json>")
 	}
 	path := remaining[0]
 
@@ -256,20 +292,37 @@ func cmdArticulate(w io.Writer, args []string) error {
 	opts := graph.ArticulationOptions{
 		ObserverPositions: []string(observers),
 		TimeWindow:        tw,
+		Tags:              []string(tags),
 	}
 	g := graph.Articulate(traces, opts)
+
+	// Determine output destination: file or stdout.
+	dest, err := outputWriter(w, outputPath)
+	if err != nil {
+		return fmt.Errorf("articulate: %w", err)
+	}
+	// Ensure the file is closed on all exit paths, including render errors.
+	if f, ok := dest.(*os.File); ok {
+		defer f.Close()
+	}
 
 	// Dispatch to the requested output renderer.
 	switch format {
 	case "text":
-		return graph.PrintArticulation(w, g)
+		err = graph.PrintArticulation(dest, g)
 	case "json":
-		return graph.PrintGraphJSON(w, g)
+		err = graph.PrintGraphJSON(dest, g)
 	case "dot":
-		return graph.PrintGraphDOT(w, g)
+		err = graph.PrintGraphDOT(dest, g)
 	default: // "mermaid"
-		return graph.PrintGraphMermaid(w, g)
+		err = graph.PrintGraphMermaid(dest, g)
 	}
+	if err != nil {
+		return err
+	}
+
+	// If writing to file, print confirmation to stdout.
+	return confirmOutput(w, outputPath)
 }
 
 // cmdDiff implements the "diff" subcommand.
@@ -282,17 +335,16 @@ func cmdArticulate(w io.Writer, args []string) error {
 // It accepts the following flags:
 //   - --observer-a (repeatable, required) — observer positions for graph A
 //   - --observer-b (repeatable, required) — observer positions for graph B
+//   - --tag-a      (repeatable, optional) — tag filter for graph A (any-match / OR semantics)
+//   - --tag-b      (repeatable, optional) — tag filter for graph B (any-match / OR semantics)
 //   - --from-a, --to-a (optional, RFC3339) — time window for graph A
 //   - --from-b, --to-b (optional, RFC3339) — time window for graph B
-//   - --format (optional, default "text")  — output format: text|json
-//
-// Note: DOT and Mermaid output are NOT available for diffs (PrintDiffDOT and
-// PrintDiffMermaid do not exist). Requesting them returns an explicit error.
+//   - --format (optional, default "text")  — output format: text|json|dot|mermaid
+//   - --output (optional)                  — write output to file instead of stdout
 //
 // Returns an error if: --observer-a or --observer-b is missing, a time flag
-// is not RFC3339, a time window is invalid (Start > End), --format is "dot"
-// or "mermaid" (not supported), --format is unrecognised, the path is missing
-// or unloadable, or writing to w fails.
+// is not RFC3339, a time window is invalid (Start > End), --format is
+// unrecognised, the path is missing or unloadable, or writing fails.
 func cmdDiff(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 
@@ -301,6 +353,11 @@ func cmdDiff(w io.Writer, args []string) error {
 	fs.Var(&observersA, "observer-a", "observer position for graph A (repeatable)")
 	fs.Var(&observersB, "observer-b", "observer position for graph B (repeatable)")
 
+	// --tag-a and --tag-b are repeatable tag filters per side (any-match / OR semantics).
+	var tagsA, tagsB stringSliceFlag
+	fs.Var(&tagsA, "tag-a", "tag filter for graph A (repeatable, any-match / OR semantics)")
+	fs.Var(&tagsB, "tag-b", "tag filter for graph B (repeatable, any-match / OR semantics)")
+
 	// Per-side time window flags.
 	var fromAStr, toAStr, fromBStr, toBStr string
 	fs.StringVar(&fromAStr, "from-a", "", "start of time window for graph A (RFC3339)")
@@ -308,9 +365,13 @@ func cmdDiff(w io.Writer, args []string) error {
 	fs.StringVar(&fromBStr, "from-b", "", "start of time window for graph B (RFC3339)")
 	fs.StringVar(&toBStr, "to-b", "", "end of time window for graph B (RFC3339)")
 
-	// --format selects the output renderer; only text and json are supported.
+	// --format selects the output renderer.
 	var format string
-	fs.StringVar(&format, "format", "text", "output format: text|json")
+	fs.StringVar(&format, "format", "text", "output format: text|json|dot|mermaid")
+
+	// --output writes output to a file instead of stdout.
+	var outputPath string
+	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. diff.dot)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -324,15 +385,12 @@ func cmdDiff(w io.Writer, args []string) error {
 		return fmt.Errorf("diff: --observer-b is required")
 	}
 
-	// Reject DOT and Mermaid explicitly before touching the dataset; the
-	// message distinguishes "not supported for diffs" from a plain unknown format.
+	// Validate format.
 	switch format {
-	case "dot", "mermaid":
-		return fmt.Errorf("diff: --format %q not supported (text|json only)", format)
-	case "text", "json":
+	case "text", "json", "dot", "mermaid":
 		// valid
 	default:
-		return fmt.Errorf("diff: unknown --format %q (text|json)", format)
+		return fmt.Errorf("diff: unknown --format %q (text|json|dot|mermaid)", format)
 	}
 
 	// Parse and validate per-side time windows.
@@ -348,7 +406,7 @@ func cmdDiff(w io.Writer, args []string) error {
 	// The positional argument after all flags is the shared trace dataset.
 	remaining := fs.Args()
 	if len(remaining) == 0 {
-		return fmt.Errorf("diff: path to traces.json required\n\nUsage: meshant diff --observer-a <pos> --observer-b <pos> [--from-a RFC3339] [--to-a RFC3339] [--from-b RFC3339] [--to-b RFC3339] [--format text|json] <traces.json>")
+		return fmt.Errorf("diff: path to traces.json required\n\nUsage: meshant diff --observer-a <pos> --observer-b <pos> [--tag-a <tag>] [--tag-b <tag>] [--from-a RFC3339] [--to-a RFC3339] [--from-b RFC3339] [--to-b RFC3339] [--format text|json|dot|mermaid] [--output <file>] <traces.json>")
 	}
 	path := remaining[0]
 
@@ -362,19 +420,40 @@ func cmdDiff(w io.Writer, args []string) error {
 	optsA := graph.ArticulationOptions{
 		ObserverPositions: []string(observersA),
 		TimeWindow:        twA,
+		Tags:              []string(tagsA),
 	}
 	optsB := graph.ArticulationOptions{
 		ObserverPositions: []string(observersB),
 		TimeWindow:        twB,
+		Tags:              []string(tagsB),
 	}
 	gA := graph.Articulate(traces, optsA)
 	gB := graph.Articulate(traces, optsB)
 	d := graph.Diff(gA, gB)
 
+	// Determine output destination: file or stdout.
+	dest, err := outputWriter(w, outputPath)
+	if err != nil {
+		return fmt.Errorf("diff: %w", err)
+	}
+	// Ensure the file is closed on all exit paths, including render errors.
+	if f, ok := dest.(*os.File); ok {
+		defer f.Close()
+	}
+
 	switch format {
 	case "text":
-		return graph.PrintDiff(w, d)
-	default: // "json"
-		return graph.PrintDiffJSON(w, d)
+		err = graph.PrintDiff(dest, d)
+	case "json":
+		err = graph.PrintDiffJSON(dest, d)
+	case "dot":
+		err = graph.PrintDiffDOT(dest, d)
+	default: // "mermaid"
+		err = graph.PrintDiffMermaid(dest, d)
 	}
+	if err != nil {
+		return err
+	}
+
+	return confirmOutput(w, outputPath)
 }

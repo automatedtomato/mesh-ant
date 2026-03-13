@@ -323,3 +323,41 @@ Library + CLI form. The framework can be used without writing Go.
   - Merged to main; tagged v1.0.0
 
 37 CLI tests, 92.9% `cmd/meshant` coverage; `go vet` clean across all packages.
+
+---
+
+## Post-v1.0.0 — Open Horizon
+
+Informed by v1.0.0 review (`docs/reviews/release_v1_review_13-mar-26.md`) and earlier
+review (`docs/reviews/review_12-mar-26.md`). These are directions, not a locked plan.
+Milestones will be cut when work begins.
+
+### Kernel deepening (Layer 2)
+
+These deepen the analytical core — deferred across earlier milestones:
+
+- [ ] **Tag-filter cut axis** — third cut axis alongside observer and time-window (deferred since M3)
+- [ ] **GraphDiff DOT / Mermaid export** — `PrintDiffDOT`, `PrintDiffMermaid` (deferred since M8)
+- [ ] **Shadow analysis operations** — shadow summary, shadow-first mode, unstable-boundary reports
+- [ ] **Re-articulation** — re-cutting the same dataset; showing how one articulation provokes another
+
+### Authoring support (Layer 1)
+
+The most important next frontier — the direct interface with the user:
+
+- [ ] **Candidate trace schema** — intermediate representation between raw material and canonical `Trace`; carries uncertainty, evidence, confidence, provenance, review status
+- [ ] **One ingestion path** — raw material → candidate traces → human review → canonical traces; pick one domain first (incident logs, transcripts, or documents)
+- [ ] **Interactive review CLI** — trace-authoring companion; suggests candidates, surfaces ambiguity, shows provenance; the entry point for LLM-assisted authoring
+
+### Interpretation support (Layer 3)
+
+How outputs become actionable:
+
+- [ ] **Interpretive outputs** — observer-gap report, bottleneck note, shadow summary, re-articulation suggestion, incident narrative draft
+- [ ] **More real-world examples** — validate authoring conventions and interpretation patterns across domains
+
+### Constraints
+
+- Do not hide the cut in the name of usability.
+- LLM integration enters as assisted authoring with visible uncertainty, not automated truth.
+- The project is still in formation. Keep directions open-ended and revisable.

@@ -506,8 +506,8 @@ func TestPrintGraphMermaid_Basic(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "flowchart LR") {
-		t.Errorf("expected 'flowchart LR' in Mermaid output, got:\n%s", out)
+	if !strings.Contains(out, "flowchart TD") {
+		t.Errorf("expected 'flowchart TD' in Mermaid output, got:\n%s", out)
 	}
 	if !strings.Contains(out, "-->") {
 		t.Errorf("expected '-->' arrow in Mermaid output, got:\n%s", out)
@@ -522,8 +522,8 @@ func TestPrintGraphMermaid_EmptyGraph(t *testing.T) {
 		t.Fatalf("PrintGraphMermaid on empty graph: unexpected error: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "flowchart LR") {
-		t.Errorf("expected 'flowchart LR' even for empty graph, got:\n%s", out)
+	if !strings.Contains(out, "flowchart TD") {
+		t.Errorf("expected 'flowchart TD' even for empty graph, got:\n%s", out)
 	}
 	if strings.Contains(out, "subgraph Shadow") {
 		t.Errorf("expected no shadow subgraph for graph with no shadow elements, got:\n%s", out)
@@ -776,6 +776,51 @@ func TestMermaidLabel_StripsNewlines(t *testing.T) {
 	}
 }
 
+// TestPrintGraphDOT_TagFilterComment verifies that a non-empty tag filter appears
+// in the DOT comment block produced by dotCutComment, so readers know the tag
+// scope of the cut.
+func TestPrintGraphDOT_TagFilterComment(t *testing.T) {
+	g := graph.MeshGraph{
+		Cut: graph.Cut{
+			ObserverPositions: []string{"meteorological-analyst"},
+			Tags:              []string{"critical", "mediated"},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphDOT(&buf, g); err != nil {
+		t.Fatalf("PrintGraphDOT: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "critical") {
+		t.Errorf("expected tag 'critical' in DOT comment, got:\n%s", out)
+	}
+	if !strings.Contains(out, "mediated") {
+		t.Errorf("expected tag 'mediated' in DOT comment, got:\n%s", out)
+	}
+}
+
+// TestPrintGraphDOT_TagFilterComment_EmptyTags verifies that a zero Tags (no filter)
+// renders "full tag cut" in the DOT comment.
+func TestPrintGraphDOT_TagFilterComment_EmptyTags(t *testing.T) {
+	g := graph.MeshGraph{
+		Cut: graph.Cut{
+			ObserverPositions: []string{"obs-a"},
+			Tags:              nil,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := graph.PrintGraphDOT(&buf, g); err != nil {
+		t.Fatalf("PrintGraphDOT: unexpected error: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "full tag cut") {
+		t.Errorf("expected 'full tag cut' in DOT comment for empty Tags, got:\n%s", buf.String())
+	}
+}
+
 // TestDotCutComment_StripsNewlines verifies that a crafted observer position
 // containing a newline cannot break out of the DOT comment line and inject
 // raw DOT syntax into the output.
@@ -796,6 +841,36 @@ func TestDotCutComment_StripsNewlines(t *testing.T) {
 	out := buf.String()
 	// After stripping newlines, "malicious" may appear as part of a comment but
 	// must NOT appear as a DOT arc (i.e., no "-> ... malicious" line outside a comment).
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
+			continue // comment lines are safe
+		}
+		if strings.Contains(trimmed, "malicious") {
+			t.Errorf("DOT output contains injected 'malicious' outside a comment: %q", line)
+		}
+	}
+}
+
+// TestDotCutComment_StripsNewlines_Tags verifies that a crafted tag value
+// containing a newline cannot break out of the DOT comment line and inject
+// raw DOT syntax into the output.
+func TestDotCutComment_StripsNewlines_Tags(t *testing.T) {
+	g := graph.MeshGraph{
+		Nodes: map[string]graph.Node{"x": {Name: "x"}},
+		Edges: []graph.Edge{},
+		Cut: graph.Cut{
+			ObserverPositions: []string{"obs-a"},
+			Tags:              []string{"critical\n\"x\" -> \"malicious\" [label=\"injected\"]"},
+			TracesTotal:       1,
+			TracesIncluded:    1,
+		},
+	}
+	var buf bytes.Buffer
+	if err := graph.PrintGraphDOT(&buf, g); err != nil {
+		t.Fatalf("PrintGraphDOT: %v", err)
+	}
+	out := buf.String()
 	for _, line := range strings.Split(out, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "//") {
