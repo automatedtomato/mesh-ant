@@ -222,7 +222,7 @@ func PrintGraphMermaid(w io.Writer, g MeshGraph) error {
 // dotCutComment returns a short human-readable summary of a Cut for use as
 // a comment in DOT and Mermaid output. Example:
 //
-//	"observer: meteorological-analyst | window: 2026-04-14T00:00:00Z–2026-04-14T23:59:59Z"
+//	"observer: meteorological-analyst | window: 2026-04-14T00:00:00Z–2026-04-14T23:59:59Z | tags: critical, mediated"
 //
 // Observer position strings are newline-stripped before joining to prevent a
 // crafted observer value from breaking out of the comment line into raw DOT syntax.
@@ -250,7 +250,17 @@ func dotCutComment(c Cut) string {
 		}
 		win = start + "–" + end
 	}
-	return fmt.Sprintf("observer: %s | window: %s", obs, win)
+	// "full tag cut" names the empty Tags slice as a deliberate choice —
+	// the full tag extent of the dataset — rather than implying a neutral absence.
+	tags := "full tag cut"
+	if len(c.Tags) > 0 {
+		sanitized := make([]string, len(c.Tags))
+		for i, tag := range c.Tags {
+			sanitized[i] = stripNewlines(tag)
+		}
+		tags = strings.Join(sanitized, ", ")
+	}
+	return fmt.Sprintf("observer: %s | window: %s | tags: %s", obs, win, tags)
 }
 
 // dotQuote wraps s in double quotes and escapes any double quotes within s.

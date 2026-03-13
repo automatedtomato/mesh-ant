@@ -1,60 +1,53 @@
-# AGENTS.md
+# CLAUDE.md
 
-This repository is **MeshAnt**.
+This repository is **MeshAnt** — an experimental, trace-first framework for analyzing and
+eventually simulating socio-technical networks, inspired by Bruno Latour and Actor-Network Theory.
 
-MeshAnt is an experimental, trace-first framework for building AI agent systems from:
-- traces
-- mediations
-- articulations
-- thresholds
-- frictions
-- asymmetries
+This file is a **catalog**, not a specification. Read the documents it points to.
 
-It is inspired by Bruno Latour and Actor-Network Theory (ANT), but this file is **not** the place for full theory or detailed project rules.
+---
 
-## Purpose of this file
+## Project intent and philosophy
 
-Use this file only as:
-1. a minimal project description
-2. an index of reference documents
-3. a pointer to where ongoing work instructions are recorded
+- `README.md` — description, principles overview, usage
+- `docs/manifesto.md` — why this project exists
+- `docs/principles.md` — 8 design principles in detail
+- `docs/ant-notes.md` — ANT theoretical grounding
+- `docs/directions.md` — strategic direction: three forms, version targets, core inversion
 
-Do not overload this file with long operational rules.
+---
 
-## Read these project documents first
+## Architecture and implementation
 
-Core project documents:
-- `README.md`
-- `docs/manifesto.md`
-- `docs/principles.md`
-- `docs/ant-notes.md`
+- `docs/CODEMAPS/meshant.md` — package map: what lives where, key types, entry points
+- `docs/decisions/` — decision records for each milestone (schema, articulation, diff, etc.)
 
-Reference implementation / inspiration:
-- `reference/miro-fish/`  
-  Treat this as a reference project, not as something to copy blindly.
+---
 
-Skills documentation:
-- `.claude/skills/`  
-  Workflow definitions and domain knowledge.
+## Active work
 
-Rules documentation:
-- `.claude/rules/`
-  Always-follow guidelines (security, coding style, testing requirements)
+- `tasks/todo.md` — milestone tracking, all tasks
+- `tasks/plan_m*.md` — detailed plans for in-progress milestones
 
-Agents documentation:
-- `.claude/agents/`
-  Specialized subagents for delegation (planner, code-reviewer, tdd-guide, etc.)
+When new work is requested, record it in `tasks/todo.md`.
 
-## Task tracking
+---
 
-For concrete work instructions, active tasks, and ongoing implementation notes and plans, use:
-- `tasks/todo.md`
-- `tasks/plan_m*_*.md`
+## Reference
 
-When new work is requested, record the actionable task in `tasks/todo.md` rather than expanding this file.
+- `reference/miro-fish/` — reference project (actor-first, do NOT copy patterns blindly)
+
+---
+
+## Agent tooling
+
+- `.claude/rules/` — always-follow guidelines (security, style, testing, git workflow)
+- `.claude/agents/` — specialized subagents (planner, code-reviewer, tdd-guide, etc.)
+- `.claude/skills/` — workflow definitions (orchestrate, plan, tdd, etc.)
+
+---
 
 ## Working style
 
-Keep changes aligned with the project documents above.
 Prefer small, legible, conceptually consistent steps.
-Use reference materials to inform design, but let MeshAnt’s own documents define the project.
+Let MeshAnt's own documents define the project — use reference materials to inform, not dictate.

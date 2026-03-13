@@ -237,97 +237,35 @@ the resulting graph enters the mesh as an actant. M7-B depends on M7-A.
 
 ---
 
-## Milestone 8: Structured Export (JSON, DOT, Mermaid) — release v0.3.0
+## Milestone 8: Structured Export + Second Domain — release v0.3.1
 
-Export graphs to multiple formats for integration with external tools and visualization.
-Core library feature; does not depend on CLI or demo.
+Closes the two gaps named post-M7: structured output (graphs leave stdout) and second demo
+domain (validates generality beyond the evacuation scenario).
 
-**Full plan:** `tasks/plan_m8.md`
+**Full plan:** `tasks/plan_m8.md` (planned in session, not written to file)
 
 ### Tasks
 
 - [x] **M8.1 — JSON export**
-  - `meshant/graph/export.go` — `PrintGraphJSON`, `PrintDiffJSON`
-  - `meshant/graph/export_test.go` — round-trip validation, JSON snapshot
+  - `meshant/graph/export.go` — `PrintGraphJSON`, `PrintDiffJSON`; 100% coverage
   - Branch: `feat/m8-json-export`
 
-- [x] **M8.2 — DOT and Mermaid export**
-  - `meshant/graph/export.go` — `PrintGraphDOT`, `PrintGraphMermaid`
-  - `meshant/graph/export_test.go` — format validation, sanitized label generation
-  - Quoted node labels, truncated labels, edge cardinality; Mermaid flowchart syntax
+- [x] **M8.2 — DOT + Mermaid export**
+  - `meshant/graph/export.go` — `PrintGraphDOT`, `PrintGraphMermaid`; shadow in cluster/subgraph; Cartesian product for multi-source edges; 100% coverage
   - Branch: `feat/m8-dot-mermaid`
 
-- [x] **M8.3 — Persist package**
-  - `meshant/persist/persist.go` — `WriteJSON`, `ReadGraphJSON`, `ReadDiffJSON`
-  - `meshant/persist/persist_test.go` — file I/O, permission validation, error handling
+- [x] **M8.3 — File persistence package**
+  - `meshant/persist/persist.go` — `WriteJSON`, `ReadGraphJSON`, `ReadDiffJSON`; 100% coverage
   - Branch: `feat/m8-persist`
 
-- [x] **M8.4 — Incident response dataset**
-  - `data/examples/incident_response.json` — 22 traces, postmortem scenario, 5 observers, 8 actants
-  - `meshant/loader/incident_test.go` — validation tests
-  - `meshant/graph/incident_e2e_test.go` — E2E export and diff tests
+- [x] **M8.4 — Second demo domain**
+  - `data/examples/incident_response.json` — 22 traces, e-commerce API outage, 2 days, 5 observers, 8 non-human actants
+  - `meshant/loader/incident_test.go` + `meshant/graph/incident_e2e_test.go`
   - Branch: `feat/m8-incident-dataset`
 
-- [x] **M8.5 — Decision record**
-  - `docs/decisions/structured-export-v1.md`
-
----
-
-## Milestone 9: CLI + Docs + Release v1.0.0
-
-Library + CLI form. The framework can be used without writing Go. Closes the form-factor question
-(for now) and readies v1.0.0 release.
-
-**Full plan:** `tasks/plan_m9.md`
-
-### Tasks
-
-- [x] **M9.1 — CLI core: `summarize` and `validate`**
-  - `meshant/cmd/meshant/main.go` — CLI skeleton: `run()`, `cmdSummarize()`, `cmdValidate()`, `usage()`
-  - `meshant/cmd/meshant/main_test.go` — 10 tests, foundational command routing
-  - Branch: `feat/m9-cli`
-
-- [x] **M9.2 — CLI `articulate` subcommand**
-  - `--observer` (repeatable), `--from`, `--to`, `--format text|json|dot|mermaid`
-  - `stringSliceFlag` custom flag.Value; `parseTimeFlag` helper
-  - 20 tests total (groups 2–3 in main_test.go)
-  - Integration: integrates with `graph.Articulate()`, all export functions
-
-- [x] **M9.3 — CLI `diff` subcommand**
-  - `--observer-a/b`, per-side time windows, `--format text|json`
-  - `parseTimeWindow` helper; explicit rejection of dot/mermaid for diffs
-  - 30 tests total (groups 4–6 in main_test.go)
-  - Rationale: diff records relational change, not spatial layout; DOT/Mermaid unsuitable
-
-- [x] **M9.4 — Trace authoring guide**
-  - `docs/authoring-traces.md` — 188 lines, 8 sections, worked example
-  - Audience: domain experts writing traces without Go knowledge
-  - Covers: schema, field by field; media types; validation; worked scenario
-
-- [x] **M9.5 — README, decision record, Dockerfile**
-  - README: "Who is this for?", CLI usage, removed stale Principle 8 gap note
-  - `docs/decisions/cli-v1.md` — 6 decisions: subcommand design, flag repeatable-values, time parsing, export format rules
-  - Dockerfile: CLI binary at `/usr/local/bin/meshant`; `go install ./cmd/meshant`
-  - Release tagged as v1.0.0 (main)
-
-- [x] **M9.6 — Refactor and clean pass (whole codebase)**
-  - Removed milestone-tracking comments, stale cross-references
-  - `go vet ./...` clean; all tests pass; coverage maintained
-  - Branch: `feat/m9-refactor`
-
-- [x] **M9.7 — Philosophical review**
-  - Two violations found and fixed: `"no time filter"` → `"full temporal cut"` (B1, B2)
-  - Vocabulary aligned with Latour and Principle 6 (articulation-as-cut)
-  - `docs/reviews/review_philosophical_m9.md` — 266 lines, findings and fixes
-  - Verdict: VIOLATION FOUND — REFACTORED; framework now passes review
-  - Branch: `feat/m9-philosophical-review`
-
-- [x] **M9.8 — Codemap + release v1.0.0**
-  - `docs/CODEMAPS/meshant.md` updated with cmd/meshant package, new docs references
-  - `tasks/todo.md` updated with M8 and M9 task tracking
-  - All tests pass; `go vet` clean; ready for merge to main and release
-
-37 CLI tests, 92.9% `cmd/meshant` coverage; `go vet` clean across all packages.
+- [x] **M8.5 — Decision record + codemap**
+  - `docs/decisions/structured-export-v1.md` — 6 decisions
+  - `docs/CODEMAPS/meshant.md` — updated for M8
 
 ---
 
@@ -340,3 +278,86 @@ Library + CLI form. The framework can be used without writing Go. Closes the for
 - Tag-filter cut axis deferred to M5+ (not implemented in M3, M4, or M5).
 - Graph-as-actor fulfilled in M5; graph-diff fulfilled in M4.
 - Form factor (CLI) emerged in M9; now suitable for users who code in other languages or prefer CLI use.
+
+---
+
+## Milestone 9: CLI + Docs + Release v1.0.0
+
+Library + CLI form. The framework can be used without writing Go.
+
+**Full plan:** `tasks/plan_m9.md`
+
+### Tasks
+
+- [x] **M9.1 — CLI core: `summarize` and `validate`**
+  - `meshant/cmd/meshant/main.go` — `run()`, `cmdSummarize()`, `cmdValidate()`, `usage()`
+  - `meshant/cmd/meshant/main_test.go` — 10 tests; Branch: `feat/m9-cli-core`
+
+- [x] **M9.2 — CLI `articulate` subcommand**
+  - `--observer` (repeatable), `--from`, `--to`, `--format text|json|dot|mermaid`
+  - `stringSliceFlag`; `parseTimeFlag`; 20 tests; Branch: `feat/m9-cli-articulate`
+
+- [x] **M9.3 — CLI `diff` subcommand**
+  - `--observer-a/b`, per-side time windows, `--format text|json`
+  - `parseTimeWindow` helper; 30 tests; Branch: `feat/m9-cli-diff`
+
+- [x] **M9.4 — Trace authoring guide**
+  - `docs/authoring-traces.md` — 188 lines, 8 sections, worked example
+  - Branch: `feat/m9-authoring-guide`
+
+- [x] **M9.5 — README, decision record, Dockerfile**
+  - README: "Who is this for?", CLI usage, removed stale Principle 8 gap note
+  - `docs/decisions/cli-v1.md` — 6 decisions; Dockerfile: CLI at `/usr/local/bin/meshant`
+  - Branch: `feat/m9-readme`
+
+- [x] **M9.6 — Refactor and clean pass (whole codebase)**
+  - Stale milestone comments removed; `go vet ./...` clean; Branch: `feat/m9-refactor`
+
+- [x] **M9.7 — Philosophical review**
+  - Two violations fixed: `"no time filter"` → `"full temporal cut"` (articulation-first, B1+B2)
+  - `docs/reviews/review_philosophical_m9.md`; Verdict: VIOLATION FOUND — REFACTORED
+  - Branch: `feat/m9-philosophical-review`
+
+- [x] **M9.8 — Codemap + release v1.0.0**
+  - `docs/CODEMAPS/meshant.md` updated with `cmd/meshant` package and new docs
+  - Merged to main; tagged v1.0.0
+
+37 CLI tests, 92.9% `cmd/meshant` coverage; `go vet` clean across all packages.
+
+---
+
+## Post-v1.0.0 — Open Horizon
+
+Informed by v1.0.0 review (`docs/reviews/release_v1_review_13-mar-26.md`) and earlier
+review (`docs/reviews/review_12-mar-26.md`). These are directions, not a locked plan.
+Milestones will be cut when work begins.
+
+### Kernel deepening (Layer 2)
+
+These deepen the analytical core — deferred across earlier milestones:
+
+- [ ] **Tag-filter cut axis** — third cut axis alongside observer and time-window (deferred since M3)
+- [ ] **GraphDiff DOT / Mermaid export** — `PrintDiffDOT`, `PrintDiffMermaid` (deferred since M8)
+- [ ] **Shadow analysis operations** — shadow summary, shadow-first mode, unstable-boundary reports
+- [ ] **Re-articulation** — re-cutting the same dataset; showing how one articulation provokes another
+
+### Authoring support (Layer 1)
+
+The most important next frontier — the direct interface with the user:
+
+- [ ] **Candidate trace schema** — intermediate representation between raw material and canonical `Trace`; carries uncertainty, evidence, confidence, provenance, review status
+- [ ] **One ingestion path** — raw material → candidate traces → human review → canonical traces; pick one domain first (incident logs, transcripts, or documents)
+- [ ] **Interactive review CLI** — trace-authoring companion; suggests candidates, surfaces ambiguity, shows provenance; the entry point for LLM-assisted authoring
+
+### Interpretation support (Layer 3)
+
+How outputs become actionable:
+
+- [ ] **Interpretive outputs** — observer-gap report, bottleneck note, shadow summary, re-articulation suggestion, incident narrative draft
+- [ ] **More real-world examples** — validate authoring conventions and interpretation patterns across domains
+
+### Constraints
+
+- Do not hide the cut in the name of usability.
+- LLM integration enters as assisted authoring with visible uncertainty, not automated truth.
+- The project is still in formation. Keep directions open-ended and revisable.

@@ -1,5 +1,11 @@
 # Git Workflow
 
+> This file covers commit conventions and local git practices.
+> For the full GitHub-based development process (issues, branches, PRs, review),
+> see [github-workflow.md](./github-workflow.md).
+> For the pre-commit development process (planning, TDD, code review),
+> see [development-workflow.md](./development-workflow.md).
+
 ## Commit Message Format
 ```
 <type>: <description>
@@ -11,14 +17,8 @@ Types: feat, fix, refactor, docs, test, chore, perf, ci
 
 Note: Attribution disabled globally via ~/.claude/settings.json.
 
-## Pull Request Workflow
+## Commit Practices
 
-When creating PRs:
-1. Analyze full commit history (not just latest commit)
-2. Use `git diff [base-branch]...HEAD` to see all changes
-3. Draft comprehensive PR summary
-4. Include test plan with TODOs
-5. Push with `-u` flag if new branch
-
-> For the full development process (planning, TDD, code review) before git operations,
-> see [development-workflow.md](./development-workflow.md).
+- Commit messages should explain **why**, not just what.
+- Keep commits focused — one logical change per commit.
+- Reference the GitHub Issue number in the commit body when relevant (e.g. `Closes #12`).
