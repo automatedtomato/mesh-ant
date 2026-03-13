@@ -298,8 +298,8 @@ func TestPrintDiffMermaid_Basic(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "flowchart LR") {
-		t.Errorf("expected 'flowchart LR' in Mermaid output, got:\n%s", out)
+	if !strings.Contains(out, "flowchart TD") {
+		t.Errorf("expected 'flowchart TD' in Mermaid output, got:\n%s", out)
 	}
 	// Added node: evacuation-order with "(added)" label
 	if !strings.Contains(out, "added") {
@@ -323,8 +323,8 @@ func TestPrintDiffMermaid_EmptyDiff(t *testing.T) {
 		t.Fatalf("PrintDiffMermaid on empty diff: unexpected error: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "flowchart LR") {
-		t.Errorf("expected 'flowchart LR' even for empty diff, got:\n%s", out)
+	if !strings.Contains(out, "flowchart TD") {
+		t.Errorf("expected 'flowchart TD' even for empty diff, got:\n%s", out)
 	}
 }
 

@@ -506,8 +506,8 @@ func TestPrintGraphMermaid_Basic(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "flowchart LR") {
-		t.Errorf("expected 'flowchart LR' in Mermaid output, got:\n%s", out)
+	if !strings.Contains(out, "flowchart TD") {
+		t.Errorf("expected 'flowchart TD' in Mermaid output, got:\n%s", out)
 	}
 	if !strings.Contains(out, "-->") {
 		t.Errorf("expected '-->' arrow in Mermaid output, got:\n%s", out)
@@ -522,8 +522,8 @@ func TestPrintGraphMermaid_EmptyGraph(t *testing.T) {
 		t.Fatalf("PrintGraphMermaid on empty graph: unexpected error: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "flowchart LR") {
-		t.Errorf("expected 'flowchart LR' even for empty graph, got:\n%s", out)
+	if !strings.Contains(out, "flowchart TD") {
+		t.Errorf("expected 'flowchart TD' even for empty graph, got:\n%s", out)
 	}
 	if strings.Contains(out, "subgraph Shadow") {
 		t.Errorf("expected no shadow subgraph for graph with no shadow elements, got:\n%s", out)

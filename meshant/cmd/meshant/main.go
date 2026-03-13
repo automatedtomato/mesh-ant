@@ -237,7 +237,7 @@ func cmdArticulate(w io.Writer, args []string) error {
 	var observers stringSliceFlag
 	fs.Var(&observers, "observer", "observer position to include (repeatable)")
 
-	// --tag is repeatable; any-match / OR semantics — only traces with all tags are included.
+	// --tag is repeatable; any-match / OR semantics — a trace passes if it carries any of the specified tags.
 	var tags stringSliceFlag
 	fs.Var(&tags, "tag", "tag filter (repeatable, any-match / OR semantics)")
 

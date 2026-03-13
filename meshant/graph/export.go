@@ -13,7 +13,7 @@
 // Shadow elements appear in a dashed cluster_shadow subgraph, making the
 // articulation's blind spots literally visible in the diagram.
 //
-// Mermaid output produces a flowchart LR. Node IDs are sanitized (non-
+// Mermaid output produces a flowchart TD. Node IDs are sanitized (non-
 // alphanumeric characters replaced with underscores) while original names are
 // preserved as display labels. Shadow elements appear in a subgraph Shadow block.
 //
@@ -38,8 +38,8 @@ import (
 
 // maxEdgeLabel is the maximum number of runes to include in a DOT or Mermaid
 // edge label. Labels longer than this are truncated with "..." to keep diagrams
-// readable without losing the identity of what changed.
-const maxEdgeLabel = 40
+// compact without losing the identity of what changed.
+const maxEdgeLabel = 28
 
 // PrintGraphJSON writes g as indented JSON to w.
 //
@@ -105,6 +105,8 @@ func PrintGraphDOT(w io.Writer, g MeshGraph) error {
 	b.WriteString("// ")
 	b.WriteString(dotCutComment(g.Cut))
 	b.WriteString("\ndigraph {\n")
+	b.WriteString("  rankdir=TB\n")
+	b.WriteString("  node [shape=box]\n")
 
 	// Sort node names for deterministic output.
 	names := make([]string, 0, len(g.Nodes))
@@ -151,7 +153,7 @@ func PrintGraphDOT(w io.Writer, g MeshGraph) error {
 	return err
 }
 
-// PrintGraphMermaid writes g as a Mermaid flowchart (LR direction) to w.
+// PrintGraphMermaid writes g as a Mermaid flowchart (TD direction) to w.
 //
 // Node IDs are sanitized for Mermaid compatibility: non-alphanumeric characters
 // are replaced with underscores, and a leading digit is prefixed with "n_".
@@ -171,7 +173,7 @@ func PrintGraphMermaid(w io.Writer, g MeshGraph) error {
 	// Metadata comment.
 	b.WriteString("%% ")
 	b.WriteString(dotCutComment(g.Cut))
-	b.WriteString("\nflowchart LR\n")
+	b.WriteString("\nflowchart TD\n")
 
 	// Build a sanitized-ID map for all names that appear in nodes or edges.
 	// This ensures edges referencing elements not in g.Nodes still get valid IDs.
@@ -241,6 +243,8 @@ func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 	b.WriteString("\n// To: ")
 	b.WriteString(dotCutComment(d.To))
 	b.WriteString("\ndigraph {\n")
+	b.WriteString("  rankdir=TB\n")
+	b.WriteString("  node [shape=box]\n")
 
 	// Sort added nodes for deterministic output.
 	addedNodes := make([]string, len(d.NodesAdded))
@@ -334,7 +338,7 @@ func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 	return err
 }
 
-// PrintDiffMermaid writes d as a Mermaid flowchart (LR direction) to w.
+// PrintDiffMermaid writes d as a Mermaid flowchart (TD direction) to w.
 //
 // Node IDs are sanitized for Mermaid compatibility (same rules as
 // PrintGraphMermaid). The output encodes diff semantics through:
@@ -355,7 +359,7 @@ func PrintDiffMermaid(w io.Writer, d GraphDiff) error {
 	b.WriteString(dotCutComment(d.From))
 	b.WriteString("\n%% To: ")
 	b.WriteString(dotCutComment(d.To))
-	b.WriteString("\nflowchart LR\n")
+	b.WriteString("\nflowchart TD\n")
 
 	// Build a sanitized-ID map for all names in the diff.
 	allNames := collectAllDiffNames(d)
