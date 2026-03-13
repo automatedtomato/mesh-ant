@@ -408,6 +408,35 @@ translation judgment). Classification is cut-dependent, not intrinsic.
 
 ---
 
+## Milestone 10.5+: Equivalence Criterion (Classification with Grounds)
+
+The missing cut axis: an explicit declaration of what counts as preserved,
+altered, or consequential across a passage. Layers 1–2 only; Layer 3
+(comparison function) deferred.
+
+**Full plan:** `tasks/plan_m10_5_plus.md`
+
+### Tasks
+
+- [ ] **M10.5+.1 — Define EquivalenceCriterion type**
+  - `meshant/graph/criterion.go` — `EquivalenceCriterion` struct (Name, Declaration, Preserve, Ignore), `IsZero()`
+  - `meshant/graph/criterion_test.go` — zero/non-zero detection tests
+
+- [ ] **M10.5+.2 — Wire criterion into classification**
+  - Add `Criterion` to `ClassifyOptions` and `ClassifiedChain`
+  - Criterion name prepended to reasons; v1 logic unchanged
+  - `PrintChain`/`PrintChainJSON` render criterion when non-zero
+
+- [ ] **M10.5+.3 — CLI support**
+  - `--criterion-name`, `--criterion-declaration`, `--criterion-preserve`, `--criterion-ignore` flags
+  - `--criterion-file <path>` for JSON criterion objects
+
+- [ ] **M10.5+.4 — Decision record + codemap**
+  - `docs/decisions/equivalence-criterion-v1.md`
+  - `docs/CODEMAPS/meshant.md` updated
+
+---
+
 ## Post-v1.0.0 — Open Horizon
 
 Informed by v1.0.0 review (`docs/reviews/release_v1_review_13-mar-26.md`) and earlier
