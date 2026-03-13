@@ -309,10 +309,10 @@ func TestDeforestation_MultiSource_Count(t *testing.T) {
 }
 
 // TestDeforestation_Mediations_Count verifies that at least 10 traces carry
-// a non-empty Mediation field. Mediation is the mechanism by which action is
-// relayed and transformed between source and target. A dataset where most
-// traces lack mediation would be underdetermined from an ANT perspective —
-// too many black boxes left unopened.
+// a non-empty Mediation field. A mediator transforms what passes through
+// it — it is not a neutral conduit. A dataset where most traces lack
+// mediation would be underdetermined from an ANT perspective — too many
+// black boxes left unopened.
 func TestDeforestation_Mediations_Count(t *testing.T) {
 	traces := loadDeforestation(t)
 

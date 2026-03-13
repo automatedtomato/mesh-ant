@@ -58,10 +58,11 @@ sometimes diffuse, deferred, or not yet observable at the moment of trace captur
 
 ### `mediation` (string, optional)
 
-Names what transformed, redirected, or relayed the action between source and
-target. This field holds the central ANT concept: mediation is not a secondary
+Names what transformed, redirected, or displaced the action between source and
+target. A mediator is not a neutral conduit — it changes what passes through it.
+This field holds the central ANT concept: mediation is not a secondary
 detail but a first-class element of the trace. Its *absence* is meaningful —
-it means no intermediary was observed, not that none could exist.
+it means no mediator was observed, not that none could exist.
 
 ### `tags` ([]string, optional)
 

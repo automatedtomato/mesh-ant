@@ -429,9 +429,9 @@ func TestLongitudinal_Summarise_ElementCount(t *testing.T) {
 // TestLongitudinal_Summarise_MediatedTraceCount verifies that Summarise
 // counts at least 25 mediated traces across the 40-trace dataset. Day 1
 // contributes 18 mediated traces; days 2 and 3 should each add several more.
-// Mediation is the mechanism by which action is relayed and transformed
-// between source and target — a dataset where most traces lack mediation
-// would be underdetermined from an ANT perspective.
+// A mediator transforms what passes through it — it is not a neutral
+// conduit. A dataset where most traces lack mediation would be
+// underdetermined from an ANT perspective.
 func TestLongitudinal_Summarise_MediatedTraceCount(t *testing.T) {
 	traces := loadLongitudinal(t)
 	s := loader.Summarise(traces)

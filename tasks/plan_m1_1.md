@@ -52,5 +52,5 @@ non-empty `WhatChanged`, non-empty `Observer`.
 - `source`/`target` stay as plain `string` — no `Actor` type yet
 - `tags` is `[]string` not `[]TagValue` — keeps vocabulary open
 - `observer` is required by `Validate()` — enforces Principle 8 (designer inside the mesh)
-- `mediation` is optional — its absence means no intermediary was observed, not that none exists
+- `mediation` is optional — its absence means no mediator was observed, not that none exists
 - UUID validation via stdlib `regexp` — no external deps

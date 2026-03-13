@@ -61,6 +61,7 @@ MeshAnt follows a simple methodological shift inspired by **Bruno Latour** and *
 - [Manifesto](./docs/manifesto.md)
 - [Principles](./docs/principles.md)
 - [ANT Notes](./docs/ant-notes.md)
+- [Glossary](./docs/glossary.md)
 
 ## What MeshAnt is trying to do
 
