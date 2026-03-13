@@ -305,7 +305,7 @@ func TestSummarise_MediatedTraceCount(t *testing.T) {
 func TestSummarise_EmptyMediationExcluded(t *testing.T) {
 	// A trace with zero-value Mediation ("") must not contribute to Mediations
 	// or MediatedTraceCount.
-	tr := validTrace("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", "no intermediary observed")
+	tr := validTrace("a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5", "no mediator observed")
 
 	s := loader.Summarise([]schema.Trace{tr})
 	if len(s.Mediations) != 0 {

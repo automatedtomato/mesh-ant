@@ -60,7 +60,7 @@ const (
 // single name would perform a premature singularization of attribution.
 //
 // Fields with omitempty are optional. Their absence is meaningful:
-// a Trace without a Mediation means no intermediary was observed —
+// a Trace without a Mediation means no mediator was observed —
 // not that mediation is impossible.
 //
 // Use [Trace.Validate] to check that required fields are present.
@@ -92,8 +92,9 @@ type Trace struct {
 	// is diffuse or not yet observable.
 	Target []string `json:"target,omitempty"`
 
-	// Mediation names what transformed, redirected, or relayed the action
-	// between source and target. Its absence means no intermediary was
+	// Mediation names what transformed, redirected, or displaced the action
+	// between source and target. A mediator is not a neutral conduit — it
+	// changes what passes through it. Its absence means no mediator was
 	// observed — not that none could exist.
 	Mediation string `json:"mediation,omitempty"`
 

@@ -19,7 +19,7 @@ a transformation — observed from a specific position.
 | `observer` | yes | The position from which this trace was recorded; shapes what is visible. |
 | `source` | no | Who or what initiated the action (absent = no identifiable origin). |
 | `target` | no | Who or what was acted upon. |
-| `mediation` | no | What translated, transformed, or relayed the action. |
+| `mediation` | no | What transformed, redirected, or displaced the action — the mediator. |
 | `tags` | no | How to classify the mediation (open vocabulary). |
 
 ---
@@ -31,7 +31,7 @@ a transformation — observed from a specific position.
 **Optional:** `source`, `target`, `mediation`, `tags`
 
 Absent optional fields are not missing data — they are meaningful states.
-A trace without `mediation` means no intermediary was observed, not that
+A trace without `mediation` means no mediator was observed, not that
 mediation was impossible. A trace without `source` means the origin was
 genuinely unattributable, which is a finding in itself.
 
@@ -157,11 +157,12 @@ with the reasoning behind the field choices.
 
 **Trace 1** — required fields only; `source` and `target` are present but
 `mediation` and `tags` are absent because the submission was direct with no
-observable intermediary and no evident transformation.
+observable mediator and no evident transformation.
 
 **Trace 2** — `source` is absent: the delay was produced by the queue itself
 (a structural condition), not by any single person choosing to wait.
-`mediation` names the queue as the relay.
+`mediation` names the queue as the mediator — it did not passively hold
+the submission; it transformed the action by imposing a 53-hour delay.
 
 **Trace 3** — `observer` switches to `legal-counsel` because this trace was
 recorded from that position; `translation` reflects that the document's meaning,

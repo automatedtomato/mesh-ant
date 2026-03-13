@@ -189,8 +189,9 @@ type Edge struct {
 	// WhatChanged is the short description of the difference from the trace.
 	WhatChanged string `json:"what_changed"`
 
-	// Mediation is the intermediary that transformed, redirected, or relayed
-	// the action. Empty if no intermediary was observed.
+	// Mediation names what transformed, redirected, or displaced the action.
+	// A mediator changes what passes through it — it is not a neutral conduit.
+	// Empty if no mediator was observed.
 	Mediation string `json:"mediation"`
 
 	// Observer is the observer string from the source trace.
