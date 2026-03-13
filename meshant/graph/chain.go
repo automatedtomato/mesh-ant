@@ -178,6 +178,11 @@ func FollowTranslation(g MeshGraph, from string, opts FollowOptions) Translation
 		first := entries[0]
 		cycleDetected := false
 
+		// Capture the node before advancing current so that branch-not-taken
+		// breaks below can attribute AtElement to the decision point, not the
+		// node we entered.
+		decisionPoint := current
+
 		chain.Steps = append(chain.Steps, ChainStep{
 			Edge:           g.Edges[first.edgeIdx],
 			ElementExited:  current,
@@ -196,12 +201,13 @@ func FollowTranslation(g MeshGraph, from string, opts FollowOptions) Translation
 		}
 
 		// Record alternatives not followed as branch-not-taken.
-		for _, entry := range entries[1:] {
+		// AtElement names the node where the branch decision was made (the
+		// node we exited), not the node we entered via first-match.
+		for range entries[1:] {
 			chain.Breaks = append(chain.Breaks, ChainBreak{
-				AtElement: current,
+				AtElement: decisionPoint,
 				Reason:    "branch-not-taken",
 			})
-			_ = entry // entry.target is the skipped element; not recorded in v1
 		}
 
 		if cycleDetected {
