@@ -402,7 +402,12 @@ translation judgment). Classification is cut-dependent, not intrinsic.
   - Cut-dependent chain length demonstrated: same element, different observer → different chain
   - Branch: `24-m10-5-chain-traversal`
 
-- [ ] **M10.5.5 — Decision record + codemap**
+- [x] **M10.5.5 — Decision record + codemap**
+  - `docs/decisions/translation-chain-v1.md` — 12 decisions
+  - `docs/CODEMAPS/meshant.md` — updated with chain.go, classify.go, chain_print.go
+  - `docs/reviews/equivalence_criterion_design_note.md` — three-layer criterion design
+  - `docs/reviews/notes_on_mediator.md` — conditional readings design note
+  - Branch: `24-m10-5-chain-traversal`
 
 576 total tests, 0 failures; graph 95.8% coverage; CLI 92.7% coverage; `go vet` clean.
 
