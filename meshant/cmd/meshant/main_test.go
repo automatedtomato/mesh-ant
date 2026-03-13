@@ -838,3 +838,195 @@ func TestCmdArticulate_OutputText(t *testing.T) {
 		t.Error("output file is empty; want non-empty")
 	}
 }
+
+// --- Group 10: cmdFollow ---
+
+// TestCmdFollow_HappyPath verifies that cmdFollow produces non-empty output
+// containing chain-specific content when given valid flags and the evacuation dataset.
+func TestCmdFollow_HappyPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdFollow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--element", "buoy-array-atlantic-sector-7",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdFollow() returned unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Translation Chain") {
+		t.Error("cmdFollow() output missing 'Translation Chain' header")
+	}
+	if !strings.Contains(out, "buoy-array-atlantic-sector-7") {
+		t.Error("cmdFollow() output missing start element name")
+	}
+}
+
+// TestCmdFollow_MissingObserver verifies that cmdFollow returns an error
+// when --observer is not provided.
+func TestCmdFollow_MissingObserver(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdFollow(&buf, []string{
+		"--element", "A",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdFollow() with no --observer: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "observer") {
+		t.Errorf("error = %q; want it to contain 'observer'", err.Error())
+	}
+}
+
+// TestCmdFollow_MissingElement verifies that cmdFollow returns an error
+// when --element is not provided.
+func TestCmdFollow_MissingElement(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdFollow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdFollow() with no --element: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "element") {
+		t.Errorf("error = %q; want it to contain 'element'", err.Error())
+	}
+}
+
+// TestCmdFollow_UnknownDirection verifies that an invalid --direction value
+// returns an error.
+func TestCmdFollow_UnknownDirection(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdFollow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--element", "A",
+		"--direction", "sideways",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdFollow() --direction sideways: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown") {
+		t.Errorf("error = %q; want it to contain 'unknown'", err.Error())
+	}
+}
+
+// TestCmdFollow_UnknownFormat verifies that an invalid --format value
+// returns an error.
+func TestCmdFollow_UnknownFormat(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdFollow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--element", "A",
+		"--format", "xml",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdFollow() --format xml: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown") {
+		t.Errorf("error = %q; want it to contain 'unknown'", err.Error())
+	}
+}
+
+// TestCmdFollow_Backward verifies that --direction backward produces output.
+func TestCmdFollow_Backward(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdFollow(&buf, []string{
+		"--observer", "local-mayor",
+		"--element", "evacuation-order-16apr",
+		"--direction", "backward",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdFollow() --direction backward returned unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Translation Chain") {
+		t.Error("cmdFollow() backward output missing header")
+	}
+}
+
+// TestCmdFollow_FormatJSON verifies that --format json produces valid JSON output.
+func TestCmdFollow_FormatJSON(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdFollow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--element", "buoy-array-atlantic-sector-7",
+		"--format", "json",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdFollow() --format json returned unexpected error: %v", err)
+	}
+	out := strings.TrimSpace(buf.String())
+	if !strings.HasPrefix(out, "{") {
+		t.Errorf("cmdFollow() --format json: output does not start with '{'; got: %q", out[:min(len(out), 40)])
+	}
+}
+
+// TestCmdFollow_DepthLimit verifies that --depth flag is accepted.
+func TestCmdFollow_DepthLimit(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdFollow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--element", "buoy-array-atlantic-sector-7",
+		"--depth", "1",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdFollow() --depth 1 returned unexpected error: %v", err)
+	}
+}
+
+// TestCmdFollow_MissingPath verifies that cmdFollow returns an error when
+// no positional path argument is provided.
+func TestCmdFollow_MissingPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdFollow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--element", "A",
+	})
+	if err == nil {
+		t.Fatal("cmdFollow() with no path: want non-nil error, got nil")
+	}
+}
+
+// TestCmdFollow_Output verifies that --output writes the chain to a file.
+func TestCmdFollow_Output(t *testing.T) {
+	outFile := t.TempDir() + "/chain.txt"
+	var buf bytes.Buffer
+	err := cmdFollow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--element", "buoy-array-atlantic-sector-7",
+		"--output", outFile,
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdFollow() --output returned unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), outFile) {
+		t.Errorf("stdout does not mention output file; got: %q", buf.String())
+	}
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if !strings.Contains(string(data), "Translation Chain") {
+		t.Error("output file missing chain header")
+	}
+}
+
+// TestRun_Follow verifies that run() dispatches "follow" to cmdFollow.
+func TestRun_Follow(t *testing.T) {
+	var buf bytes.Buffer
+	err := run(&buf, []string{
+		"follow",
+		"--observer", "meteorological-analyst",
+		"--element", "buoy-array-atlantic-sector-7",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("run(follow) returned unexpected error: %v", err)
+	}
+}
