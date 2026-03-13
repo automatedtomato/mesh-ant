@@ -136,6 +136,8 @@ func PrintGraphDOT(w io.Writer, g MeshGraph) error {
 	}
 
 	// Shadow subgraph — only emitted if there are shadow elements.
+	// Invisible edges chain consecutive shadow nodes vertically so they
+	// don't all land on a single wide rank.
 	if len(g.Cut.ShadowElements) > 0 {
 		b.WriteString("  subgraph cluster_shadow {\n")
 		b.WriteString("    label=\"shadow\"\n")
@@ -143,6 +145,12 @@ func PrintGraphDOT(w io.Writer, g MeshGraph) error {
 		b.WriteString("    color=grey\n")
 		for _, se := range g.Cut.ShadowElements {
 			fmt.Fprintf(&b, "    %s [style=dashed, color=grey]\n", dotQuote(se.Name))
+		}
+		// Chain invisible edges to force vertical layout.
+		for i := 1; i < len(g.Cut.ShadowElements); i++ {
+			fmt.Fprintf(&b, "    %s -> %s [style=invis]\n",
+				dotQuote(g.Cut.ShadowElements[i-1].Name),
+				dotQuote(g.Cut.ShadowElements[i].Name))
 		}
 		b.WriteString("  }\n")
 	}
@@ -209,10 +217,16 @@ func PrintGraphMermaid(w io.Writer, g MeshGraph) error {
 	}
 
 	// Shadow subgraph — only emitted if there are shadow elements.
+	// Invisible links (~~~) chain consecutive nodes vertically.
 	if len(g.Cut.ShadowElements) > 0 {
 		b.WriteString("  subgraph Shadow\n")
 		for _, se := range g.Cut.ShadowElements {
 			fmt.Fprintf(&b, "    %s[\"%s\"]\n", idMap[se.Name], mermaidLabel(se.Name))
+		}
+		for i := 1; i < len(g.Cut.ShadowElements); i++ {
+			fmt.Fprintf(&b, "    %s ~~~ %s\n",
+				idMap[g.Cut.ShadowElements[i-1].Name],
+				idMap[g.Cut.ShadowElements[i].Name])
 		}
 		b.WriteString("  end\n")
 	}
@@ -330,6 +344,12 @@ func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 				color,
 			)
 		}
+		// Chain invisible edges to force vertical layout.
+		for i := 1; i < len(d.ShadowShifts); i++ {
+			fmt.Fprintf(&b, "    %s -> %s [style=invis]\n",
+				dotQuote(stripNewlines(d.ShadowShifts[i-1].Name)),
+				dotQuote(stripNewlines(d.ShadowShifts[i].Name)))
+		}
 		b.WriteString("  }\n")
 	}
 
@@ -443,6 +463,12 @@ func PrintDiffMermaid(w io.Writer, d GraphDiff) error {
 				mermaidLabel(ss.Name),
 				mermaidLabel(string(ss.Kind)),
 			)
+		}
+		// Invisible links chain consecutive nodes vertically.
+		for i := 1; i < len(d.ShadowShifts); i++ {
+			fmt.Fprintf(&b, "    %s ~~~ %s\n",
+				idMap[d.ShadowShifts[i-1].Name],
+				idMap[d.ShadowShifts[i].Name])
 		}
 		b.WriteString("  end\n")
 		// Style directives for shadow shift nodes (after subgraph block).
