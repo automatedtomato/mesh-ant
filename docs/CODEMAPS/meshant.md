@@ -75,19 +75,19 @@
 | `actor.go` | Graph-as-actor identity: `IdentifyGraph`, `IdentifyDiff`, `GraphRef`, `DiffRef`, `newUUID4`. |
 | `serial.go` | Custom JSON codec for `TimeWindow`: `MarshalJSON`, `UnmarshalJSON`. Null encoding for unbounded bounds. |
 | `reflexive.go` | Reflexive tracing: `ArticulationTrace`, `DiffTrace`. Functions that record articulation and diffing as traces. |
-| `export.go` | Export functions: `PrintGraphJSON`, `PrintDiffJSON`, `PrintGraphDOT`, `PrintGraphMermaid`. Internal helpers for DOT/Mermaid formatting. `stripNewlines()` security helper (M9) prevents injection in output from crafted trace values. |
+| `export.go` | Export functions: `PrintGraphJSON`, `PrintDiffJSON`, `PrintGraphDOT`, `PrintGraphMermaid`, `PrintDiffDOT`, `PrintDiffMermaid`. Internal helpers for DOT/Mermaid formatting. `stripNewlines()` security helper prevents injection from crafted trace values. |
 
 ### Types
 
 | Type | Key Fields | Purpose |
 |------|-----------|---------|
 | `TimeWindow` | `Start` (time.Time), `End` (time.Time) | Inclusive temporal range; zero bounds mean unbounded. |
-| `ShadowReason` | (string constant: `ShadowReasonObserver`, `ShadowReasonTimeWindow`) | Why an element is in the shadow. |
-| `ArticulationOptions` | `ObserverPositions` ([]string), `TimeWindow` (TimeWindow) | Parameters for Articulate: empty ObserverPositions = full cut. |
+| `ShadowReason` | (string constant: `ShadowReasonObserver`, `ShadowReasonTagFilter`, `ShadowReasonTimeWindow`) | Why an element is in the shadow (three reasons, sorted alphabetically). |
+| `ArticulationOptions` | `ObserverPositions` ([]string), `TimeWindow` (TimeWindow), `Tags` ([]string) | Parameters for Articulate: three cut axes. Empty = full cut on that axis. |
 | `MeshGraph` | `ID` (string, actor identity), `Nodes` (map[string]Node), `Edges` ([]Edge), `Cut` (Cut) | Articulated graph from trace dataset with observer position and shadow. |
 | `Node` | `Name` (string), `AppearanceCount` (int), `ShadowCount` (int) | Element and its visibility across included vs. shadow traces. |
 | `Edge` | `TraceID`, `WhatChanged`, `Mediation`, `Observer`, `Sources`, `Targets`, `Tags` (all []string) | One trace in the graph, preserving source context. |
-| `Cut` | `ObserverPositions`, `TimeWindow`, `TracesIncluded`, `TracesTotal`, `DistinctObserversTotal`, `ShadowElements`, `ExcludedObserverPositions` | Metadata naming the articulation position and shadow. |
+| `Cut` | `ObserverPositions`, `TimeWindow`, `Tags`, `TracesIncluded`, `TracesTotal`, `DistinctObserversTotal`, `ShadowElements`, `ExcludedObserverPositions` | Metadata naming the articulation position and shadow (three cut axes). |
 | `ShadowElement` | `Name` (string), `SeenFrom` ([]string), `Reasons` ([]ShadowReason) | Element in shadow: visible from excluded observer positions, excluded for named reasons. |
 | `GraphDiff` | `ID` (string), `NodesAdded`, `NodesRemoved` ([]string), `NodesPersisted` ([]PersistedNode), `EdgesAdded`, `EdgesRemoved` ([]Edge), `ShadowShifts` ([]ShadowShift), `From`, `To` (Cut) | Comparison of two MeshGraph articulations. |
 | `ShadowShift` | `Name`, `Kind` (ShadowShiftKind), `FromReasons`, `ToReasons` ([]ShadowReason) | Element movement across shadow boundary between two graphs (emerged, submerged, reason-changed). |
@@ -116,6 +116,8 @@
 | `PrintDiffJSON` | `func PrintDiffJSON(w io.Writer, d GraphDiff) error` | Export `GraphDiff` as JSON to io.Writer. |
 | `PrintGraphDOT` | `func PrintGraphDOT(w io.Writer, g MeshGraph) error` | Export `MeshGraph` as Graphviz DOT format. Includes node labels and edge cardinality. |
 | `PrintGraphMermaid` | `func PrintGraphMermaid(w io.Writer, g MeshGraph) error` | Export `MeshGraph` as Mermaid flowchart syntax. Sanitized IDs and truncated labels for readability. |
+| `PrintDiffDOT` | `func PrintDiffDOT(w io.Writer, d GraphDiff) error` | Export `GraphDiff` as Graphviz DOT format. Added=green/bold, removed=red/dashed, persisted with count labels, shadow shifts in cluster subgraph. |
+| `PrintDiffMermaid` | `func PrintDiffMermaid(w io.Writer, d GraphDiff) error` | Export `GraphDiff` as Mermaid flowchart. Same visual conventions as DOT diff; style directives for color coding. |
 
 ## Package: persist
 
@@ -159,8 +161,8 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point (380 lines): subcommand dispatcher, helper types and functions. |
-| `main_test.go` | 37 tests, 92.9% coverage: all subcommands, flag parsing, error handling. |
+| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. |
+| `main_test.go` | 53 tests, 92.5% coverage: all subcommands, flag parsing, file output, error handling. |
 
 ### Types
 
@@ -180,8 +182,10 @@ None (persist carries no domain types; wraps graph types).
 | `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, or `cmdDiff()`. |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
-| `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`. Applies `graph.Articulate()` and exports via `graph.PrintArticulation()` or one of the export functions. |
-| `cmdDiff` | `func cmdDiff(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts (`--observer-a`, `--observer-b`, per-side `--from-a`, `--to-a`, etc.), compute diff via `graph.Diff()`. `--format text\|json` (dot/mermaid not supported for diffs). |
+| `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. |
+| `cmdDiff` | `func cmdDiff(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts (`--observer-a/b`, `--tag-a/b`, per-side time windows), compute diff via `graph.Diff()`. `--format text\|json\|dot\|mermaid`, `--output <file>`. |
+| `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
+| `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
 | `usage` | `func usage()` | Print CLI usage message listing all subcommands and flags. |
 
 ### Key Design Notes
@@ -190,7 +194,8 @@ None (persist carries no domain types; wraps graph types).
 - **Testable structure**: Core logic in `run()`, `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`; `main()` is thin wrapper that wires os.Stdout/os.Args and exits non-zero on error
 - **Flag parsing**: Uses stdlib `flag.FlagSet` for subcommand isolation; `stringSliceFlag` enables repeatable `--observer` flags without comma-separation
 - **Time handling**: RFC3339 timestamps throughout; `parseTimeFlag()` and `parseTimeWindow()` provide clear error messages with formatting hints
-- **Format options**: `articulate` supports text/json/dot/mermaid; `diff` supports text/json only (graphs are spatial, diffs are relational)
+- **Format options**: `articulate` and `diff` both support text/json/dot/mermaid
+- **File output**: `--output <file>` writes to file instead of stdout (with deferred close for safety)
 - **Binary installation**: `go install ./cmd/meshant` produces `meshant` binary at $GOPATH/bin; used in Dockerfile at `/usr/local/bin/meshant`
 
 ## Cross-Package Relationships
@@ -285,6 +290,8 @@ cmd/demo/
 | Export diff to JSON | `graph/export.go` → `PrintDiffJSON()` |
 | Export graph to Graphviz DOT | `graph/export.go` → `PrintGraphDOT()` |
 | Export graph to Mermaid | `graph/export.go` → `PrintGraphMermaid()` |
+| Export diff to Graphviz DOT | `graph/export.go` → `PrintDiffDOT()` |
+| Export diff to Mermaid | `graph/export.go` → `PrintDiffMermaid()` |
 | Write graph to file | `persist/persist.go` → `WriteJSON()` |
 | Read graph from JSON file | `persist/persist.go` → `ReadGraphJSON()` |
 | Read diff from JSON file | `persist/persist.go` → `ReadDiffJSON()` |
@@ -357,6 +364,7 @@ cmd/demo/
 - `docs/decisions/m7-serialisation-reflexivity-v1.md` — TimeWindow JSON codec and reflexive tracing
 - `docs/decisions/structured-export-v1.md` — graph export to JSON, DOT, Mermaid formats
 - `docs/decisions/cli-v1.md` — CLI design decisions (M9)
+- `docs/decisions/m10-tag-filter-diff-export-cli-v1.md` — Tag-filter axis, diff visual export, CLI integration (M10)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 

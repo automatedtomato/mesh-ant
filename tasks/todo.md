@@ -326,6 +326,44 @@ Library + CLI form. The framework can be used without writing Go.
 
 ---
 
+## Milestone 10: Tag-Filter Cut Axis + Diff Visual Export + CLI Integration
+
+Closes three items deferred across earlier milestones: tag-filter cut axis (deferred
+since M3), GraphDiff DOT/Mermaid export (deferred since M8), and CLI wiring for both.
+
+### Tasks
+
+- [x] **M10.1 — Tag-filter cut axis**
+  - `meshant/graph/graph.go` — `ShadowReasonTagFilter`, `Tags` on `ArticulationOptions` + `Cut`
+  - Any-match / OR semantics: trace passes if it carries any of the specified tags
+  - `meshant/graph/graph_test.go` — tag-filter groups; 100% coverage
+  - Branch: `6-m10-tag-filter-axis` (merged to develop)
+
+- [x] **M10.2 — GraphDiff DOT + Mermaid export**
+  - `meshant/graph/export.go` — `PrintDiffDOT`, `PrintDiffMermaid`
+  - Color conventions: added=green/bold, removed=red/dashed, shadow shifts color-coded
+  - Layout: `rankdir=TB` + `node [shape=box]` (DOT), `flowchart TD` (Mermaid)
+  - Invisible edge chaining for vertical shadow stacking
+  - `meshant/graph/export_diff_test.go` — diff export tests; 100% coverage
+  - Branch: `6-m10-tag-filter-axis` (merged to develop)
+
+- [x] **M10.3 — CLI integration**
+  - `--tag` repeatable flag on `articulate` (same `stringSliceFlag` pattern as `--observer`)
+  - `--tag-a`/`--tag-b` on `diff` (per-side tag filters)
+  - Unlocked `--format dot|mermaid` on `diff` (previously rejected)
+  - `--output <file>` flag on both commands (writes to file, confirmation on stdout)
+  - `outputWriter()` + `confirmOutput()` helpers; `defer f.Close()` for safety
+  - 53 CLI tests, 92.5% coverage
+  - Branch: `6-m10-tag-filter-axis` (merged to develop)
+
+- [x] **M10.4 — Decision record + codemap**
+  - `docs/decisions/m10-tag-filter-diff-export-cli-v1.md` — 7 decisions
+  - `docs/CODEMAPS/meshant.md` — updated for M10
+  - Philosophical review: 1 violation fixed (tag semantics comment), 1 tension noted (CLI reflexive tracing)
+  - Branch: `7-m10-decision-record`
+
+---
+
 ## Post-v1.0.0 — Open Horizon
 
 Informed by v1.0.0 review (`docs/reviews/release_v1_review_13-mar-26.md`) and earlier
@@ -336,8 +374,8 @@ Milestones will be cut when work begins.
 
 These deepen the analytical core — deferred across earlier milestones:
 
-- [ ] **Tag-filter cut axis** — third cut axis alongside observer and time-window (deferred since M3)
-- [ ] **GraphDiff DOT / Mermaid export** — `PrintDiffDOT`, `PrintDiffMermaid` (deferred since M8)
+- [x] **Tag-filter cut axis** — third cut axis alongside observer and time-window (completed in M10)
+- [x] **GraphDiff DOT / Mermaid export** — `PrintDiffDOT`, `PrintDiffMermaid` (completed in M10)
 - [ ] **Shadow analysis operations** — shadow summary, shadow-first mode, unstable-boundary reports
 - [ ] **Re-articulation** — re-cutting the same dataset; showing how one articulation provokes another
 
