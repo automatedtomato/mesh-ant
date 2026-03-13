@@ -6,7 +6,7 @@
 //
 // Coverage note: main() itself is untestable from Go tests (Go cannot cover
 // the main function). The testable surface — run(), cmdSummarize(),
-// cmdValidate(), usage(), usageError() — should exceed 80% coverage.
+// cmdValidate(), usage() — should exceed 80% coverage.
 //
 // Dataset paths are relative to the test execution directory
 // (meshant/cmd/meshant/). The module root is meshant/, so three levels up
@@ -563,9 +563,9 @@ func TestStringSliceFlag_EmptyValueRejected(t *testing.T) {
 
 // --- Group 6: --tag flag on articulate (M10.3) ---
 
-// TestCmdArticulate_WithTag verifies that --tag is accepted and filters traces
-// by tag. The evacuation dataset has traces tagged "delay" — filtering by a
-// non-existent tag should produce an articulation with zero nodes.
+// TestCmdArticulate_WithTag verifies that --tag is accepted and produces
+// non-empty output when the tag exists in the dataset. The evacuation dataset
+// has traces tagged "delay".
 func TestCmdArticulate_WithTag(t *testing.T) {
 	var buf bytes.Buffer
 	err := cmdArticulate(&buf, []string{
@@ -706,6 +706,20 @@ func TestCmdDiff_TagAEmptyRejected(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("cmdDiff() --tag-a \"\": want non-nil error, got nil")
+	}
+}
+
+// TestCmdDiff_TagBEmptyRejected verifies that --tag-b "" is rejected.
+func TestCmdDiff_TagBEmptyRejected(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDiff(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "local-mayor",
+		"--tag-b", "",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdDiff() --tag-b \"\": want non-nil error, got nil")
 	}
 }
 
