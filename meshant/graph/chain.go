@@ -55,7 +55,7 @@ type ChainStep struct {
 // Breaks are analytically significant — they name what stopped the traversal.
 type ChainBreak struct {
 	// AtElement is the node where the break occurred.
-	AtElement string
+	AtElement string `json:"at_element"`
 
 	// Reason describes why the chain stopped or why an alternative was not
 	// followed. Known values:
@@ -69,7 +69,7 @@ type ChainBreak struct {
 	//                            no-outgoing-edges). This lets callers see which
 	//                            edge closed the loop.
 	//   "branch-not-taken"     — an alternative edge was available but not followed
-	Reason string
+	Reason string `json:"reason"`
 }
 
 // TranslationChain is the result of following connected elements through a

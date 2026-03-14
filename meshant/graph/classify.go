@@ -37,14 +37,14 @@ const (
 // StepClassification records the classification of one step in a chain.
 type StepClassification struct {
 	// StepIndex is the index into TranslationChain.Steps.
-	StepIndex int
+	StepIndex int `json:"step_index"`
 
 	// Kind is the classification: intermediary, mediator, or translation.
-	Kind StepKind
+	Kind StepKind `json:"kind"`
 
 	// Reason is a human-readable justification for the classification.
 	// Always non-empty. Makes the judgment inspectable and contestable.
-	Reason string
+	Reason string `json:"reason"`
 }
 
 // ClassifiedChain pairs a TranslationChain with per-step classifications.
@@ -95,7 +95,14 @@ func ClassifyChain(chain TranslationChain, opts ClassifyOptions) ClassifiedChain
 
 	// Carry the criterion as provenance metadata. The criterion does NOT
 	// alter the step heuristics — it is envelope metadata only (C1).
-	cc.Criterion = opts.Criterion
+	// Slice fields are defensively copied so the caller cannot mutate
+	// cc.Criterion.Preserve or cc.Criterion.Ignore after the call.
+	cc.Criterion = EquivalenceCriterion{
+		Name:        opts.Criterion.Name,
+		Declaration: opts.Criterion.Declaration,
+		Preserve:    append([]string(nil), opts.Criterion.Preserve...),
+		Ignore:      append([]string(nil), opts.Criterion.Ignore...),
+	}
 
 	for i, step := range chain.Steps {
 		kind, reason := classifyStep(step)

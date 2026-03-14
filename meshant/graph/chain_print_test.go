@@ -107,7 +107,9 @@ func TestPrintChain_MediationShown(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	_ = graph.PrintChain(&buf, cc)
+	if err := graph.PrintChain(&buf, cc); err != nil {
+		t.Fatalf("PrintChain error: %v", err)
+	}
 	out := buf.String()
 
 	if !strings.Contains(out, "review-board") {
@@ -314,6 +316,48 @@ func TestPrintChain_WithCriterion_DeclarationOnly(t *testing.T) {
 	// Must be absent — no name, no preserve, no ignore
 	if strings.Contains(out, "Criterion:") {
 		t.Errorf("output should not have 'Criterion:' name line when Name is empty\nfull output:\n%s", out)
+	}
+	if strings.Contains(out, "Preserve:") {
+		t.Errorf("output should not have 'Preserve:' line when Preserve is empty\nfull output:\n%s", out)
+	}
+	if strings.Contains(out, "Ignore:") {
+		t.Errorf("output should not have 'Ignore:' line when Ignore is empty\nfull output:\n%s", out)
+	}
+}
+
+// TestPrintChain_WithCriterion_NameOnly verifies that a name-only criterion
+// (no Declaration, Preserve, or Ignore) renders just the "Criterion: <name>"
+// header and the heuristics disclaimer — making the analytical weakness visible.
+// A name-only criterion is structurally valid but analytically incomplete per C4.
+func TestPrintChain_WithCriterion_NameOnly(t *testing.T) {
+	crit := graph.EquivalenceCriterion{
+		Name: "analytical-handle",
+	}
+	cc := graph.ClassifiedChain{
+		Chain: graph.TranslationChain{
+			StartElement: "X",
+			Steps:        []graph.ChainStep{},
+		},
+		Criterion: crit,
+	}
+
+	var buf bytes.Buffer
+	if err := graph.PrintChain(&buf, cc); err != nil {
+		t.Fatalf("PrintChain error: %v", err)
+	}
+	out := buf.String()
+
+	// Must be present
+	if !strings.Contains(out, "Criterion: analytical-handle") {
+		t.Errorf("output missing 'Criterion:' name line\nfull output:\n%s", out)
+	}
+	if !strings.Contains(out, "(criterion carried — classification uses v1 heuristics)") {
+		t.Errorf("output missing heuristics disclaimer\nfull output:\n%s", out)
+	}
+
+	// Must be absent — no Declaration, Preserve, or Ignore
+	if strings.Contains(out, "Declaration:") {
+		t.Errorf("output should not have 'Declaration:' line when Declaration is empty\nfull output:\n%s", out)
 	}
 	if strings.Contains(out, "Preserve:") {
 		t.Errorf("output should not have 'Preserve:' line when Preserve is empty\nfull output:\n%s", out)
