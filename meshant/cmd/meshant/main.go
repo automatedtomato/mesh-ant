@@ -18,6 +18,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -29,6 +30,54 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/graph"
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
 )
+
+// maxCriterionBytes caps the size of a criterion JSON file read by
+// loadCriterionFile. 1 MiB is generous for a human-authored declaration.
+const maxCriterionBytes = 1 * 1024 * 1024
+
+// loadCriterionFile reads a JSON file at path and decodes it into an
+// EquivalenceCriterion. Four failure modes, each a distinct error:
+//  1. File cannot be opened (non-existent, permissions)
+//  2. File contains invalid JSON or a field not in EquivalenceCriterion
+//     (DisallowUnknownFields — precision over forward-compatibility
+//     tolerance for an interpretive declaration)
+//  3. Decoded criterion is zero-value — no interpretive content
+//     (hard error: silent fallback not acceptable when --criterion-file
+//     was explicitly provided)
+//  4. Layer ordering violation: Preserve or Ignore without Declaration
+//
+// Reads are capped at maxCriterionBytes. A file exceeding that cap is
+// truncated at the I/O boundary and produces a "malformed JSON" error
+// (unexpected EOF), not a distinct "file too large" error.
+func loadCriterionFile(path string) (graph.EquivalenceCriterion, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return graph.EquivalenceCriterion{}, fmt.Errorf("criterion-file: cannot open %q: %w", path, err)
+	}
+	defer f.Close()
+
+	limited := io.LimitReader(f, maxCriterionBytes)
+	dec := json.NewDecoder(limited)
+	dec.DisallowUnknownFields()
+
+	var c graph.EquivalenceCriterion
+	if err := dec.Decode(&c); err != nil {
+		return graph.EquivalenceCriterion{}, fmt.Errorf("criterion-file: malformed JSON in %q: %w", path, err)
+	}
+
+	if c.IsZero() {
+		return graph.EquivalenceCriterion{}, fmt.Errorf(
+			"criterion-file: %q decoded to a zero-value criterion — file must contain at least a declaration (or a name as a handle)",
+			path,
+		)
+	}
+
+	if err := c.Validate(); err != nil {
+		return graph.EquivalenceCriterion{}, fmt.Errorf("criterion-file: %w", err)
+	}
+
+	return c, nil
+}
 
 // stringSliceFlag is a custom flag.Value that accumulates string values on
 // each Set() call. This enables repeatable flags like --observer a --observer b,
@@ -163,7 +212,7 @@ Commands:
   validate    validate all traces and report errors
   articulate  articulate an observer-situated graph (flags: --observer, --tag, --from, --to, --format, --output)
   diff        diff two articulations (flags: --observer-a, --observer-b, --tag-a, --tag-b, --from-a, --to-a, --from-b, --to-b, --format, --output)
-  follow      follow a translation chain through an articulation (flags: --observer, --tag, --from, --to, --element, --direction, --depth, --format, --output)
+  follow      follow a translation chain through an articulation (flags: --observer, --tag, --from, --to, --element, --direction, --depth, --format, --criterion-file, --output)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }
@@ -507,6 +556,14 @@ func cmdFollow(w io.Writer, args []string) error {
 	var outputPath string
 	fs.StringVar(&outputPath, "output", "", "write output to file")
 
+	// --criterion-file is an optional path to a JSON file containing an
+	// EquivalenceCriterion declaration. When provided, the criterion is
+	// loaded, validated, and attached to the ClassifyOptions so it appears
+	// in the chain output (text and JSON). Without this flag, the command
+	// behaves identically to v1 (no criterion block rendered).
+	var criterionFile string
+	fs.StringVar(&criterionFile, "criterion-file", "", "path to JSON file containing an EquivalenceCriterion declaration")
+
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -543,10 +600,21 @@ func cmdFollow(w io.Writer, args []string) error {
 		return fmt.Errorf("follow: %w", err)
 	}
 
+	// Load and validate criterion file when provided. Zero criterion (no flag)
+	// is the default and preserves v1 rendering behavior unchanged.
+	var criterion graph.EquivalenceCriterion
+	if criterionFile != "" {
+		c, err := loadCriterionFile(criterionFile)
+		if err != nil {
+			return fmt.Errorf("follow: %w", err)
+		}
+		criterion = c
+	}
+
 	// Positional argument: path to traces file.
 	remaining := fs.Args()
 	if len(remaining) == 0 {
-		return fmt.Errorf("follow: path to traces.json required\n\nUsage: meshant follow --observer <pos> --element <name> [--tag <tag>] [--from RFC3339] [--to RFC3339] [--direction forward|backward] [--depth N] [--format text|json] [--output <file>] <traces.json>")
+		return fmt.Errorf("follow: path to traces.json required\n\nUsage: meshant follow --observer <pos> --element <name> [--tag <tag>] [--from RFC3339] [--to RFC3339] [--direction forward|backward] [--depth N] [--format text|json] [--criterion-file <file>] [--output <file>] <traces.json>")
 	}
 	path := remaining[0]
 
@@ -568,7 +636,7 @@ func cmdFollow(w io.Writer, args []string) error {
 		MaxDepth:  depth,
 	})
 
-	cc := graph.ClassifyChain(chain, graph.ClassifyOptions{})
+	cc := graph.ClassifyChain(chain, graph.ClassifyOptions{Criterion: criterion})
 
 	// Determine output destination.
 	dest, err := outputWriter(w, outputPath)

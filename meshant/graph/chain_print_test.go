@@ -248,7 +248,9 @@ func TestPrintChainJSON_EmptyChain(t *testing.T) {
 // TestPrintChain_WithCriterion_FullBlock verifies that a fully-populated
 // criterion produces all expected lines in the human-readable output:
 // name, declaration, preserve list, ignore list, and the mandatory
-// heuristics disclaimer line.
+// heuristics disclaimer line. A full block includes a Declaration, so the
+// handle-only warning must NOT appear (ANT T2: only fire when Name != ""
+// and Declaration == "").
 func TestPrintChain_WithCriterion_FullBlock(t *testing.T) {
 	crit := graph.EquivalenceCriterion{
 		Name:        "my-criterion",
@@ -282,11 +284,18 @@ func TestPrintChain_WithCriterion_FullBlock(t *testing.T) {
 			t.Errorf("output missing %q\nfull output:\n%s", want, out)
 		}
 	}
+
+	// Full block has a Declaration, so the handle-only warning must NOT appear.
+	if strings.Contains(out, "(handle only — no declaration grounds this reading)") {
+		t.Errorf("output should NOT contain handle-only warning when Declaration is present\nfull output:\n%s", out)
+	}
 }
 
 // TestPrintChain_WithCriterion_DeclarationOnly verifies that when the criterion
 // has only a Declaration (no Name, Preserve, or Ignore), the name/preserve/ignore
 // lines are absent, but the declaration line and heuristics line are present.
+// Because Declaration is non-empty, the handle-only warning must NOT appear
+// (ANT T2: only fires when Name != "" and Declaration == "").
 func TestPrintChain_WithCriterion_DeclarationOnly(t *testing.T) {
 	crit := graph.EquivalenceCriterion{
 		Declaration: "continuity means nothing was reordered",
@@ -323,11 +332,17 @@ func TestPrintChain_WithCriterion_DeclarationOnly(t *testing.T) {
 	if strings.Contains(out, "Ignore:") {
 		t.Errorf("output should not have 'Ignore:' line when Ignore is empty\nfull output:\n%s", out)
 	}
+
+	// Declaration is present, so the handle-only warning must NOT appear.
+	if strings.Contains(out, "(handle only — no declaration grounds this reading)") {
+		t.Errorf("output should NOT contain handle-only warning when Declaration is present\nfull output:\n%s", out)
+	}
 }
 
 // TestPrintChain_WithCriterion_NameOnly verifies that a name-only criterion
 // (no Declaration, Preserve, or Ignore) renders just the "Criterion: <name>"
-// header and the heuristics disclaimer — making the analytical weakness visible.
+// header, the handle-only warning (ANT T2), and the heuristics disclaimer —
+// making the analytical weakness visible.
 // A name-only criterion is structurally valid but analytically incomplete per C4.
 func TestPrintChain_WithCriterion_NameOnly(t *testing.T) {
 	crit := graph.EquivalenceCriterion{
@@ -350,6 +365,10 @@ func TestPrintChain_WithCriterion_NameOnly(t *testing.T) {
 	// Must be present
 	if !strings.Contains(out, "Criterion: analytical-handle") {
 		t.Errorf("output missing 'Criterion:' name line\nfull output:\n%s", out)
+	}
+	// ANT T2: name-only criteria must display the handle-only warning.
+	if !strings.Contains(out, "(handle only — no declaration grounds this reading)") {
+		t.Errorf("output missing handle-only warning for name-only criterion\nfull output:\n%s", out)
 	}
 	if !strings.Contains(out, "(criterion carried — classification uses v1 heuristics)") {
 		t.Errorf("output missing heuristics disclaimer\nfull output:\n%s", out)
