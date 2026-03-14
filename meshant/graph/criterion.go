@@ -38,7 +38,7 @@ type EquivalenceCriterion struct {
 	// use, not an identity. Two criteria with different names may declare
 	// the same grounds; two criteria with the same name may drift in their
 	// declarations over time.
-	Name string
+	Name string `json:"name,omitempty"`
 
 	// Declaration is the interpretive criterion in natural language.
 	// This is the primary layer (Layer 1) — the grounds for the reading.
@@ -49,13 +49,18 @@ type EquivalenceCriterion struct {
 	// and the decision record make this explicit: name-only criteria are
 	// accepted as transport handles, but the conceptually strong usage
 	// always includes a Declaration.
-	Declaration string
+	Declaration string `json:"declaration,omitempty"`
 
 	// Preserve is an optional list of aspects treated as
 	// continuity-bearing under this criterion (Layer 2).
 	// Values are free-text human vocabulary, not schema field names.
 	// Requires Declaration to be non-empty (layer ordering).
-	Preserve []string
+	//
+	// Preserve and Ignore together form a binary partition of relevance.
+	// This is a known simplification: aspects whose relevance is itself
+	// contested or uncertain do not fit neatly into either category.
+	// A future version may introduce a third register for ambiguous aspects.
+	Preserve []string `json:"preserve,omitempty"`
 
 	// Ignore is an optional list of aspects treated as irrelevant to
 	// equivalence under this criterion (Layer 2).
@@ -67,7 +72,7 @@ type EquivalenceCriterion struct {
 	// This is a second-order shadow: what the reading conditions exclude
 	// from relevance. Future milestones may extend the shadow apparatus
 	// to surface criterion-excluded aspects explicitly.
-	Ignore []string
+	Ignore []string `json:"ignore,omitempty"`
 }
 
 // IsZero reports whether the criterion is entirely unset.

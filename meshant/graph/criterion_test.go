@@ -161,6 +161,16 @@ func TestEquivalenceCriterionValidate(t *testing.T) {
 			t.Error("Name+Preserve without Declaration should be invalid — name does not substitute for grounds")
 		}
 	})
+
+	t.Run("Name + Ignore without Declaration is invalid", func(t *testing.T) {
+		c := graph.EquivalenceCriterion{
+			Name:   "operational-meaning",
+			Ignore: []string{"display_format"},
+		}
+		if err := c.Validate(); err == nil {
+			t.Error("Name+Ignore without Declaration should be invalid — name does not substitute for grounds")
+		}
+	})
 }
 
 // TestEquivalenceCriterionFields verifies structural stability — fields are
