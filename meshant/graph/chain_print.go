@@ -154,6 +154,16 @@ func printChainCriterion(w io.Writer, c EquivalenceCriterion) error {
 		}
 	}
 
+	// Handle-only warning (ANT T2): a name without a declaration is a
+	// transport handle with no interpretive grounding. Signal this explicitly
+	// so the reader sees the analytical weakness in the output rather than
+	// discovering it through silence.
+	if c.Name != "" && c.Declaration == "" {
+		if _, err := fmt.Fprintln(w, "(handle only — no declaration grounds this reading)"); err != nil {
+			return err
+		}
+	}
+
 	// Declaration line — the primary Layer 1 grounds for the reading.
 	if c.Declaration != "" {
 		if _, err := fmt.Fprintf(w, "Declaration: %s\n", c.Declaration); err != nil {
