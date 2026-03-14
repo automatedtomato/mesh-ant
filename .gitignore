@@ -1,2 +1,9 @@
 demo
 *.out
+
+# Output binaries
+meshant/meshant-cli
+
+# Generated graph exports
+*.dot
+*.mmd

@@ -447,7 +447,7 @@ func TestDiff_EdgesAdded_FullEdgeStored(t *testing.T) {
 		[]string{"src-node"}, []string{"tgt-node"},
 	)
 	tr.WhatChanged = "specific change description"
-	tr.Mediation = "an-intermediary"
+	tr.Mediation = "a-mediator"
 	tr.Tags = []string{"translation"}
 
 	g1 := emptyGraph()

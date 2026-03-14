@@ -14,6 +14,7 @@ This file is a **catalog**, not a specification. Read the documents it points to
 - `docs/principles.md` — 8 design principles in detail
 - `docs/ant-notes.md` — ANT theoretical grounding
 - `docs/directions.md` — strategic direction: three forms, version targets, core inversion
+- `docs/glossary.md` — vocabulary guide: mediator vs intermediary, cut, shadow, articulation, etc.
 
 ---
 

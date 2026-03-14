@@ -35,7 +35,7 @@ func sampleGraph() graph.MeshGraph {
 			{
 				TraceID:     "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
 				WhatChanged: "test edge",
-				Mediation:   "relay",
+				Mediation:   "review-committee",
 				Observer:    "obs-1",
 				Sources:     []string{"alpha"},
 				Targets:     []string{"beta"},

@@ -384,8 +384,8 @@ func TestEvacuation_NonHumanActants_OnDay1(t *testing.T) {
 // --- Group 6: Mediation coverage ---
 
 // TestEvacuation_Mediation_Rate verifies that at least 40% of traces carry
-// a Mediation value. Mediation is the mechanism by which action is relayed
-// and transformed; a low rate would leave most translations unexplained.
+// a Mediation value. A mediator transforms what passes through it — it is
+// not a neutral conduit; a low rate would leave most transformations opaque.
 func TestEvacuation_Mediation_Rate(t *testing.T) {
 	traces := loadEvacuation(t)
 

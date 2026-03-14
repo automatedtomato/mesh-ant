@@ -326,6 +326,122 @@ Library + CLI form. The framework can be used without writing Go.
 
 ---
 
+## Milestone 10: Tag-Filter Cut Axis + Diff Visual Export + CLI Integration
+
+Closes three items deferred across earlier milestones: tag-filter cut axis (deferred
+since M3), GraphDiff DOT/Mermaid export (deferred since M8), and CLI wiring for both.
+
+### Tasks
+
+- [x] **M10.1 — Tag-filter cut axis**
+  - `meshant/graph/graph.go` — `ShadowReasonTagFilter`, `Tags` on `ArticulationOptions` + `Cut`
+  - Any-match / OR semantics: trace passes if it carries any of the specified tags
+  - `meshant/graph/graph_test.go` — tag-filter groups; 100% coverage
+  - Branch: `6-m10-tag-filter-axis` (merged to develop)
+
+- [x] **M10.2 — GraphDiff DOT + Mermaid export**
+  - `meshant/graph/export.go` — `PrintDiffDOT`, `PrintDiffMermaid`
+  - Color conventions: added=green/bold, removed=red/dashed, shadow shifts color-coded
+  - Layout: `rankdir=TB` + `node [shape=box]` (DOT), `flowchart TD` (Mermaid)
+  - Invisible edge chaining for vertical shadow stacking
+  - `meshant/graph/export_diff_test.go` — diff export tests; 100% coverage
+  - Branch: `6-m10-tag-filter-axis` (merged to develop)
+
+- [x] **M10.3 — CLI integration**
+  - `--tag` repeatable flag on `articulate` (same `stringSliceFlag` pattern as `--observer`)
+  - `--tag-a`/`--tag-b` on `diff` (per-side tag filters)
+  - Unlocked `--format dot|mermaid` on `diff` (previously rejected)
+  - `--output <file>` flag on both commands (writes to file, confirmation on stdout)
+  - `outputWriter()` + `confirmOutput()` helpers; `defer f.Close()` for safety
+  - 53 CLI tests, 92.5% coverage
+  - Branch: `6-m10-tag-filter-axis` (merged to develop)
+
+- [x] **M10.4 — Decision record + codemap**
+  - `docs/decisions/m10-tag-filter-diff-export-cli-v1.md` — 7 decisions
+  - `docs/CODEMAPS/meshant.md` — updated for M10
+  - Philosophical review: 1 violation fixed (tag semantics comment), 1 tension noted (CLI reflexive tracing)
+  - Branch: `7-m10-decision-record`
+
+---
+
+## Milestone 10.5: Translation Chain + Mediator/Intermediary Classification
+
+Layer 4 analytical operation — the first that reads *through* a graph (following
+paths) rather than *across* graphs (comparing cuts). Two connected capabilities:
+FollowTranslation (chain traversal) and ClassifyChain (intermediary/mediator/
+translation judgment). Classification is cut-dependent, not intrinsic.
+
+**Full plan:** `tasks/plan_m10_5.md`
+
+### Tasks
+
+- [x] **M10.5.1 — Chain types + traversal**
+  - `meshant/graph/chain.go` — `TranslationChain`, `ChainStep`, `ChainBreak`, `FollowOptions`, `FollowTranslation()`
+  - First-match branching; alternatives recorded as breaks (shadow philosophy)
+  - Cycle detection, depth limiting, multi-source/multi-target edge support
+  - `meshant/graph/chain_test.go` — 16 tests, 97.9% coverage
+  - Branch: `24-m10-5-chain-traversal`
+
+- [x] **M10.5.2 — Step classification**
+  - `meshant/graph/classify.go` — `StepKind`, `StepClassification`, `ClassifiedChain`, `ClassifyChain()`
+  - v1 heuristics (provisional): intermediary (no mediation), mediator (mediation), translation (mediation + tag)
+  - Critical test: same data, two observer cuts → different classifications (Question ④)
+  - `meshant/graph/classify_test.go` — 8 tests, 100% coverage
+  - Branch: `24-m10-5-chain-traversal`
+
+- [x] **M10.5.3 — Output + CLI**
+  - `meshant/graph/chain_print.go` — `PrintChain()`, `PrintChainJSON()`
+  - CLI `follow` subcommand: `--observer`, `--element`, `--direction`, `--depth`, `--tag`, `--from`, `--to`, `--format`, `--output`
+  - `meshant/graph/chain_print_test.go` — 7 tests
+  - `meshant/cmd/meshant/main_test.go` — 11 new CLI tests, 92.7% coverage
+  - Branch: `24-m10-5-chain-traversal`
+
+- [x] **M10.5.4 — E2E tests**
+  - `meshant/graph/chain_e2e_test.go` — 4 E2E tests against evacuation dataset
+  - Forward from buoy (meteorological chain), backward from evacuation order (political chain)
+  - Cut-dependent chain length demonstrated: same element, different observer → different chain
+  - Branch: `24-m10-5-chain-traversal`
+
+- [x] **M10.5.5 — Decision record + codemap**
+  - `docs/decisions/translation-chain-v1.md` — 12 decisions
+  - `docs/CODEMAPS/meshant.md` — updated with chain.go, classify.go, chain_print.go
+  - `docs/reviews/equivalence_criterion_design_note.md` — three-layer criterion design
+  - `docs/reviews/notes_on_mediator.md` — conditional readings design note
+  - Branch: `24-m10-5-chain-traversal`
+
+576 total tests, 0 failures; graph 95.8% coverage; CLI 92.7% coverage; `go vet` clean.
+
+---
+
+## Milestone 10.5+: Equivalence Criterion (Classification with Grounds)
+
+The missing cut axis: an explicit declaration of what counts as preserved,
+altered, or consequential across a passage. Layers 1–2 only; Layer 3
+(comparison function) deferred.
+
+**Full plan:** `tasks/plan_m10_5_plus.md`
+
+### Tasks
+
+- [ ] **M10.5+.1 — Define EquivalenceCriterion type**
+  - `meshant/graph/criterion.go` — `EquivalenceCriterion` struct (Name, Declaration, Preserve, Ignore), `IsZero()`
+  - `meshant/graph/criterion_test.go` — zero/non-zero detection tests
+
+- [ ] **M10.5+.2 — Wire criterion into classification**
+  - Add `Criterion` to `ClassifyOptions` and `ClassifiedChain`
+  - Criterion name prepended to reasons; v1 logic unchanged
+  - `PrintChain`/`PrintChainJSON` render criterion when non-zero
+
+- [ ] **M10.5+.3 — CLI support**
+  - `--criterion-name`, `--criterion-declaration`, `--criterion-preserve`, `--criterion-ignore` flags
+  - `--criterion-file <path>` for JSON criterion objects
+
+- [ ] **M10.5+.4 — Decision record + codemap**
+  - `docs/decisions/equivalence-criterion-v1.md`
+  - `docs/CODEMAPS/meshant.md` updated
+
+---
+
 ## Post-v1.0.0 — Open Horizon
 
 Informed by v1.0.0 review (`docs/reviews/release_v1_review_13-mar-26.md`) and earlier
@@ -336,8 +452,8 @@ Milestones will be cut when work begins.
 
 These deepen the analytical core — deferred across earlier milestones:
 
-- [ ] **Tag-filter cut axis** — third cut axis alongside observer and time-window (deferred since M3)
-- [ ] **GraphDiff DOT / Mermaid export** — `PrintDiffDOT`, `PrintDiffMermaid` (deferred since M8)
+- [x] **Tag-filter cut axis** — third cut axis alongside observer and time-window (completed in M10)
+- [x] **GraphDiff DOT / Mermaid export** — `PrintDiffDOT`, `PrintDiffMermaid` (completed in M10)
 - [ ] **Shadow analysis operations** — shadow summary, shadow-first mode, unstable-boundary reports
 - [ ] **Re-articulation** — re-cutting the same dataset; showing how one articulation provokes another
 
