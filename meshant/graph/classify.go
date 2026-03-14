@@ -57,13 +57,25 @@ type ClassifiedChain struct {
 	// Classifications has one entry per step, in the same order as
 	// Chain.Steps. Empty if the chain has no steps.
 	Classifications []StepClassification
+
+	// Criterion records the interpretive conditions under which this
+	// chain was classified. It is envelope metadata only — it does NOT
+	// alter the v1 step heuristics. Zero value means no criterion was
+	// declared and v1 defaults apply (design rule C1).
+	Criterion EquivalenceCriterion
 }
 
 // ClassifyOptions parameterises classification heuristics.
-// Empty for v1 — the struct exists as an extension point so the API can
-// accept contextual heuristics or user-supplied rules in future versions
-// without breaking callers.
-type ClassifyOptions struct{}
+// Zero value preserves v1 behaviour — all existing callers are unaffected.
+type ClassifyOptions struct {
+	// Criterion is the interpretive declaration under which this
+	// classification is being conducted. When non-zero, it is stored on
+	// the returned ClassifiedChain for provenance. It does NOT change
+	// the v1 step heuristics — step Reason strings are purely
+	// edge-driven (design rule C1). Zero value means no criterion
+	// declared; v1 defaults apply.
+	Criterion EquivalenceCriterion
+}
 
 // ClassifyChain classifies each step in chain as intermediary-like,
 // mediator-like, or translation. Returns an immutable ClassifiedChain.
@@ -75,11 +87,15 @@ type ClassifyOptions struct{}
 //
 // These heuristics are properties of the edge within a specific cut, not
 // intrinsic properties of the underlying trace.
-func ClassifyChain(chain TranslationChain, _ ClassifyOptions) ClassifiedChain {
+func ClassifyChain(chain TranslationChain, opts ClassifyOptions) ClassifiedChain {
 	cc := ClassifiedChain{
 		Chain:           chain,
 		Classifications: make([]StepClassification, len(chain.Steps)),
 	}
+
+	// Carry the criterion as provenance metadata. The criterion does NOT
+	// alter the step heuristics — it is envelope metadata only (C1).
+	cc.Criterion = opts.Criterion
 
 	for i, step := range chain.Steps {
 		kind, reason := classifyStep(step)
