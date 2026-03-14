@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-13 (M10.5 Translation Chain + Classification)
+**Last Updated:** 2026-03-14 (M10.5+ Equivalence Criterion)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -76,8 +76,9 @@
 | `serial.go` | Custom JSON codec for `TimeWindow`: `MarshalJSON`, `UnmarshalJSON`. Null encoding for unbounded bounds. |
 | `reflexive.go` | Reflexive tracing: `ArticulationTrace`, `DiffTrace`. Functions that record articulation and diffing as traces. |
 | `chain.go` | Translation chain traversal: `TranslationChain`, `ChainStep`, `ChainBreak`, `Direction`, `FollowOptions`. `FollowTranslation()` function and unexported helpers. |
-| `classify.go` | Chain classification: `ClassifiedChain`, `ClassifiedStep`, `StepClassification`, `StepKind`, `ClassifyOptions`. `ClassifyChain()` function. Heuristic classification (intermediary, mediator, translation). |
-| `chain_print.go` | Chain output formatting: `PrintChain`, `PrintChainJSON`. Text and JSON rendering of classified chains. |
+| `criterion.go` | Equivalence criterion: `EquivalenceCriterion` type. `IsZero()`, `Validate()` methods. Interpretive declaration for classification readings. |
+| `classify.go` | Chain classification: `ClassifiedChain`, `StepClassification`, `StepKind`, `ClassifyOptions`. `ClassifyChain()` function. Heuristic classification (intermediary, mediator, translation). Carries criterion as envelope metadata. |
+| `chain_print.go` | Chain output formatting: `PrintChain`, `PrintChainJSON`. Text and JSON rendering of classified chains, including criterion block when present. |
 | `export.go` | Export functions: `PrintGraphJSON`, `PrintDiffJSON`, `PrintGraphDOT`, `PrintGraphMermaid`, `PrintDiffDOT`, `PrintDiffMermaid`. Internal helpers for DOT/Mermaid formatting. `stripNewlines()` security helper prevents injection from crafted trace values. |
 
 ### Types
@@ -102,11 +103,11 @@
 | `ChainBreakKind` | (string constant: `BranchNotTaken`, `DepthExceeded`, `CycleDetected`) | Reason why the chain stopped at this point. |
 | `TranslationChain` | `Element` (string), `Direction` (Direction), `Steps` ([]ChainStep), `Breaks` ([]ChainBreak), `Observer` (string), `GraphID` (string) | Path through a graph from starting element to terminal node, with branches and breaks. |
 | `FollowOptions` | `Direction` (Direction), `DepthLimit` (int, 0=unlimited) | Parameters for translation chain traversal. |
-| `StepKind` | (string constant: `StepKindIntermediary`, `StepKindMediator`, `StepKindTranslation`) | Classification of a chain step based on mediation presence and tags. |
-| `StepClassification` | `Kind` (StepKind), `Rationale` (string) | Classification and explanation for a single chain step. |
-| `ClassifiedStep` | `Step` (ChainStep), `Classification` (StepClassification) | Chain step with its classification. |
-| `ClassifiedChain` | `Chain` (TranslationChain), `ClassifiedSteps` ([]ClassifiedStep), `StepCount` (int) | Translation chain with step-by-step classifications. |
-| `ClassifyOptions` | (empty struct) | Parameters for chain classification; extension point for future equivalence criteria. |
+| `EquivalenceCriterion` | `Name` (string), `Declaration` (string), `Preserve` ([]string), `Ignore` ([]string) | Interpretive declaration for a chain reading. Carries the conditions under which a chain is classified. Governs future comparison functions (Layer 3, deferred). `Ignore` is a second-order shadow of aspects, not elements. |
+| `StepKind` | (string constant: `StepIntermediary`, `StepMediator`, `StepTranslation`) | Classification of a chain step based on mediation presence and tags. |
+| `StepClassification` | `StepIndex` (int), `Kind` (StepKind), `Reason` (string) | Classification and justification for a single chain step. Reason strings are purely edge-driven (v1 heuristics). |
+| `ClassifiedChain` | `Chain` (TranslationChain), `Classifications` ([]StepClassification), `Criterion` (EquivalenceCriterion) | Translation chain with step-by-step classifications and optional criterion metadata. Criterion is envelope-only — does not alter v1 heuristics. |
+| `ClassifyOptions` | `Criterion` (EquivalenceCriterion) | Parameters for chain classification. Zero value = v1 heuristics (backwards-compatible). Criterion is carried into ClassifiedChain as provenance; does not alter step logic yet. |
 
 ### Functions
 
@@ -133,9 +134,11 @@
 | `PrintDiffDOT` | `func PrintDiffDOT(w io.Writer, d GraphDiff) error` | Export `GraphDiff` as Graphviz DOT format. Added=green/bold, removed=red/dashed, persisted with count labels, shadow shifts in cluster subgraph. |
 | `PrintDiffMermaid` | `func PrintDiffMermaid(w io.Writer, d GraphDiff) error` | Export `GraphDiff` as Mermaid flowchart. Same visual conventions as DOT diff; style directives for color coding. |
 | `FollowTranslation` | `func FollowTranslation(g MeshGraph, element string, opts FollowOptions) TranslationChain` | Traverse graph from starting element via first-match branching; record alternatives and cycles as breaks. |
-| `ClassifyChain` | `func ClassifyChain(chain TranslationChain, opts ClassifyOptions) ClassifiedChain` | Apply heuristic classification (intermediary, mediator, translation) to each step in a chain. |
-| `PrintChain` | `func PrintChain(w io.Writer, cc ClassifiedChain) error` | Write human-readable classified chain to io.Writer. Includes steps with classifications and breaks with reasons. |
-| `PrintChainJSON` | `func PrintChainJSON(w io.Writer, cc ClassifiedChain) error` | Export `ClassifiedChain` as JSON to io.Writer. |
+| `ClassifyChain` | `func ClassifyChain(chain TranslationChain, opts ClassifyOptions) ClassifiedChain` | Apply heuristic classification (intermediary, mediator, translation) to each step in a chain. Carries criterion as envelope metadata if provided; does not alter v1 step heuristics. |
+| `EquivalenceCriterion.IsZero` | `(c EquivalenceCriterion) IsZero() bool` | True when all fields are empty (nil and empty slice treated equally). Zero = v1 implicit criterion in effect. |
+| `EquivalenceCriterion.Validate` | `(c EquivalenceCriterion) Validate() error` | Error if Preserve or Ignore non-empty but Declaration empty (layer ordering: Layer 2 requires Layer 1 grounds). |
+| `PrintChain` | `func PrintChain(w io.Writer, cc ClassifiedChain) error` | Write human-readable classified chain to io.Writer. Includes steps with classifications, breaks with reasons, and criterion block when non-zero. |
+| `PrintChainJSON` | `func PrintChainJSON(w io.Writer, cc ClassifiedChain) error` | Export `ClassifiedChain` as JSON to io.Writer. Criterion key omitted entirely when zero (pointer + omitempty). |
 
 ## Package: persist
 
@@ -180,7 +183,7 @@ None (persist carries no domain types; wraps graph types).
 | File | Contains |
 |------|----------|
 | `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. |
-| `main_test.go` | 53 tests, 92.5% coverage: all subcommands, flag parsing, file output, error handling. |
+| `main_test.go` | 66 tests (Groups 1–11): all subcommands, flag parsing, file output, error handling, criterion file loading. |
 
 ### Types
 
@@ -202,7 +205,8 @@ None (persist carries no domain types; wraps graph types).
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
 | `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. |
 | `cmdDiff` | `func cmdDiff(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts (`--observer-a/b`, `--tag-a/b`, per-side time windows), compute diff via `graph.Diff()`. `--format text\|json\|dot\|mermaid`, `--output <file>`. |
-| `cmdFollow` | `func cmdFollow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, follow translation chain from --element with `--direction forward\|backward`, `--depth N`, `--observer`, `--tag`, `--from`, `--to`. Classify and print via `PrintChain()`. `--format text\|json`, `--output <file>`. |
+| `cmdFollow` | `func cmdFollow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, follow translation chain from --element with `--direction forward\|backward`, `--depth N`, `--observer`, `--tag`, `--from`, `--to`. Optional `--criterion-file <path>` loads an EquivalenceCriterion before trace I/O. Classify and print via `PrintChain()`. `--format text\|json`, `--output <file>`. |
+| `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
 | `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
 | `usage` | `func usage()` | Print CLI usage message listing all subcommands and flags. |
@@ -306,6 +310,8 @@ cmd/demo/
 | Record diff in traces | `graph/reflexive.go` → `DiffTrace()` |
 | Follow translation chain | `graph/chain.go` → `FollowTranslation()` |
 | Classify chain steps | `graph/classify.go` → `ClassifyChain()` |
+| Declare equivalence criterion | `graph/criterion.go` → `EquivalenceCriterion` |
+| Load criterion from file | `cmd/meshant/main.go` → `loadCriterionFile()` |
 | Print chain output | `graph/chain_print.go` → `PrintChain()` |
 | TimeWindow JSON encoding | `graph/serial.go` → `MarshalJSON()`, `UnmarshalJSON()` |
 | Export graph to JSON | `graph/export.go` → `PrintGraphJSON()` |
@@ -367,9 +373,19 @@ cmd/demo/
 - Cycle detection includes the closing step in `Steps` before adding a break (asymmetry documented)
 - Classification is observer-position dependent; same chain under different cuts may differ
 - `ClassifyChain()` applies heuristic classification (intermediary/mediator/translation) based on `Mediation` field presence and tags
-- Classification outsources judgment to trace author: if author wrote mediation, we acknowledge it
-- `ClassifyOptions{}` empty in v1; future extension point for equivalence criterion
+- Classification outsources judgment to trace author: if author wrote mediation, we acknowledge it (v1 implicit criterion)
+- `ClassifyOptions.Criterion` carries an `EquivalenceCriterion`; zero value = v1 heuristics (backwards-compatible)
 - `PrintChain()` always shows breaks (named absence); consistent with shadow philosophy
+
+### Equivalence Criterion (M10.5+)
+- `EquivalenceCriterion` is an interpretive declaration, not a computational rule
+- Three-layer design: Declaration (Layer 1, grounds) → Preserve/Ignore (Layer 2, aspects) → comparison function (Layer 3, deferred)
+- Layer ordering enforced at `Validate()`: Preserve/Ignore require Declaration
+- Criterion is carried as `ClassifiedChain` envelope metadata; does not alter v1 step heuristics
+- `Ignore` is a second-order shadow: aspects declared irrelevant under this criterion, not absent
+- `--criterion-file` loads criterion from JSON file before trace I/O; criterion governs function, not reverse
+- `DisallowUnknownFields()` enforced for criterion files: precision over forward-compatibility tolerance
+- Zero criterion → v1 behaviour; all existing code paths unaffected
 
 ## Example Datasets
 
@@ -399,6 +415,7 @@ cmd/demo/
 - `docs/decisions/cli-v1.md` — CLI design decisions (M9)
 - `docs/decisions/m10-tag-filter-diff-export-cli-v1.md` — Tag-filter axis, diff visual export, CLI integration (M10)
 - `docs/decisions/translation-chain-v1.md` — Translation chain traversal, classification heuristics, first-match branching (M10.5)
+- `docs/decisions/equivalence-criterion-v1.md` — Equivalence criterion design, three-layer model, v1 implicit criterion, second-order shadow (M10.5+)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 
@@ -416,8 +433,9 @@ cmd/demo/
 - `graph/reflexive_test.go` — 19 tests, 100%
 - `graph/export_test.go` — tests for JSON, DOT, Mermaid export functions
 - `graph/chain_test.go` — unit tests for translation chain traversal (first-match, cycle detection, direction reversal, depth limit)
-- `graph/classify_test.go` — unit tests for chain classification heuristics (intermediary, mediator, translation)
-- `graph/chain_print_test.go` — tests for chain text and JSON output formatting
+- `graph/criterion_test.go` — 18 tests: zero detection, Validate layer ordering, structural stability
+- `graph/classify_test.go` — unit tests for chain classification heuristics; criterion carried through, step reasons unchanged, two criteria = same result
+- `graph/chain_print_test.go` — tests for chain text and JSON output formatting; criterion block, name-only handle signal
 - `graph/chain_e2e_test.go` — E2E tests using deforestation, evacuation_order, and incident_response datasets
 - `graph/incident_e2e_test.go` — E2E tests using incident response dataset
 - `persist/persist_test.go` — tests for file I/O functions
