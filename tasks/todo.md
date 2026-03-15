@@ -413,7 +413,7 @@ translation judgment). Classification is cut-dependent, not intrinsic.
 
 ---
 
-## Milestone 10.5+: Equivalence Criterion (Classification with Grounds)
+## Milestone 10.5+: Equivalence Criterion (Classification with Grounds) — COMPLETE
 
 The missing cut axis: an explicit declaration of what counts as preserved,
 altered, or consequential across a passage. Layers 1–2 only; Layer 3
@@ -423,22 +423,66 @@ altered, or consequential across a passage. Layers 1–2 only; Layer 3
 
 ### Tasks
 
-- [ ] **M10.5+.1 — Define EquivalenceCriterion type**
-  - `meshant/graph/criterion.go` — `EquivalenceCriterion` struct (Name, Declaration, Preserve, Ignore), `IsZero()`
-  - `meshant/graph/criterion_test.go` — zero/non-zero detection tests
+- [x] **M10.5+.1 — Define EquivalenceCriterion type**
+  - `meshant/graph/criterion.go` — `EquivalenceCriterion` struct (Name, Declaration, Preserve, Ignore), `IsZero()`, `Validate()`
+  - `meshant/graph/criterion_test.go` — 18 tests: zero/non-zero, layer ordering, structural stability
+  - Branch: `30-equivalence-criterion-type` (PR #34, merged to develop)
 
-- [ ] **M10.5+.2 — Wire criterion into classification**
-  - Add `Criterion` to `ClassifyOptions` and `ClassifiedChain`
-  - Criterion name prepended to reasons; v1 logic unchanged
-  - `PrintChain`/`PrintChainJSON` render criterion when non-zero
+- [x] **M10.5+.2 — Wire criterion into classification + output**
+  - `Criterion` field on `ClassifyOptions` and `ClassifiedChain` (envelope metadata only)
+  - `printChainCriterion` helper; `*EquivalenceCriterion` in `chainJSONEnvelope` (pointer + omitempty)
+  - Defensive copy of Preserve/Ignore slices in `ClassifyChain`; JSON tags on StepClassification + ChainBreak
+  - Branch: `31-wire-criterion` (PR #35, merged to develop)
 
-- [ ] **M10.5+.3 — CLI support**
-  - `--criterion-name`, `--criterion-declaration`, `--criterion-preserve`, `--criterion-ignore` flags
-  - `--criterion-file <path>` for JSON criterion objects
+- [x] **M10.5+.3 — CLI `--criterion-file` flag**
+  - `loadCriterionFile()` with DisallowUnknownFields, zero-value hard error (T1), handle-only signal (T2)
+  - Criterion loaded before trace I/O in `cmdFollow`; 13 CLI integration tests
+  - Branch: `32-criterion-file-cli` (PR #36, merged to develop)
 
-- [ ] **M10.5+.4 — Decision record + codemap**
-  - `docs/decisions/equivalence-criterion-v1.md`
-  - `docs/CODEMAPS/meshant.md` updated
+- [x] **M10.5+.4 — Decision record + codemap**
+  - `docs/decisions/equivalence-criterion-v1.md` — 12 decisions, all design rules documented
+  - `docs/CODEMAPS/meshant.md` updated for M10.5+
+  - Branch: `33-equivalence-criterion-docs` (PR #37, merged to develop)
+
+---
+
+## Milestone 11: TraceDraft + Provenance-First Ingestion
+
+The first real user entrypoint. A user with raw material (logs, documents, transcripts)
+can now get it into MeshAnt without first knowing how to author canonical traces. The LLM
+is external — `meshant draft` consumes LLM-produced extraction JSON. The extraction chain
+(span → draft → critique → revision → canonical trace) is structurally followable from
+day one via `DerivedFrom` links.
+
+**Full plan:** `tasks/plan_m11.md`
+
+### Tasks
+
+- [ ] **M11.1 — Define `TraceDraft` type**
+  - `meshant/schema/tracedraft.go` — `TraceDraft` struct with source, candidate, and provenance fields
+  - `Validate()` (SourceSpan required), `IsPromotable()`, `Promote()` methods
+  - `TagValueDraft = "draft"` constant on promoted traces
+  - `meshant/schema/tracedraft_test.go`
+
+- [ ] **M11.2 — Draft loader**
+  - `meshant/loader/draftloader.go` — `LoadDrafts()`, `SummariseDrafts()`, `PrintDraftSummary()`
+  - `DraftSummary` type: counts by stage, by extracted_by, promotable count, field fill rates
+  - `meshant/loader/draftloader_test.go`
+
+- [ ] **M11.3 — `draft` CLI subcommand**
+  - `meshant draft <extraction.json>` — reads LLM-produced extraction JSON → TraceDraft records
+  - `--source-doc`, `--extracted-by`, `--stage`, `--output` flags
+  - Ingestion contract documented: SourceSpan required, all other fields optional, empty preferred over fabricated
+  - Group 12 tests in `meshant/cmd/meshant/main_test.go`
+
+- [ ] **M11.4 — `promote` CLI subcommand**
+  - `meshant promote <drafts.json>` — batch-promotes qualifying drafts to canonical traces
+  - `--output <traces.json>` flag; summary of promoted vs failed
+  - Group 13 tests in `meshant/cmd/meshant/main_test.go`
+
+- [ ] **M11.5 — Decision record + codemap**
+  - `docs/decisions/tracedraft-v1.md` — LLM-as-mediator, ingestion contract, DerivedFrom chain, what is deferred
+  - `docs/CODEMAPS/meshant.md` updated for M11
 
 ---
 
@@ -461,9 +505,10 @@ These deepen the analytical core — deferred across earlier milestones:
 
 The most important next frontier — the direct interface with the user:
 
-- [ ] **Candidate trace schema** — intermediate representation between raw material and canonical `Trace`; carries uncertainty, evidence, confidence, provenance, review status
-- [ ] **One ingestion path** — raw material → candidate traces → human review → canonical traces; pick one domain first (incident logs, transcripts, or documents)
-- [ ] **Interactive review CLI** — trace-authoring companion; suggests candidates, surfaces ambiguity, shows provenance; the entry point for LLM-assisted authoring
+- [x] **TraceDraft schema** — `TraceDraft` type with source span, candidate fields, provenance chain (M11)
+- [x] **Ingestion entrypoint** — `meshant draft` + `meshant promote`; LLM-external boundary; ingestion contract (M11)
+- [ ] **Anti-ontology critique pass** — second-pass LLM critique of premature actorization; `meshant critique` subcommand; DerivedFrom links critique to draft (M11.5 / M12)
+- [ ] **Interactive review CLI** — human-in-the-loop refinement; surfaces ambiguity, shows provenance chain; the interactive layer before promotion (M12+)
 
 ### Interpretation support (Layer 3)
 
