@@ -6,15 +6,17 @@
 //   - articulate: articulate an observer-situated graph from traces
 //   - diff:       diff two observer-situated articulations of the same trace set
 //   - follow:     follow a translation chain through an articulated graph
+//   - draft:      ingest LLM extraction JSON and produce TraceDraft records
+//   - promote:    promote TraceDraft records to canonical Traces
 //
-// The testable logic lives in run(), cmdSummarize(), cmdValidate(),
-// cmdArticulate(), and cmdDiff(). main() itself is a thin wrapper that wires
-// os.Stdout and os.Args, then exits non-zero on error — a pattern that makes
-// every meaningful path independently testable without I/O redirection.
+// The testable logic lives in run() and each cmd* function. main() itself is
+// a thin wrapper that wires os.Stdout and os.Args, then exits non-zero on
+// error — a pattern that makes every meaningful path independently testable
+// without I/O redirection.
 //
 // Usage:
 //
-//	meshant <command> [flags] <traces.json>
+//	meshant <command> [flags] <file.json>
 package main
 
 import (
