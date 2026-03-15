@@ -13,7 +13,7 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/graph"
 )
 
-// mustParseTime is defined in export_test.go — available here via the shared
+// mustParseTime is defined in testhelpers_test.go — available here via the shared
 // graph_test package.
 
 // buildDiffWithAllKinds constructs a non-trivial GraphDiff that has nodes

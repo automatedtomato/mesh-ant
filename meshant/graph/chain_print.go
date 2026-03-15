@@ -42,6 +42,14 @@ func PrintChain(w io.Writer, cc ClassifiedChain) error {
 		return err
 	}
 
+	// Criterion block — only rendered when a criterion was declared.
+	// The block is positioned after the cut (which describes the graph
+	// slice) and before the steps (which are the classifications), so
+	// the reader sees the interpretive conditions before the judgments.
+	if err := printChainCriterion(w, cc.Criterion); err != nil {
+		return err
+	}
+
 	// Steps
 	if _, err := fmt.Fprintf(w, "Steps (%d):\n", len(chain.Steps)); err != nil {
 		return err
@@ -125,6 +133,72 @@ func printChainCut(w io.Writer, c Cut) error {
 	return err
 }
 
+// printChainCriterion writes the equivalence criterion block to w when the
+// criterion is non-zero. Returns immediately for zero criteria so callers
+// never need to guard the call.
+//
+// Each populated field produces one line. The heuristics disclaimer is
+// always emitted for non-zero criteria to make explicit that the v1 step
+// heuristics are edge-driven and the criterion has not changed them (C1).
+// A trailing blank line separates the block from the steps header.
+func printChainCriterion(w io.Writer, c EquivalenceCriterion) error {
+	if c.IsZero() {
+		return nil
+	}
+
+	// Name line — only when a name was provided (name-only criteria are
+	// structurally valid but analytically incomplete; we still print them).
+	if c.Name != "" {
+		if _, err := fmt.Fprintf(w, "Criterion: %s\n", c.Name); err != nil {
+			return err
+		}
+	}
+
+	// Handle-only warning (ANT T2): a name without a declaration is a
+	// transport handle with no interpretive grounding. Signal this explicitly
+	// so the reader sees the analytical weakness in the output rather than
+	// discovering it through silence.
+	if c.Name != "" && c.Declaration == "" {
+		if _, err := fmt.Fprintln(w, "(handle only — no declaration grounds this reading)"); err != nil {
+			return err
+		}
+	}
+
+	// Declaration line — the primary Layer 1 grounds for the reading.
+	if c.Declaration != "" {
+		if _, err := fmt.Fprintf(w, "Declaration: %s\n", c.Declaration); err != nil {
+			return err
+		}
+	}
+
+	// Preserve line — Layer 2 continuity-bearing aspects.
+	if len(c.Preserve) > 0 {
+		if _, err := fmt.Fprintf(w, "Preserve: [%s]\n", strings.Join(c.Preserve, ", ")); err != nil {
+			return err
+		}
+	}
+
+	// Ignore line — Layer 2 aspects declared irrelevant under this criterion.
+	if len(c.Ignore) > 0 {
+		if _, err := fmt.Fprintf(w, "Ignore: [%s]\n", strings.Join(c.Ignore, ", ")); err != nil {
+			return err
+		}
+	}
+
+	// Mandatory heuristics disclaimer — criterion is metadata, not a
+	// dispatch key. Step Reasons are still driven by v1 edge heuristics.
+	if _, err := fmt.Fprintln(w, "(criterion carried — classification uses v1 heuristics)"); err != nil {
+		return err
+	}
+
+	// Trailing blank line to visually separate from the steps header.
+	if _, err := fmt.Fprintln(w); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // printChainStep writes one step with its classification.
 func printChainStep(w io.Writer, idx int, step ChainStep, classifications []StepClassification) error {
 	// Step number and edge traversal
@@ -153,12 +227,16 @@ func printChainStep(w io.Writer, idx int, step ChainStep, classifications []Step
 }
 
 // chainJSONEnvelope is the JSON output structure for a classified chain.
+// Criterion uses a pointer with omitempty so the key is absent entirely
+// when no criterion was declared (design rule A2). A value struct with
+// omitempty would still emit an empty object `{}` for a zero criterion.
 type chainJSONEnvelope struct {
 	StartElement    string                `json:"start_element"`
 	Steps           []chainStepJSON       `json:"steps"`
 	Breaks          []ChainBreak          `json:"breaks"`
 	Cut             Cut                   `json:"cut"`
 	Classifications []StepClassification  `json:"classifications"`
+	Criterion       *EquivalenceCriterion `json:"criterion,omitempty"`
 }
 
 type chainStepJSON struct {
@@ -196,6 +274,14 @@ func PrintChainJSON(w io.Writer, cc ClassifiedChain) error {
 		Breaks:          breaks,
 		Cut:             chain.Cut,
 		Classifications: classifications,
+	}
+
+	// Only include the criterion key when a criterion was actually declared.
+	// Using a pointer + omitempty ensures the key is fully absent (not `null`
+	// or `{}`) when criterion is zero (design rule A2).
+	if !cc.Criterion.IsZero() {
+		crit := cc.Criterion
+		env.Criterion = &crit
 	}
 
 	enc := json.NewEncoder(w)

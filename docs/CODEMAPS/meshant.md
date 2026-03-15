@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-13 (M10.5 Translation Chain + Classification)
+**Last Updated:** 2026-03-15 (M11 TraceDraft Ingestion)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -23,6 +23,7 @@
 | File | Contains |
 |------|----------|
 | `trace.go` | `Trace` struct; `TagValue` constants; `Validate()` method. |
+| `tracedraft.go` | `TraceDraft` struct; `TagValueDraft` constant; `Validate()`, `IsPromotable()`, `Promote()` methods (M11). |
 | `graphref.go` | Graph-reference string predicates (`IsGraphRef`, `GraphRefKind`, `GraphRefID`). |
 
 ### Types
@@ -30,13 +31,17 @@
 | Type | Key Fields | Purpose |
 |------|-----------|---------|
 | `Trace` | `ID` (uuid), `Timestamp` (time), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Tags` ([]string), `Observer` (string, required) | Fundamental unit of record: a moment where something made a difference in a network. |
-| `TagValue` | (string constant type) | Vocabulary for trace descriptors: `TagDelay`, `TagThreshold`, `TagBlockage`, `TagAmplification`, `TagRedirection`, `TagTranslation`, `TagValueArticulation`. |
+| `TagValue` | (string constant type) | Vocabulary for trace descriptors: `TagDelay`, `TagThreshold`, `TagBlockage`, `TagAmplification`, `TagRedirection`, `TagTranslation`, `TagValueArticulation`, `TagValueDraft` (M11). |
+| `TraceDraft` | `ID` (uuid, optional), `Timestamp` (time), `SourceSpan` (string, required), `SourceDocRef` (string), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Observer` (string), `Tags` ([]string), `UncertaintyNote` (string), `ExtractionStage` (string), `ExtractedBy` (string), `DerivedFrom` (string) | Provisional, provenance-bearing record from ingestion pipeline. Minimal requirement: `SourceSpan`. May be promoted to canonical `Trace` when sufficiently complete (M11). |
 
 ### Functions
 
 | Function | Signature | Purpose |
 |----------|-----------|---------|
 | `Trace.Validate()` | `(t Trace) Validate() error` | Validate required fields (ID, Timestamp, WhatChanged, Observer). Returns all violations joined. |
+| `TraceDraft.Validate()` | `(d TraceDraft) Validate() error` | Validate required field (SourceSpan). Returns error if absent. |
+| `TraceDraft.IsPromotable()` | `(d TraceDraft) IsPromotable() bool` | Check if draft has sufficient fields (valid UUID ID, non-empty WhatChanged, non-empty Observer) to promote to canonical Trace. |
+| `TraceDraft.Promote()` | `(d TraceDraft) Promote() (Trace, error)` | Convert draft to canonical Trace; appends `TagValueDraft` as provenance signal. Errors if not promotable; names all violations. |
 | `IsGraphRef` | `func IsGraphRef(s string) bool` | Check if string is a graph-reference (prefix "meshgraph:" or "meshdiff:"). |
 | `GraphRefKind` | `func GraphRefKind(s string) string` | Return kind prefix ("meshgraph", "meshdiff", or empty). |
 | `GraphRefID` | `func GraphRefID(s string) string` | Extract UUID portion after prefix. |
@@ -48,6 +53,7 @@
 | File | Contains |
 |------|----------|
 | `loader.go` | `Load`, `Summarise`, `PrintSummary`; `MeshSummary`, `FlaggedTrace` types. |
+| `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; UUID generation (M11). |
 
 ### Types
 
@@ -55,6 +61,7 @@
 |------|-----------|---------|
 | `MeshSummary` | `Elements` (map[string]int), `Mediations` ([]string), `MediatedTraceCount` (int), `FlaggedTraces` ([]FlaggedTrace), `GraphRefs` ([]string) | Provisional first-pass reading of a trace dataset. |
 | `FlaggedTrace` | `ID` (string), `WhatChanged` (string), `Tags` ([]string) | Minimal projection of traces tagged delay or threshold. |
+| `DraftSummary` | `Total` (int), `Promotable` (int), `ByStage` (map[string]int), `ByExtractedBy` (map[string]int), `FieldFillRate` (map[string]int) | Provenance-aware reading of a TraceDraft dataset. Reveals ingestion pipeline breakdown and field fill rates (M11). |
 
 ### Functions
 
@@ -63,6 +70,9 @@
 | `Load` | `func Load(path string) ([]schema.Trace, error)` | Load JSON file, decode traces, validate via schema.Validate(); max 50 MB. |
 | `Summarise` | `func Summarise(traces []schema.Trace) MeshSummary` | Build MeshSummary from validated traces: count elements, deduplicate mediations, flag delay/threshold, extract graph-refs. |
 | `PrintSummary` | `func PrintSummary(w io.Writer, s MeshSummary) error` | Write formatted summary to io.Writer. Elements sorted by descending frequency, mediations in encounter order. |
+| `LoadDrafts` | `func LoadDrafts(path string) ([]schema.TraceDraft, error)` | Load JSON file of TraceDraft records; assign UUIDs and timestamps to missing fields; validate each via `TraceDraft.Validate()`; max 50 MB (M11). |
+| `SummariseDrafts` | `func SummariseDrafts(drafts []schema.TraceDraft) DraftSummary` | Build DraftSummary from TraceDraft slice: count by stage/extracted-by, count promotable records, compute per-field fill rates (M11). |
+| `PrintDraftSummary` | `func PrintDraftSummary(w io.Writer, s DraftSummary) error` | Write provenance summary to io.Writer. Shows total/promotable, breakdown by extraction stage and extracted_by, per-field fill rates (M11). |
 
 ## Package: graph
 
@@ -76,8 +86,9 @@
 | `serial.go` | Custom JSON codec for `TimeWindow`: `MarshalJSON`, `UnmarshalJSON`. Null encoding for unbounded bounds. |
 | `reflexive.go` | Reflexive tracing: `ArticulationTrace`, `DiffTrace`. Functions that record articulation and diffing as traces. |
 | `chain.go` | Translation chain traversal: `TranslationChain`, `ChainStep`, `ChainBreak`, `Direction`, `FollowOptions`. `FollowTranslation()` function and unexported helpers. |
-| `classify.go` | Chain classification: `ClassifiedChain`, `ClassifiedStep`, `StepClassification`, `StepKind`, `ClassifyOptions`. `ClassifyChain()` function. Heuristic classification (intermediary, mediator, translation). |
-| `chain_print.go` | Chain output formatting: `PrintChain`, `PrintChainJSON`. Text and JSON rendering of classified chains. |
+| `criterion.go` | Equivalence criterion: `EquivalenceCriterion` type. `IsZero()`, `Validate()` methods. Interpretive declaration for classification readings. |
+| `classify.go` | Chain classification: `ClassifiedChain`, `StepClassification`, `StepKind`, `ClassifyOptions`. `ClassifyChain()` function. Heuristic classification (intermediary, mediator, translation). Carries criterion as envelope metadata. |
+| `chain_print.go` | Chain output formatting: `PrintChain`, `PrintChainJSON`. Text and JSON rendering of classified chains, including criterion block when present. |
 | `export.go` | Export functions: `PrintGraphJSON`, `PrintDiffJSON`, `PrintGraphDOT`, `PrintGraphMermaid`, `PrintDiffDOT`, `PrintDiffMermaid`. Internal helpers for DOT/Mermaid formatting. `stripNewlines()` security helper prevents injection from crafted trace values. |
 
 ### Types
@@ -102,11 +113,11 @@
 | `ChainBreakKind` | (string constant: `BranchNotTaken`, `DepthExceeded`, `CycleDetected`) | Reason why the chain stopped at this point. |
 | `TranslationChain` | `Element` (string), `Direction` (Direction), `Steps` ([]ChainStep), `Breaks` ([]ChainBreak), `Observer` (string), `GraphID` (string) | Path through a graph from starting element to terminal node, with branches and breaks. |
 | `FollowOptions` | `Direction` (Direction), `DepthLimit` (int, 0=unlimited) | Parameters for translation chain traversal. |
-| `StepKind` | (string constant: `StepKindIntermediary`, `StepKindMediator`, `StepKindTranslation`) | Classification of a chain step based on mediation presence and tags. |
-| `StepClassification` | `Kind` (StepKind), `Rationale` (string) | Classification and explanation for a single chain step. |
-| `ClassifiedStep` | `Step` (ChainStep), `Classification` (StepClassification) | Chain step with its classification. |
-| `ClassifiedChain` | `Chain` (TranslationChain), `ClassifiedSteps` ([]ClassifiedStep), `StepCount` (int) | Translation chain with step-by-step classifications. |
-| `ClassifyOptions` | (empty struct) | Parameters for chain classification; extension point for future equivalence criteria. |
+| `EquivalenceCriterion` | `Name` (string), `Declaration` (string), `Preserve` ([]string), `Ignore` ([]string) | Interpretive declaration for a chain reading. Carries the conditions under which a chain is classified. Governs future comparison functions (Layer 3, deferred). `Ignore` is a second-order shadow of aspects, not elements. |
+| `StepKind` | (string constant: `StepIntermediary`, `StepMediator`, `StepTranslation`) | Classification of a chain step based on mediation presence and tags. |
+| `StepClassification` | `StepIndex` (int), `Kind` (StepKind), `Reason` (string) | Classification and justification for a single chain step. Reason strings are purely edge-driven (v1 heuristics). |
+| `ClassifiedChain` | `Chain` (TranslationChain), `Classifications` ([]StepClassification), `Criterion` (EquivalenceCriterion) | Translation chain with step-by-step classifications and optional criterion metadata. Criterion is envelope-only — does not alter v1 heuristics. |
+| `ClassifyOptions` | `Criterion` (EquivalenceCriterion) | Parameters for chain classification. Zero value = v1 heuristics (backwards-compatible). Criterion is carried into ClassifiedChain as provenance; does not alter step logic yet. |
 
 ### Functions
 
@@ -133,9 +144,11 @@
 | `PrintDiffDOT` | `func PrintDiffDOT(w io.Writer, d GraphDiff) error` | Export `GraphDiff` as Graphviz DOT format. Added=green/bold, removed=red/dashed, persisted with count labels, shadow shifts in cluster subgraph. |
 | `PrintDiffMermaid` | `func PrintDiffMermaid(w io.Writer, d GraphDiff) error` | Export `GraphDiff` as Mermaid flowchart. Same visual conventions as DOT diff; style directives for color coding. |
 | `FollowTranslation` | `func FollowTranslation(g MeshGraph, element string, opts FollowOptions) TranslationChain` | Traverse graph from starting element via first-match branching; record alternatives and cycles as breaks. |
-| `ClassifyChain` | `func ClassifyChain(chain TranslationChain, opts ClassifyOptions) ClassifiedChain` | Apply heuristic classification (intermediary, mediator, translation) to each step in a chain. |
-| `PrintChain` | `func PrintChain(w io.Writer, cc ClassifiedChain) error` | Write human-readable classified chain to io.Writer. Includes steps with classifications and breaks with reasons. |
-| `PrintChainJSON` | `func PrintChainJSON(w io.Writer, cc ClassifiedChain) error` | Export `ClassifiedChain` as JSON to io.Writer. |
+| `ClassifyChain` | `func ClassifyChain(chain TranslationChain, opts ClassifyOptions) ClassifiedChain` | Apply heuristic classification (intermediary, mediator, translation) to each step in a chain. Carries criterion as envelope metadata if provided; does not alter v1 step heuristics. |
+| `EquivalenceCriterion.IsZero` | `(c EquivalenceCriterion) IsZero() bool` | True when all fields are empty (nil and empty slice treated equally). Zero = v1 implicit criterion in effect. |
+| `EquivalenceCriterion.Validate` | `(c EquivalenceCriterion) Validate() error` | Error if Preserve or Ignore non-empty but Declaration empty (layer ordering: Layer 2 requires Layer 1 grounds). |
+| `PrintChain` | `func PrintChain(w io.Writer, cc ClassifiedChain) error` | Write human-readable classified chain to io.Writer. Includes steps with classifications, breaks with reasons, and criterion block when non-zero. |
+| `PrintChainJSON` | `func PrintChainJSON(w io.Writer, cc ClassifiedChain) error` | Export `ClassifiedChain` as JSON to io.Writer. Criterion key omitted entirely when zero (pointer + omitempty). |
 
 ## Package: persist
 
@@ -179,8 +192,8 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. |
-| `main_test.go` | 53 tests, 92.5% coverage: all subcommands, flag parsing, file output, error handling. |
+| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft` and `cmdPromote` handlers (M11). |
+| `main_test.go` | Tests: all subcommands, flag parsing, file output, error handling, criterion file loading, draft/promote pipeline (M11). |
 
 ### Types
 
@@ -197,12 +210,15 @@ None (persist carries no domain types; wraps graph types).
 | `parseTimeFlag` | `func parseTimeFlag(name, value string) (time.Time, error)` | Parse RFC3339 string to time.Time with contextual error message naming the flag. |
 | `parseTimeWindow` | `func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error)` | Parse two RFC3339 strings (one or both may be empty) into a TimeWindow. Validates only when both bounds are set. |
 | `main` | `func main()` | Entry point. Calls `run(os.Stdout, os.Args[1:])` and exits non-zero on error. |
-| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, or `cmdDiff()`. |
+| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, or `cmdPromote()`. |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
 | `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. |
 | `cmdDiff` | `func cmdDiff(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts (`--observer-a/b`, `--tag-a/b`, per-side time windows), compute diff via `graph.Diff()`. `--format text\|json\|dot\|mermaid`, `--output <file>`. |
-| `cmdFollow` | `func cmdFollow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, follow translation chain from --element with `--direction forward\|backward`, `--depth N`, `--observer`, `--tag`, `--from`, `--to`. Classify and print via `PrintChain()`. `--format text\|json`, `--output <file>`. |
+| `cmdFollow` | `func cmdFollow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, follow translation chain from --element with `--direction forward\|backward`, `--depth N`, `--observer`, `--tag`, `--from`, `--to`. Optional `--criterion-file <path>` loads an EquivalenceCriterion before trace I/O. Classify and print via `PrintChain()`. `--format text\|json`, `--output <file>`. |
+| `cmdDraft` | `func cmdDraft(w io.Writer, args []string) error` | Subcommand: Load extraction JSON, assign UUIDs/timestamps, apply optional `--source-doc`, `--extracted-by`, `--stage` overrides, write TraceDraft JSON via `loader.LoadDrafts()`, print provenance summary via `PrintDraftSummary()`. `--output <file>` (M11). |
+| `cmdPromote` | `func cmdPromote(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON via `loader.LoadDrafts()`, call `IsPromotable()` on each, promote qualifying drafts to canonical Traces (each tagged with `TagValueDraft`), write promoted Trace JSON, report promotion summary naming failures (M11). `--output <file>`. |
+| `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
 | `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
 | `usage` | `func usage()` | Print CLI usage message listing all subcommands and flags. |
@@ -213,8 +229,9 @@ None (persist carries no domain types; wraps graph types).
 - **Testable structure**: Core logic in `run()`, `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`; `main()` is thin wrapper that wires os.Stdout/os.Args and exits non-zero on error
 - **Flag parsing**: Uses stdlib `flag.FlagSet` for subcommand isolation; `stringSliceFlag` enables repeatable `--observer` flags without comma-separation
 - **Time handling**: RFC3339 timestamps throughout; `parseTimeFlag()` and `parseTimeWindow()` provide clear error messages with formatting hints
-- **Format options**: `articulate` and `diff` both support text/json/dot/mermaid
+- **Format options**: `articulate` and `diff` both support text/json/dot/mermaid; `follow` supports text/json
 - **File output**: `--output <file>` writes to file instead of stdout (with deferred close for safety)
+- **Ingestion pipeline** (M11): `draft` command ingests LLM extraction JSON and produces TraceDraft records; `promote` command converts promotable TraceDraft records to canonical Traces (tagged with `draft` provenance signal)
 - **Binary installation**: `go install ./cmd/meshant` produces `meshant` binary at $GOPATH/bin; used in Dockerfile at `/usr/local/bin/meshant`
 
 ## Cross-Package Relationships
@@ -306,6 +323,8 @@ cmd/demo/
 | Record diff in traces | `graph/reflexive.go` → `DiffTrace()` |
 | Follow translation chain | `graph/chain.go` → `FollowTranslation()` |
 | Classify chain steps | `graph/classify.go` → `ClassifyChain()` |
+| Declare equivalence criterion | `graph/criterion.go` → `EquivalenceCriterion` |
+| Load criterion from file | `cmd/meshant/main.go` → `loadCriterionFile()` |
 | Print chain output | `graph/chain_print.go` → `PrintChain()` |
 | TimeWindow JSON encoding | `graph/serial.go` → `MarshalJSON()`, `UnmarshalJSON()` |
 | Export graph to JSON | `graph/export.go` → `PrintGraphJSON()` |
@@ -317,6 +336,10 @@ cmd/demo/
 | Write graph to file | `persist/persist.go` → `WriteJSON()` |
 | Read graph from JSON file | `persist/persist.go` → `ReadGraphJSON()` |
 | Read diff from JSON file | `persist/persist.go` → `ReadDiffJSON()` |
+| Load TraceDraft records | `loader/draftloader.go` → `LoadDrafts()` |
+| Summarise draft dataset | `loader/draftloader.go` → `SummariseDrafts()` |
+| Check if draft is promotable | `schema/tracedraft.go` → `TraceDraft.IsPromotable()` |
+| Promote draft to canonical Trace | `schema/tracedraft.go` → `TraceDraft.Promote()` |
 | Run minimal demo | `cmd/demo/main.go` → `run()` |
 
 ## Notable Design Patterns
@@ -367,11 +390,33 @@ cmd/demo/
 - Cycle detection includes the closing step in `Steps` before adding a break (asymmetry documented)
 - Classification is observer-position dependent; same chain under different cuts may differ
 - `ClassifyChain()` applies heuristic classification (intermediary/mediator/translation) based on `Mediation` field presence and tags
-- Classification outsources judgment to trace author: if author wrote mediation, we acknowledge it
-- `ClassifyOptions{}` empty in v1; future extension point for equivalence criterion
+- Classification outsources judgment to trace author: if author wrote mediation, we acknowledge it (v1 implicit criterion)
+- `ClassifyOptions.Criterion` carries an `EquivalenceCriterion`; zero value = v1 heuristics (backwards-compatible)
 - `PrintChain()` always shows breaks (named absence); consistent with shadow philosophy
 
+### Equivalence Criterion (M10.5+)
+- `EquivalenceCriterion` is an interpretive declaration, not a computational rule
+- Three-layer design: Declaration (Layer 1, grounds) → Preserve/Ignore (Layer 2, aspects) → comparison function (Layer 3, deferred)
+- Layer ordering enforced at `Validate()`: Preserve/Ignore require Declaration
+- Criterion is carried as `ClassifiedChain` envelope metadata; does not alter v1 step heuristics
+- `Ignore` is a second-order shadow: aspects declared irrelevant under this criterion, not absent
+- `--criterion-file` loads criterion from JSON file before trace I/O; criterion governs function, not reverse
+- `DisallowUnknownFields()` enforced for criterion files: precision over forward-compatibility tolerance
+- Zero criterion → v1 behaviour; all existing code paths unaffected
+
+### Ingestion Pipeline (M11)
+- **TraceDraft** is a first-class analytical object, not a halfway house to Trace
+- **SourceSpan** is the only required field; minimal record carrying verbatim source text without forcing resolution
+- **Provenance chain**: `DerivedFrom` links draft revisions into a followable extraction history (span → LLM → critique → human revision → promoted)
+- **Promotion criterion** (not equivalence): A draft is promotable when `IsPromotable() == true` (valid UUID ID, non-empty WhatChanged, non-empty Observer)
+- **Three-stage naming** for extraction provenance: `ExtractionStage` ("span-harvest", "weak-draft", "reviewed") and `ExtractedBy` (e.g., "human", "llm-pass1", "reviewer")
+- **Field fill rates**: `DraftSummary` measures honest abstentions (empty fields) vs. populated assignments; reveals what ingestion pipeline is confident in
+- **Promotion signal**: Promoted Traces carry `TagValueDraft` ("draft") tag; makes provenance visible in downstream analysis
+- **UncertaintyNote** is a first-class field, not an exception: records where source span does not support confident assignment (anti-fabrication principle)
+
 ## Example Datasets
+
+### Trace Datasets
 
 | Dataset | Location | Size | Observers | Actants | Notes |
 |---------|----------|------|-----------|---------|-------|
@@ -380,6 +425,14 @@ cmd/demo/
 | Evacuation Order (M6) | `data/examples/evacuation_order.json` | 28 traces | 6 | 5 | 3 days (04-14/15/16), 1 graph-ref trace, demo dataset |
 | Graph Ref (M5) | `data/examples/graph_ref_traces.json` | — | — | — | Graph-reference examples for M5 actor testing |
 | Incident Response (M8) | `data/examples/incident_response.json` | 22 traces | 5 | 8 | 2 days (05-10/11), postmortem scenario, export testing |
+
+### Ingestion Pipeline Datasets (M11)
+
+| Dataset | Location | Stage | Purpose |
+|---------|----------|-------|---------|
+| CVE Response (Raw) | `data/examples/cve_response_raw.md` | Input | Verbatim source document (incident response narrative) |
+| CVE Response (Extraction) | `data/examples/cve_response_extraction.json` | Intermediate | LLM-produced extraction JSON (source_span required, other fields optional) |
+| CVE Response (Drafts) | `data/examples/cve_response_drafts.json` | Output | TraceDraft records after `meshant draft` processing (UUIDs assigned, validation applied) |
 
 **Dataset M8 (Incident Response):**
 - **Observers:** monitoring-service, on-call-engineer, incident-commander, product-manager, customer-support
@@ -399,6 +452,8 @@ cmd/demo/
 - `docs/decisions/cli-v1.md` — CLI design decisions (M9)
 - `docs/decisions/m10-tag-filter-diff-export-cli-v1.md` — Tag-filter axis, diff visual export, CLI integration (M10)
 - `docs/decisions/translation-chain-v1.md` — Translation chain traversal, classification heuristics, first-match branching (M10.5)
+- `docs/decisions/equivalence-criterion-v1.md` — Equivalence criterion design, three-layer model, v1 implicit criterion, second-order shadow (M10.5+)
+- `docs/decisions/tracedraft-v1.md` — TraceDraft design, ingestion pipeline as analytical object, source span as ground truth, promotion criterion, provenance chain (M11)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 
@@ -416,8 +471,9 @@ cmd/demo/
 - `graph/reflexive_test.go` — 19 tests, 100%
 - `graph/export_test.go` — tests for JSON, DOT, Mermaid export functions
 - `graph/chain_test.go` — unit tests for translation chain traversal (first-match, cycle detection, direction reversal, depth limit)
-- `graph/classify_test.go` — unit tests for chain classification heuristics (intermediary, mediator, translation)
-- `graph/chain_print_test.go` — tests for chain text and JSON output formatting
+- `graph/criterion_test.go` — 18 tests: zero detection, Validate layer ordering, structural stability
+- `graph/classify_test.go` — unit tests for chain classification heuristics; criterion carried through, step reasons unchanged, two criteria = same result
+- `graph/chain_print_test.go` — tests for chain text and JSON output formatting; criterion block, name-only handle signal
 - `graph/chain_e2e_test.go` — E2E tests using deforestation, evacuation_order, and incident_response datasets
 - `graph/incident_e2e_test.go` — E2E tests using incident response dataset
 - `persist/persist_test.go` — tests for file I/O functions

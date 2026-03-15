@@ -230,3 +230,179 @@ func TestClassifyChain_ReasonsNonEmpty(t *testing.T) {
 		}
 	}
 }
+
+// --- Group 8: Criterion carried on ClassifiedChain ---
+
+// TestClassifyChain_CriterionCarried verifies that a non-zero criterion
+// passed in ClassifyOptions is stored on the returned ClassifiedChain
+// envelope. The criterion is metadata about the reading conditions —
+// it is not used to alter step classification in v1.
+func TestClassifyChain_CriterionCarried(t *testing.T) {
+	chain := graph.TranslationChain{
+		StartElement: "A",
+		Steps: []graph.ChainStep{
+			{Edge: graph.Edge{TraceID: "t1", Mediation: "sensor"}, ElementExited: "A", ElementEntered: "B"},
+		},
+	}
+
+	crit := graph.EquivalenceCriterion{
+		Name:        "test-criterion",
+		Declaration: "continuity means the sensor reading is preserved",
+		Preserve:    []string{"sensor-value"},
+		Ignore:      []string{"timestamp"},
+	}
+
+	cc := graph.ClassifyChain(chain, graph.ClassifyOptions{Criterion: crit})
+
+	// EquivalenceCriterion contains []string so it is not directly comparable.
+	// Check each field individually to produce useful failure messages.
+	got := cc.Criterion
+	if got.Name != crit.Name {
+		t.Errorf("Criterion.Name = %q, want %q", got.Name, crit.Name)
+	}
+	if got.Declaration != crit.Declaration {
+		t.Errorf("Criterion.Declaration = %q, want %q", got.Declaration, crit.Declaration)
+	}
+	if len(got.Preserve) != len(crit.Preserve) {
+		t.Errorf("Criterion.Preserve len = %d, want %d", len(got.Preserve), len(crit.Preserve))
+	} else {
+		for i := range crit.Preserve {
+			if got.Preserve[i] != crit.Preserve[i] {
+				t.Errorf("Criterion.Preserve[%d] = %q, want %q", i, got.Preserve[i], crit.Preserve[i])
+			}
+		}
+	}
+	if len(got.Ignore) != len(crit.Ignore) {
+		t.Errorf("Criterion.Ignore len = %d, want %d", len(got.Ignore), len(crit.Ignore))
+	} else {
+		for i := range crit.Ignore {
+			if got.Ignore[i] != crit.Ignore[i] {
+				t.Errorf("Criterion.Ignore[%d] = %q, want %q", i, got.Ignore[i], crit.Ignore[i])
+			}
+		}
+	}
+}
+
+// TestClassifyChain_CriterionZero_BackwardsCompatible verifies that passing
+// an empty ClassifyOptions (v1 usage) leaves Criterion at its zero value.
+// This is the backwards-compatibility guarantee for all existing callers.
+func TestClassifyChain_CriterionZero_BackwardsCompatible(t *testing.T) {
+	chain := graph.TranslationChain{
+		StartElement: "A",
+		Steps: []graph.ChainStep{
+			{Edge: graph.Edge{TraceID: "t1", Mediation: ""}, ElementExited: "A", ElementEntered: "B"},
+		},
+	}
+
+	cc := graph.ClassifyChain(chain, graph.ClassifyOptions{})
+
+	if !cc.Criterion.IsZero() {
+		t.Errorf("Criterion should be zero when ClassifyOptions is empty, got %+v", cc.Criterion)
+	}
+}
+
+// TestClassifyChain_StepReasonsUnchangedWithCriterion enforces design rule C1:
+// the criterion lives on the ClassifiedChain envelope only. It must never
+// bleed into individual StepClassification.Reason strings. The step-level
+// reasoning is driven purely by v1 edge-level heuristics, not by the criterion.
+func TestClassifyChain_StepReasonsUnchangedWithCriterion(t *testing.T) {
+	chain := graph.TranslationChain{
+		StartElement: "A",
+		Steps: []graph.ChainStep{
+			{Edge: graph.Edge{TraceID: "t1", Mediation: ""}, ElementExited: "A", ElementEntered: "B"},
+			{Edge: graph.Edge{TraceID: "t2", Mediation: "sensor"}, ElementExited: "B", ElementEntered: "C"},
+			{Edge: graph.Edge{TraceID: "t3", Mediation: "filter", Tags: []string{"translation"}}, ElementExited: "C", ElementEntered: "D"},
+		},
+	}
+
+	crit := graph.EquivalenceCriterion{
+		Declaration: "continuity means the measurement regime is preserved",
+		Preserve:    []string{"measurement-regime"},
+	}
+
+	ccZero := graph.ClassifyChain(chain, graph.ClassifyOptions{})
+	ccWithCrit := graph.ClassifyChain(chain, graph.ClassifyOptions{Criterion: crit})
+
+	if len(ccZero.Classifications) != len(ccWithCrit.Classifications) {
+		t.Fatalf("classification count changed: zero=%d, criterion=%d",
+			len(ccZero.Classifications), len(ccWithCrit.Classifications))
+	}
+
+	for i := range ccZero.Classifications {
+		zeroReason := ccZero.Classifications[i].Reason
+		critReason := ccWithCrit.Classifications[i].Reason
+		if zeroReason != critReason {
+			t.Errorf("step %d Reason changed when criterion supplied: zero=%q criterion=%q",
+				i, zeroReason, critReason)
+		}
+		// Also verify Kind is unchanged — criterion should not alter classification logic.
+		zeroKind := ccZero.Classifications[i].Kind
+		critKind := ccWithCrit.Classifications[i].Kind
+		if zeroKind != critKind {
+			t.Errorf("step %d Kind changed when criterion supplied: zero=%q criterion=%q",
+				i, zeroKind, critKind)
+		}
+	}
+}
+
+// TestClassifyChain_TwoCriteriaSameClassification verifies that two different
+// non-zero criteria applied to the same chain produce identical step
+// classifications but carry different criterion values. This confirms that
+// the criterion is interpretive metadata on the envelope, not a dispatch key
+// for different heuristics. Same chain, same v1 result, different declared
+// reading conditions.
+func TestClassifyChain_TwoCriteriaSameClassification(t *testing.T) {
+	chain := graph.TranslationChain{
+		StartElement: "A",
+		Steps: []graph.ChainStep{
+			{Edge: graph.Edge{TraceID: "t1", Mediation: "relay"}, ElementExited: "A", ElementEntered: "B"},
+			{Edge: graph.Edge{TraceID: "t2", Mediation: ""}, ElementExited: "B", ElementEntered: "C"},
+		},
+	}
+
+	critAlpha := graph.EquivalenceCriterion{
+		Name:        "alpha",
+		Declaration: "identity is preserved if the relay message is intact",
+		Preserve:    []string{"message-content"},
+	}
+	critBeta := graph.EquivalenceCriterion{
+		Name:        "beta",
+		Declaration: "identity is preserved if the routing path is unchanged",
+		Preserve:    []string{"routing-path"},
+		Ignore:      []string{"message-content"},
+	}
+
+	ccAlpha := graph.ClassifyChain(chain, graph.ClassifyOptions{Criterion: critAlpha})
+	ccBeta := graph.ClassifyChain(chain, graph.ClassifyOptions{Criterion: critBeta})
+
+	// Classifications must be identical — both use v1 heuristics regardless of criterion.
+	if len(ccAlpha.Classifications) != len(ccBeta.Classifications) {
+		t.Fatalf("classification count differs: alpha=%d beta=%d",
+			len(ccAlpha.Classifications), len(ccBeta.Classifications))
+	}
+	for i := range ccAlpha.Classifications {
+		if ccAlpha.Classifications[i].Kind != ccBeta.Classifications[i].Kind {
+			t.Errorf("step %d Kind differs: alpha=%q beta=%q",
+				i, ccAlpha.Classifications[i].Kind, ccBeta.Classifications[i].Kind)
+		}
+		if ccAlpha.Classifications[i].Reason != ccBeta.Classifications[i].Reason {
+			t.Errorf("step %d Reason differs: alpha=%q beta=%q",
+				i, ccAlpha.Classifications[i].Reason, ccBeta.Classifications[i].Reason)
+		}
+	}
+
+	// But the criteria themselves must differ — they carry different declared conditions.
+	// EquivalenceCriterion contains []string so compare by distinguishing fields only.
+	if ccAlpha.Criterion.Name == ccBeta.Criterion.Name {
+		t.Errorf("alpha and beta criteria have the same Name %q — they should differ", ccAlpha.Criterion.Name)
+	}
+	if ccAlpha.Criterion.Declaration == ccBeta.Criterion.Declaration {
+		t.Error("alpha and beta criteria have the same Declaration — they should differ")
+	}
+	if ccAlpha.Criterion.Name != "alpha" {
+		t.Errorf("alpha criterion name = %q, want %q", ccAlpha.Criterion.Name, "alpha")
+	}
+	if ccBeta.Criterion.Name != "beta" {
+		t.Errorf("beta criterion name = %q, want %q", ccBeta.Criterion.Name, "beta")
+	}
+}

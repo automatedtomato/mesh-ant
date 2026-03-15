@@ -6,18 +6,21 @@
 //   - articulate: articulate an observer-situated graph from traces
 //   - diff:       diff two observer-situated articulations of the same trace set
 //   - follow:     follow a translation chain through an articulated graph
+//   - draft:      ingest LLM extraction JSON and produce TraceDraft records
+//   - promote:    promote TraceDraft records to canonical Traces
 //
-// The testable logic lives in run(), cmdSummarize(), cmdValidate(),
-// cmdArticulate(), and cmdDiff(). main() itself is a thin wrapper that wires
-// os.Stdout and os.Args, then exits non-zero on error — a pattern that makes
-// every meaningful path independently testable without I/O redirection.
+// The testable logic lives in run() and each cmd* function. main() itself is
+// a thin wrapper that wires os.Stdout and os.Args, then exits non-zero on
+// error — a pattern that makes every meaningful path independently testable
+// without I/O redirection.
 //
 // Usage:
 //
-//	meshant <command> [flags] <traces.json>
+//	meshant <command> [flags] <file.json>
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -28,7 +31,56 @@ import (
 
 	"github.com/automatedtomato/mesh-ant/meshant/graph"
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
+	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
+
+// maxCriterionBytes caps the size of a criterion JSON file read by
+// loadCriterionFile. 1 MiB is generous for a human-authored declaration.
+const maxCriterionBytes = 1 * 1024 * 1024
+
+// loadCriterionFile reads a JSON file at path and decodes it into an
+// EquivalenceCriterion. Four failure modes, each a distinct error:
+//  1. File cannot be opened (non-existent, permissions)
+//  2. File contains invalid JSON or a field not in EquivalenceCriterion
+//     (DisallowUnknownFields — precision over forward-compatibility
+//     tolerance for an interpretive declaration)
+//  3. Decoded criterion is zero-value — no interpretive content
+//     (hard error: silent fallback not acceptable when --criterion-file
+//     was explicitly provided)
+//  4. Layer ordering violation: Preserve or Ignore without Declaration
+//
+// Reads are capped at maxCriterionBytes. A file exceeding that cap is
+// truncated at the I/O boundary and produces a "malformed JSON" error
+// (unexpected EOF), not a distinct "file too large" error.
+func loadCriterionFile(path string) (graph.EquivalenceCriterion, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return graph.EquivalenceCriterion{}, fmt.Errorf("criterion-file: cannot open %q: %w", path, err)
+	}
+	defer f.Close()
+
+	limited := io.LimitReader(f, maxCriterionBytes)
+	dec := json.NewDecoder(limited)
+	dec.DisallowUnknownFields()
+
+	var c graph.EquivalenceCriterion
+	if err := dec.Decode(&c); err != nil {
+		return graph.EquivalenceCriterion{}, fmt.Errorf("criterion-file: malformed JSON in %q: %w", path, err)
+	}
+
+	if c.IsZero() {
+		return graph.EquivalenceCriterion{}, fmt.Errorf(
+			"criterion-file: %q decoded to a zero-value criterion — file must contain at least a declaration (or a name as a handle)",
+			path,
+		)
+	}
+
+	if err := c.Validate(); err != nil {
+		return graph.EquivalenceCriterion{}, fmt.Errorf("criterion-file: %w", err)
+	}
+
+	return c, nil
+}
 
 // stringSliceFlag is a custom flag.Value that accumulates string values on
 // each Set() call. This enables repeatable flags like --observer a --observer b,
@@ -144,6 +196,10 @@ func run(w io.Writer, args []string) error {
 		return cmdDiff(w, args[1:])
 	case "follow":
 		return cmdFollow(w, args[1:])
+	case "draft":
+		return cmdDraft(w, args[1:])
+	case "promote":
+		return cmdPromote(w, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
@@ -156,14 +212,16 @@ func usage() string {
 	return `meshant — trace-first network analysis
 
 Usage:
-  meshant <command> [flags] <traces.json>
+  meshant <command> [flags] <file.json>
 
 Commands:
   summarize   load traces and print mesh summary
   validate    validate all traces and report errors
   articulate  articulate an observer-situated graph (flags: --observer, --tag, --from, --to, --format, --output)
   diff        diff two articulations (flags: --observer-a, --observer-b, --tag-a, --tag-b, --from-a, --to-a, --from-b, --to-b, --format, --output)
-  follow      follow a translation chain through an articulation (flags: --observer, --tag, --from, --to, --element, --direction, --depth, --format, --output)
+  follow      follow a translation chain through an articulation (flags: --observer, --tag, --from, --to, --element, --direction, --depth, --format, --criterion-file, --output)
+  draft       ingest extraction JSON and produce TraceDraft records (flags: --source-doc, --extracted-by, --stage, --output)
+  promote     promote TraceDraft records to canonical Traces (flags: --output)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }
@@ -507,6 +565,14 @@ func cmdFollow(w io.Writer, args []string) error {
 	var outputPath string
 	fs.StringVar(&outputPath, "output", "", "write output to file")
 
+	// --criterion-file is an optional path to a JSON file containing an
+	// EquivalenceCriterion declaration. When provided, the criterion is
+	// loaded, validated, and attached to the ClassifyOptions so it appears
+	// in the chain output (text and JSON). Without this flag, the command
+	// behaves identically to v1 (no criterion block rendered).
+	var criterionFile string
+	fs.StringVar(&criterionFile, "criterion-file", "", "path to JSON file containing an EquivalenceCriterion declaration")
+
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -543,10 +609,21 @@ func cmdFollow(w io.Writer, args []string) error {
 		return fmt.Errorf("follow: %w", err)
 	}
 
+	// Load and validate criterion file when provided. Zero criterion (no flag)
+	// is the default and preserves v1 rendering behavior unchanged.
+	var criterion graph.EquivalenceCriterion
+	if criterionFile != "" {
+		c, err := loadCriterionFile(criterionFile)
+		if err != nil {
+			return fmt.Errorf("follow: %w", err)
+		}
+		criterion = c
+	}
+
 	// Positional argument: path to traces file.
 	remaining := fs.Args()
 	if len(remaining) == 0 {
-		return fmt.Errorf("follow: path to traces.json required\n\nUsage: meshant follow --observer <pos> --element <name> [--tag <tag>] [--from RFC3339] [--to RFC3339] [--direction forward|backward] [--depth N] [--format text|json] [--output <file>] <traces.json>")
+		return fmt.Errorf("follow: path to traces.json required\n\nUsage: meshant follow --observer <pos> --element <name> [--tag <tag>] [--from RFC3339] [--to RFC3339] [--direction forward|backward] [--depth N] [--format text|json] [--criterion-file <file>] [--output <file>] <traces.json>")
 	}
 	path := remaining[0]
 
@@ -568,7 +645,7 @@ func cmdFollow(w io.Writer, args []string) error {
 		MaxDepth:  depth,
 	})
 
-	cc := graph.ClassifyChain(chain, graph.ClassifyOptions{})
+	cc := graph.ClassifyChain(chain, graph.ClassifyOptions{Criterion: criterion})
 
 	// Determine output destination.
 	dest, err := outputWriter(w, outputPath)
@@ -587,6 +664,174 @@ func cmdFollow(w io.Writer, args []string) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	return confirmOutput(w, outputPath)
+}
+
+// cmdDraft implements the "draft" subcommand.
+//
+// It reads an extraction JSON file produced by an external LLM tool (the
+// ingestion contract: source_span required, all other fields optional),
+// assigns UUIDs and timestamps to records that lack them, applies optional
+// field overrides, validates each record, writes the resulting TraceDraft JSON
+// array to --output (or stdout), and prints a provenance summary.
+//
+// The command does not make LLM calls — the LLM's transformation is a named,
+// inspectable file on disk, consistent with treating the LLM as a mediator
+// rather than a hidden intermediary. See docs/decisions/tracedraft-v1.md.
+//
+// Flags:
+//   - --source-doc <ref>     stamp SourceDocRef on all drafts
+//   - --extracted-by <label> override ExtractedBy on all drafts
+//   - --stage <stage>        override ExtractionStage on all drafts
+//   - --output <file>        write TraceDraft JSON to file (default: stdout)
+func cmdDraft(w io.Writer, args []string) error {
+	fs := flag.NewFlagSet("draft", flag.ContinueOnError)
+
+	var sourceDoc string
+	fs.StringVar(&sourceDoc, "source-doc", "", "document identifier stamped on all drafts (SourceDocRef)")
+
+	var extractedBy string
+	fs.StringVar(&extractedBy, "extracted-by", "", "override ExtractedBy field for all loaded drafts")
+
+	var stage string
+	fs.StringVar(&stage, "stage", "", "override ExtractionStage field for all loaded drafts")
+
+	var outputPath string
+	fs.StringVar(&outputPath, "output", "", "write TraceDraft JSON to file (default: stdout)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		return fmt.Errorf("draft: path to extraction.json required\n\nUsage: meshant draft [--source-doc <ref>] [--extracted-by <label>] [--stage <stage>] [--output <file>] <extraction.json>")
+	}
+	path := remaining[0]
+
+	drafts, err := loader.LoadDrafts(path)
+	if err != nil {
+		return fmt.Errorf("draft: %w", err)
+	}
+
+	if len(drafts) == 0 {
+		return fmt.Errorf("draft: %q contains no records", path)
+	}
+
+	// Apply optional field overrides to all drafts.
+	for i := range drafts {
+		if sourceDoc != "" {
+			drafts[i].SourceDocRef = sourceDoc
+		}
+		if extractedBy != "" {
+			drafts[i].ExtractedBy = extractedBy
+		}
+		if stage != "" {
+			drafts[i].ExtractionStage = stage
+		}
+	}
+
+	// Determine output destination: file or stdout.
+	dest, err := outputWriter(w, outputPath)
+	if err != nil {
+		return fmt.Errorf("draft: %w", err)
+	}
+	if f, ok := dest.(*os.File); ok {
+		defer f.Close()
+	}
+
+	// Write TraceDraft JSON array to output destination.
+	enc := json.NewEncoder(dest)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(drafts); err != nil {
+		return fmt.Errorf("draft: encode output: %w", err)
+	}
+
+	// Print provenance summary to w (stdout) regardless of --output.
+	// When --output is stdout, the summary follows the JSON on the same stream.
+	summary := loader.SummariseDrafts(drafts)
+	if err := loader.PrintDraftSummary(w, summary); err != nil {
+		return fmt.Errorf("draft: %w", err)
+	}
+
+	return confirmOutput(w, outputPath)
+}
+
+// cmdPromote implements the "promote" subcommand.
+//
+// It reads a TraceDraft JSON file, calls IsPromotable on each draft, promotes
+// those that qualify to canonical Traces (each carries the "draft" tag as a
+// provenance signal), and writes the promoted traces to --output (or stdout).
+// A summary reports how many were promoted and names the reasons non-promotable
+// drafts were skipped.
+//
+// Flags:
+//   - --output <file>  write promoted traces JSON to file (default: stdout)
+func cmdPromote(w io.Writer, args []string) error {
+	fs := flag.NewFlagSet("promote", flag.ContinueOnError)
+
+	var outputPath string
+	fs.StringVar(&outputPath, "output", "", "write promoted traces JSON to file (default: stdout)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		return fmt.Errorf("promote: path to drafts.json required\n\nUsage: meshant promote [--output <file>] <drafts.json>")
+	}
+	path := remaining[0]
+
+	drafts, err := loader.LoadDrafts(path)
+	if err != nil {
+		return fmt.Errorf("promote: %w", err)
+	}
+
+	var promoted []schema.Trace
+	type failedDraft struct {
+		idx    int
+		id     string
+		reason string
+	}
+	var failures []failedDraft
+
+	for i, d := range drafts {
+		tr, err := d.Promote()
+		if err != nil {
+			failures = append(failures, failedDraft{idx: i, id: d.ID, reason: err.Error()})
+			continue
+		}
+		promoted = append(promoted, tr)
+	}
+
+	// Determine output destination: file or stdout.
+	dest, err := outputWriter(w, outputPath)
+	if err != nil {
+		return fmt.Errorf("promote: %w", err)
+	}
+	if f, ok := dest.(*os.File); ok {
+		defer f.Close()
+	}
+
+	// Write promoted traces JSON (empty array if none promoted).
+	out := promoted
+	if out == nil {
+		out = []schema.Trace{}
+	}
+	enc := json.NewEncoder(dest)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		return fmt.Errorf("promote: encode output: %w", err)
+	}
+
+	// Print promotion summary to w (stdout).
+	fmt.Fprintf(w, "\nPromotion summary: %d promoted, %d not promotable (out of %d)\n",
+		len(promoted), len(failures), len(drafts))
+	for _, f := range failures {
+		fmt.Fprintf(w, "  draft %d (id=%s): %s\n", f.idx, f.id, f.reason)
 	}
 
 	return confirmOutput(w, outputPath)

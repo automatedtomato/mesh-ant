@@ -45,16 +45,61 @@ deciding what counts as a trace, identifying observer positions, naming mediatio
 Trace authoring becomes dialogue rather than manual instrumentation. The tool is still
 primarily analytical — it helps you understand a network, not run one.
 
+**LLM boundary — layered:**
+- **Framework / core layer (v1.x, now):** LLM external. The `draft` command consumes
+  LLM-produced extraction JSON as input; it does not make live LLM calls. The LLM is
+  a mediator whose output is a named, inspectable file — not a hidden step inside the CLI.
+- **Interactive CLI layer (v2.0.0):** LLM internal. The session interface calls the LLM
+  directly. The LLM's transformations are still visible in the mesh (it appears as a
+  mediator node, not a neutral extractor), but the boundary moves inside the tool.
+
 **Tentative: v2.0.0**
 
 Requires the static analysis foundation to be complete and polished first:
-visualization path, shadow analysis operations, re-articulation, validation tooling.
-Do not rush here. An interactive layer on an incomplete foundation makes the gaps
-harder to fix.
+visualization path, shadow analysis operations, re-articulation, ingestion entrypoint
+(M11), anti-ontology critique pass (M11.5/M12). Do not rush here. An interactive layer
+on an incomplete foundation makes the gaps harder to fix.
 
 ---
 
-### 3. Simulation — actors act
+### 3. Knowledge-graph-aware layered system
+
+A potential architectural form emerging from the graph integration discussion
+(`docs/reviews/graph_integration_note_14-mar-26.md`). Not a replacement for the core
+inversion — an extension of it into a three-layer stack:
+
+**Layer 1 — Trace/episode substrate (Graphiti-like)**
+Stores traces, source episodes, relation candidates, provenance, temporal updates.
+Resists premature actorization. Pre-articulation material only.
+Possible technology: Graphiti-like temporal graph memory, or a graph store with
+provenance tracking.
+
+**Layer 2 — MeshAnt articulation engine (current)**
+Applies cuts, criteria, preserve/ignore declarations, shadow logic, actor-like emergence,
+diff across articulations. This is MeshAnt's core responsibility and must not be
+delegated to the substrate or the visualization layer.
+
+**Layer 3 — Visualization / exploration surface (Neo4j-like)**
+Displays articulated renderings as navigable graphs. Comparison across cuts. Provenance
+inspection. Shadow browsing. NOT a neutral truth display — always framed as a current
+articulation, a situated reading, a rendered stabilization.
+
+The critical discipline: the visualization layer shows *a cut*, not *the world*. Any
+graph rendering must carry cut metadata (observer-position, criterion, shadow list)
+explicitly, or the rendering silently lies. MeshAnt's current JSON exports already
+carry this metadata; the work is in the adapter layer and in making the UI refuse to
+strip provenance.
+
+**Current status**: future-compatible boundary only. The existing `--format json`
+exports from `articulate` and `diff` already produce cut-aware output that could feed
+a future adapter. No implementation planned until the analytical core and ingestion
+entrypoint are more mature.
+
+**Tentative: post-v2.0.0, or as a parallel track alongside v2.0.0.**
+
+---
+
+### 4. Simulation — actors act
 
 The most speculative direction. Not near-term.
 
@@ -146,4 +191,5 @@ These are not opposed to the Layer 1/3 work. Deepening and extending proceed tog
 
 ---
 
-*Last updated: 2026-03-13. This is a note, not a spec. Supersedes `docs/potential-forms.md` (removed).*
+*Last updated: 2026-03-15. This is a note, not a spec. Supersedes `docs/potential-forms.md` (removed).*
+*2026-03-15 additions: Knowledge-graph-aware layered form (Form 3); LLM boundary layering in Form 2; based on `docs/reviews/graph_integration_note_14-mar-26.md` and `docs/reviews/llm_limit_14-mar-26.md`.*
