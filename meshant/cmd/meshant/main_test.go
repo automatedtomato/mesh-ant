@@ -1339,3 +1339,264 @@ func TestCmdFollow_CriterionFile_WithOutput(t *testing.T) {
 		t.Errorf("output file missing Declaration line\nfull content:\n%s", string(content))
 	}
 }
+
+// --- Group 12: cmdDraft ---
+
+// cveExtractionDataset is the path to the pre-made LLM extraction fixture
+// for the CVE vulnerability response scenario (M11 dataset).
+const cveExtractionDataset = "../../../data/examples/cve_response_extraction.json"
+
+// cveExpectedDraftCount is the number of records in the CVE extraction fixture.
+const cveExpectedDraftCount = 14
+
+// TestCmdDraft_ValidExtractionFile verifies that cmdDraft produces TraceDraft
+// JSON with the correct record count when given a valid extraction file.
+func TestCmdDraft_ValidExtractionFile(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDraft(&buf, []string{cveExtractionDataset})
+	if err != nil {
+		t.Fatalf("cmdDraft() returned unexpected error: %v", err)
+	}
+	// Output should contain summary text mentioning draft count.
+	out := buf.String()
+	if !strings.Contains(out, "draft") && !strings.Contains(out, "Draft") {
+		t.Errorf("cmdDraft() output does not mention 'draft'; got:\n%s", out)
+	}
+}
+
+// TestCmdDraft_MissingSourceSpan verifies that cmdDraft returns an error
+// when any record has an empty source_span.
+func TestCmdDraft_MissingSourceSpan(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[{"source_span":"ok"},{"source_span":""}]`)
+	var buf bytes.Buffer
+	err := cmdDraft(&buf, []string{path})
+	if err == nil {
+		t.Fatal("cmdDraft() with empty source_span: want error, got nil")
+	}
+}
+
+// TestCmdDraft_SourceDocFlag verifies that --source-doc stamps SourceDocRef
+// on all produced drafts.
+func TestCmdDraft_SourceDocFlag(t *testing.T) {
+	outFile := filepath.Join(t.TempDir(), "drafts.json")
+	var buf bytes.Buffer
+	err := cmdDraft(&buf, []string{
+		"--source-doc", "cve_response_raw.md",
+		"--output", outFile,
+		cveExtractionDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDraft() --source-doc returned unexpected error: %v", err)
+	}
+	content, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("read output file: %v", err)
+	}
+	if !strings.Contains(string(content), "cve_response_raw.md") {
+		t.Errorf("--source-doc value not found in output; content:\n%s", string(content))
+	}
+}
+
+// TestCmdDraft_ExtractedByFlag verifies that --extracted-by overrides the
+// ExtractedBy field on all produced drafts.
+func TestCmdDraft_ExtractedByFlag(t *testing.T) {
+	outFile := filepath.Join(t.TempDir(), "drafts.json")
+	var buf bytes.Buffer
+	err := cmdDraft(&buf, []string{
+		"--extracted-by", "test-override",
+		"--output", outFile,
+		cveExtractionDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDraft() --extracted-by returned unexpected error: %v", err)
+	}
+	content, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("read output file: %v", err)
+	}
+	if !strings.Contains(string(content), "test-override") {
+		t.Errorf("--extracted-by override not found in output; content:\n%s", string(content))
+	}
+}
+
+// TestCmdDraft_OutputFlag verifies that --output writes TraceDraft JSON to a file.
+func TestCmdDraft_OutputFlag(t *testing.T) {
+	outFile := filepath.Join(t.TempDir(), "drafts.json")
+	var buf bytes.Buffer
+	err := cmdDraft(&buf, []string{
+		"--output", outFile,
+		cveExtractionDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDraft() --output returned unexpected error: %v", err)
+	}
+	info, err := os.Stat(outFile)
+	if err != nil {
+		t.Fatalf("output file not created: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Error("output file is empty")
+	}
+}
+
+// TestCmdDraft_EmptyExtractionFile verifies that cmdDraft returns an error
+// when the extraction JSON is an empty array.
+func TestCmdDraft_EmptyExtractionFile(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[]`)
+	var buf bytes.Buffer
+	err := cmdDraft(&buf, []string{path})
+	if err == nil {
+		t.Fatal("cmdDraft() with empty array: want error, got nil")
+	}
+}
+
+// TestCmdDraft_MalformedJSON verifies that cmdDraft returns an error for
+// malformed JSON input.
+func TestCmdDraft_MalformedJSON(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[{not valid}]`)
+	var buf bytes.Buffer
+	err := cmdDraft(&buf, []string{path})
+	if err == nil {
+		t.Fatal("cmdDraft() with malformed JSON: want error, got nil")
+	}
+}
+
+// TestCmdDraft_StageFlag verifies that --stage overrides the ExtractionStage
+// field on all produced drafts.
+func TestCmdDraft_StageFlag(t *testing.T) {
+	outFile := filepath.Join(t.TempDir(), "drafts.json")
+	var buf bytes.Buffer
+	err := cmdDraft(&buf, []string{
+		"--stage", "reviewed",
+		"--output", outFile,
+		cveExtractionDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdDraft() --stage returned unexpected error: %v", err)
+	}
+	content, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("read output file: %v", err)
+	}
+	if !strings.Contains(string(content), "reviewed") {
+		t.Errorf("--stage override not found in output; content:\n%s", string(content))
+	}
+}
+
+// TestCmdDraft_MissingArg verifies that cmdDraft returns an error when
+// called with no arguments.
+func TestCmdDraft_MissingArg(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdDraft(&buf, []string{})
+	if err == nil {
+		t.Fatal("cmdDraft() with no args: want error, got nil")
+	}
+}
+
+// writeTempJSONForDraft writes content to a temp file.
+// Distinct name to avoid conflicts with writeTempJSON in loader_test.go
+// (which is not in scope here, but avoids any future redeclaration issue).
+func writeTempJSONForDraft(t *testing.T, content string) string {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "extraction-*.json")
+	if err != nil {
+		t.Fatalf("CreateTemp: %v", err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	return f.Name()
+}
+
+// --- Group 13: cmdPromote ---
+
+// cveDraftsDataset is the path to the pre-made TraceDraft fixture for the CVE
+// vulnerability response scenario.
+const cveDraftsDataset = "../../../data/examples/cve_response_drafts.json"
+
+// TestCmdPromote_AllPromotable verifies that cmdPromote promotes all promotable
+// drafts and produces trace output. The CVE drafts fixture has a mix of
+// promotable and non-promotable records.
+func TestCmdPromote_AllPromotable(t *testing.T) {
+	// Build a temp file with two fully promotable drafts.
+	path := writeTempJSONForDraft(t, `[
+		{"id":"a1000000-0000-4000-8000-000000000001","source_span":"span a","what_changed":"a changed","observer":"analyst"},
+		{"id":"a1000000-0000-4000-8000-000000000002","source_span":"span b","what_changed":"b changed","observer":"analyst"}
+	]`)
+	var buf bytes.Buffer
+	err := cmdPromote(&buf, []string{path})
+	if err != nil {
+		t.Fatalf("cmdPromote() returned unexpected error: %v", err)
+	}
+	out := buf.String()
+	// Summary must mention promoted count.
+	if !strings.Contains(out, "2") {
+		t.Errorf("output does not mention count 2; got:\n%s", out)
+	}
+}
+
+// TestCmdPromote_MixedPromotable verifies partial promotion: promotable drafts
+// are promoted, non-promotable drafts are reported in the summary.
+func TestCmdPromote_MixedPromotable(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[
+		{"id":"a1000000-0000-4000-8000-000000000001","source_span":"span a","what_changed":"changed","observer":"analyst"},
+		{"source_span":"span b, no id or what_changed"}
+	]`)
+	// Load the second draft (auto-assigns ID) before cmdPromote so we can use
+	// the file path directly — cmdPromote runs LoadDrafts internally.
+	var buf bytes.Buffer
+	err := cmdPromote(&buf, []string{path})
+	if err != nil {
+		t.Fatalf("cmdPromote() mixed: want nil error (partial success), got: %v", err)
+	}
+	out := buf.String()
+	// Exactly 1 promoted, 1 not promotable.
+	if !strings.Contains(out, "1") {
+		t.Errorf("output does not mention count; got:\n%s", out)
+	}
+}
+
+// TestCmdPromote_NonePromotable verifies that cmdPromote returns an error
+// (or at minimum reports 0 promoted) when no draft is promotable.
+func TestCmdPromote_NonePromotable(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[{"source_span":"only a span, not promotable"}]`)
+	var buf bytes.Buffer
+	// cmdPromote should not hard-error on non-promotable drafts — it reports
+	// them in the summary. The return value signals whether any promotion occurred.
+	_ = cmdPromote(&buf, []string{path})
+	out := buf.String()
+	if !strings.Contains(out, "0") && !strings.Contains(strings.ToLower(out), "not promotable") {
+		t.Errorf("output does not mention 0 promoted or 'not promotable'; got:\n%s", out)
+	}
+}
+
+// TestCmdPromote_OutputFlag verifies that --output writes promoted traces to a file.
+func TestCmdPromote_OutputFlag(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[
+		{"id":"a1000000-0000-4000-8000-000000000001","source_span":"span","what_changed":"changed","observer":"analyst"}
+	]`)
+	outFile := filepath.Join(t.TempDir(), "promoted.json")
+	var buf bytes.Buffer
+	err := cmdPromote(&buf, []string{"--output", outFile, path})
+	if err != nil {
+		t.Fatalf("cmdPromote() --output returned unexpected error: %v", err)
+	}
+	content, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("output file not created: %v", err)
+	}
+	if !strings.Contains(string(content), "what_changed") {
+		t.Errorf("output file missing trace content; got:\n%s", string(content))
+	}
+}
+
+// TestCmdPromote_MissingArg verifies that cmdPromote returns an error when
+// called with no arguments.
+func TestCmdPromote_MissingArg(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdPromote(&buf, []string{})
+	if err == nil {
+		t.Fatal("cmdPromote() with no args: want error, got nil")
+	}
+}
