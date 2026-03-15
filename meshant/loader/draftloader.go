@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
@@ -168,9 +169,8 @@ func SummariseDrafts(drafts []schema.TraceDraft) DraftSummary {
 // It shows total/promotable counts, breakdown by extraction stage and
 // extracted_by label, and field fill rates across the dataset.
 //
-// Field fill rates are listed in field-definition order (not by count) so
-// that the output is stable and the pattern of populated vs empty fields
-// is easy to read.
+// ByStage and ByExtractedBy entries are sorted alphabetically for stable
+// output. Field fill rates are listed in field-definition order.
 //
 // Returns the first write error encountered, if any.
 func PrintDraftSummary(w io.Writer, s DraftSummary) error {
@@ -185,8 +185,9 @@ func PrintDraftSummary(w io.Writer, s DraftSummary) error {
 	if len(s.ByStage) == 0 {
 		lines = append(lines, "  (none recorded)")
 	} else {
-		for stage, count := range s.ByStage {
-			lines = append(lines, fmt.Sprintf("  %-30s %d", stage, count))
+		stages := sortedKeys(s.ByStage)
+		for _, stage := range stages {
+			lines = append(lines, fmt.Sprintf("  %-30s %d", stage, s.ByStage[stage]))
 		}
 	}
 
@@ -194,8 +195,9 @@ func PrintDraftSummary(w io.Writer, s DraftSummary) error {
 	if len(s.ByExtractedBy) == 0 {
 		lines = append(lines, "  (none recorded)")
 	} else {
-		for by, count := range s.ByExtractedBy {
-			lines = append(lines, fmt.Sprintf("  %-30s %d", by, count))
+		bys := sortedKeys(s.ByExtractedBy)
+		for _, by := range bys {
+			lines = append(lines, fmt.Sprintf("  %-30s %d", by, s.ByExtractedBy[by]))
 		}
 	}
 
@@ -224,6 +226,17 @@ func PrintDraftSummary(w io.Writer, s DraftSummary) error {
 		}
 	}
 	return nil
+}
+
+// sortedKeys returns the keys of a map[string]int in ascending alphabetical
+// order. Used by PrintDraftSummary to produce deterministic output.
+func sortedKeys(m map[string]int) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // newUUID generates a random UUID v4 formatted as a lowercase hyphenated string.

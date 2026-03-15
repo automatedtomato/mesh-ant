@@ -458,37 +458,38 @@ day one via `DerivedFrom` links.
 
 ### Tasks
 
-- [ ] **M11.0 — CVE vulnerability response dataset**
+- [x] **M11.0 — CVE vulnerability response dataset** — PR #45 (`39-cve-dataset`)
   - `data/examples/cve_response_raw.md` — raw source document (~1 page)
-  - `data/examples/cve_response_extraction.json` — pre-made LLM extraction fixture (~12–15 spans)
+  - `data/examples/cve_response_extraction.json` — 14-span LLM extraction fixture
   - `data/examples/cve_response_drafts.json` — expected TraceDraft output (for tests)
 
-- [ ] **M11.1 — Define `TraceDraft` type**
+- [x] **M11.1 — Define `TraceDraft` type** — PR #46 (`40-tracedraft-type`)
   - `meshant/schema/tracedraft.go` — `TraceDraft` struct with source, candidate, and provenance fields
   - `Validate()` (SourceSpan required), `IsPromotable()`, `Promote()` methods
   - `TagValueDraft = "draft"` constant on promoted traces
-  - `meshant/schema/tracedraft_test.go`
+  - `meshant/schema/tracedraft_test.go` — 18 tests
 
-- [ ] **M11.2 — Draft loader**
+- [x] **M11.2 — Draft loader** — PR #47 (`41-draft-loader`)
   - `meshant/loader/draftloader.go` — `LoadDrafts()`, `SummariseDrafts()`, `PrintDraftSummary()`
   - `DraftSummary` type: counts by stage, by extracted_by, promotable count, field fill rates
-  - `meshant/loader/draftloader_test.go`
+  - `meshant/loader/draftloader_test.go` — 13 tests
 
-- [ ] **M11.3 — `draft` CLI subcommand**
+- [x] **M11.3 — `draft` CLI subcommand** — PR #48 (`42-cmd-draft`)
   - `meshant draft <extraction.json>` — reads LLM-produced extraction JSON → TraceDraft records
   - `--source-doc`, `--extracted-by`, `--stage`, `--output` flags
   - Ingestion contract documented: SourceSpan required, all other fields optional, empty preferred over fabricated
-  - Group 12 tests in `meshant/cmd/meshant/main_test.go`
+  - Group 12 tests in `meshant/cmd/meshant/main_test.go` — 9 tests
 
-- [ ] **M11.4 — `promote` CLI subcommand**
+- [x] **M11.4 — `promote` CLI subcommand** — PR #48 (`42-cmd-draft`)
   - `meshant promote <drafts.json>` — batch-promotes qualifying drafts to canonical traces
   - `--output <traces.json>` flag; summary of promoted vs failed
-  - Group 13 tests in `meshant/cmd/meshant/main_test.go`
+  - Group 13 tests in `meshant/cmd/meshant/main_test.go` — 5 tests
 
-- [ ] **M11.5 — Review, clean, and document**
-  - Refactor-cleaner pass across all M11 files; fix actionable findings
-  - Philosophical (ANT) review: LLM-as-mediator, DerivedFrom chain, SourceSpan as ground truth, empty-over-fabricated
-  - `docs/decisions/tracedraft-v1.md` — LLM-as-mediator, ingestion contract, DerivedFrom chain, what is deferred
+- [x] **M11.5 — Review, clean, and document**
+  - Refactor-cleaner: fixed dead constants, stale doc, non-deterministic map output, weak assertions
+  - ANT review: ALIGNED WITH TENSIONS — 8 aligned, 6 tensions (5 productive, 1 partially unresolved)
+  - `docs/decisions/tracedraft-v1.md` — 10 decisions: LLM-as-mediator, ingestion contract,
+    DerivedFrom chain, ExtractionStage as position not progress, over-actorized records by design
   - `docs/CODEMAPS/meshant.md` updated for M11
 
 ---
