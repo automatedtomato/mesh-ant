@@ -88,7 +88,51 @@ encouraged to leave fields empty rather than fabricate confident assignments.
 
 ---
 
+## Example domain: CVE vulnerability response
+
+The dataset for M11 is a CVE/dependency vulnerability response scenario. This domain was
+chosen because:
+- Every engineer knows the workflow (CVE alert → triage → fix → deploy)
+- The raw document form is natural: a CVE advisory is unstructured prose an LLM would
+  confidently mis-actorize ("attacker" as a stable entity, CVSS score as an agent)
+- Strong regime crossings make the promoted traces analytically interesting with `follow`:
+  security advisory → risk assessment → engineering decision → deployment gate
+- Multiple non-human mediators: CVSS scorer, dependency scanner, CI pipeline, deployment gate
+- Observer asymmetry: scanner sees a score; engineer sees blast radius; pipeline sees go/no-go
+
+### Dataset files
+
+**`data/examples/cve_response_raw.md`** (or `.txt`) — raw source material:
+- A CVE advisory excerpt (CVSS score, affected versions, description)
+- A Dependabot alert body
+- Brief engineer triage notes
+- Security review sign-off
+- Deployment approval note
+Approximately 1 page. This is the document a user would bring to MeshAnt.
+
+**`data/examples/cve_response_extraction.json`** — pre-made extraction JSON:
+- ~12–15 span extractions simulating LLM pass-1 output
+- Follows the ingestion contract: `source_span` required, fields incomplete, uncertainty
+  notes where the source is ambiguous, `extracted_by: "llm-pass1"`, `extraction_stage: "weak-draft"`
+- Intentionally includes 1–2 over-actorized drafts (seeds the future critique pass demo)
+
+**`data/examples/cve_response_drafts.json`** — TraceDraft output:
+- What `meshant draft cve_response_extraction.json` produces
+- Provided as a fixture for `promote` testing and documentation
+
+---
+
 ## Phases
+
+### Phase 0: CVE vulnerability response dataset
+
+**Files:**
+- `data/examples/cve_response_raw.md` — raw source document
+- `data/examples/cve_response_extraction.json` — pre-made LLM extraction fixture
+- `data/examples/cve_response_drafts.json` — expected TraceDraft output (for tests)
+
+The extraction JSON must follow the ingestion contract: `source_span` required, all
+other fields optional, uncertainty notes used where the source is ambiguous.
 
 ### Phase 1: Define `TraceDraft` type
 

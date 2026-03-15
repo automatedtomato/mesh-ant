@@ -458,6 +458,11 @@ day one via `DerivedFrom` links.
 
 ### Tasks
 
+- [ ] **M11.0 — CVE vulnerability response dataset**
+  - `data/examples/cve_response_raw.md` — raw source document (~1 page)
+  - `data/examples/cve_response_extraction.json` — pre-made LLM extraction fixture (~12–15 spans)
+  - `data/examples/cve_response_drafts.json` — expected TraceDraft output (for tests)
+
 - [ ] **M11.1 — Define `TraceDraft` type**
   - `meshant/schema/tracedraft.go` — `TraceDraft` struct with source, candidate, and provenance fields
   - `Validate()` (SourceSpan required), `IsPromotable()`, `Promote()` methods
