@@ -316,7 +316,27 @@ Behaviour:
 
 ---
 
-### Phase 5: Decision record + codemap
+### Phase 5: Review, clean, and document
+
+**Step 1 — Refactor-cleaner pass**
+Run refactor-cleaner agent across all M11 files:
+- `meshant/schema/tracedraft.go` + tests
+- `meshant/loader/draftloader.go` + tests
+- `meshant/cmd/meshant/main.go` (draft + promote additions) + tests
+
+Fix any actionable findings before proceeding to the philosophical review.
+
+**Step 2 — Philosophical (ANT) review**
+Run ant-theorist agent across all M11 code and design. Key checks:
+- LLM-as-mediator commitment visible in code and output (not hidden extractor)
+- `DerivedFrom` chain preserves the extraction pipeline as followable
+- `SourceSpan` as ground truth is structurally enforced
+- Empty-over-fabricated principle reflected in `Validate()` and ingestion contract
+- `TagValueDraft` does not reify ingestion provenance as ontology
+- No naming, typing, or ordering decisions that misrepresent ANT commitments
+
+**Step 3 — Decision record + codemap**
+Only after both reviews pass:
 
 **Files:**
 - `docs/decisions/tracedraft-v1.md`

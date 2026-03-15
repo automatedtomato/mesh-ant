@@ -485,7 +485,9 @@ day one via `DerivedFrom` links.
   - `--output <traces.json>` flag; summary of promoted vs failed
   - Group 13 tests in `meshant/cmd/meshant/main_test.go`
 
-- [ ] **M11.5 — Decision record + codemap**
+- [ ] **M11.5 — Review, clean, and document**
+  - Refactor-cleaner pass across all M11 files; fix actionable findings
+  - Philosophical (ANT) review: LLM-as-mediator, DerivedFrom chain, SourceSpan as ground truth, empty-over-fabricated
   - `docs/decisions/tracedraft-v1.md` — LLM-as-mediator, ingestion contract, DerivedFrom chain, what is deferred
   - `docs/CODEMAPS/meshant.md` updated for M11
 
