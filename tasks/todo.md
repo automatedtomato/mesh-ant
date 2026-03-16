@@ -494,6 +494,45 @@ day one via `DerivedFrom` links.
 
 ---
 
+## Milestone 12: Anti-Ontology Critique Pass (Re-articulation as a Second Cut)
+
+Re-articulation as a first-class operation: given a TraceDraft, produce an alternative
+TraceDraft of the same SourceSpan, linked by DerivedFrom. A second cut, not a correction.
+
+**Full plan:** `tasks/plan_m12.md`
+**Parent issue:** #50
+
+### Tasks
+
+- [x] **M12.1 — Re-articulation scaffold** — PR #56 (`51-m12-rearticulate`)
+  - `cmdRearticulate` in `meshant/cmd/meshant/main.go`
+  - Reads drafts JSON → skeleton JSON: SourceSpan + DerivedFrom set, content fields blank, `extraction_stage:"reviewed"`
+  - Flags: `--id <id>` (single draft), `--output <path>`
+  - `data/examples/cve_critique_skeleton.json` — skeleton for all 14 CVE drafts
+  - `tasks/plan_m12.md` — full M12 plan
+  - Group 14 tests in `main_test.go` (9 tests)
+
+- [x] **M12.2 — DerivedFrom lineage reader** — PR #57 (`53-m12-lineage`)
+  - `cmdLineage` in `meshant/cmd/meshant/main.go`
+  - Walks DerivedFrom links; renders positional reading sequences as indented trees
+  - Cycle detection via DFS grey-set; `subsequent`/`anchors` vocabulary (not `children`/`roots`)
+  - Flags: `--id <id>`, `--format text|json`
+  - Group 15 tests in `main_test.go` (11 tests)
+  - `.claude/agents/qa-engineer.md` — QA engineer agent (test quality specialist)
+
+- [x] **M12.3 — Anti-ontology critique prompt template** — PR #58 (`54-m12-critique-template`)
+  - `data/prompts/critique_pass.md` — extraction contract for the critique step
+  - `data/examples/cve_critique_drafts.json` — filled critique drafts for E3 and E14
+
+- [x] **M12.4 — Decision record + codemap** — PR #59 (`55-m12-docs`)
+  - `docs/decisions/rearticulation-v1.md` — 8 decisions
+  - `docs/CODEMAPS/meshant.md` — updated for M12
+  - `tasks/todo.md` — M12 section added, all tasks marked complete
+
+659 total tests, 0 failures; cmd/meshant 88.2% coverage; `go vet` clean.
+
+---
+
 ## Post-v1.0.0 — Open Horizon
 
 Informed by v1.0.0 review (`docs/reviews/release_v1_review_13-mar-26.md`) and earlier
@@ -515,7 +554,7 @@ The most important next frontier — the direct interface with the user:
 
 - [x] **TraceDraft schema** — `TraceDraft` type with source span, candidate fields, provenance chain (M11)
 - [x] **Ingestion entrypoint** — `meshant draft` + `meshant promote`; LLM-external boundary; ingestion contract (M11)
-- [ ] **Anti-ontology critique pass** — second-pass LLM critique of premature actorization; `meshant critique` subcommand; DerivedFrom links critique to draft (M11.5 / M12)
+- [x] **Anti-ontology critique pass** — re-articulation as second cut: same SourceSpan, alternative draft, DerivedFrom link; `meshant rearticulate` + `meshant lineage`; critique prompt template (M12)
 - [ ] **Interactive review CLI** — human-in-the-loop refinement; surfaces ambiguity, shows provenance chain; the interactive layer before promotion (M12+)
 
 ### Interpretation support (Layer 3)
