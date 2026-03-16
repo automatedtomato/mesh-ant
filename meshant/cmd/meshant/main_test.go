@@ -1864,3 +1864,235 @@ func TestCmdRearticulate_SkeletonRoundTrip(t *testing.T) {
 
 // --- Group 15: cmdLineage ---
 
+
+// --- Group 15: cmdLineage ---
+
+// TestCmdLineage_ValidDraftsFile verifies that a dataset with no DerivedFrom
+// links reports all drafts as standalone.
+func TestCmdLineage_ValidDraftsFile(t *testing.T) {
+	// A dataset with no DerivedFrom links — all drafts are standalone.
+	path := writeTempJSONForDraft(t, `[
+		{"source_span":"span a","what_changed":"a","observer":"analyst"},
+		{"source_span":"span b","what_changed":"b","observer":"analyst"}
+	]`)
+
+	var buf bytes.Buffer
+	err := cmdLineage(&buf, []string{path})
+	if err != nil {
+		t.Fatalf("cmdLineage() returned unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	// Must mention standalone drafts.
+	if !strings.Contains(strings.ToLower(out), "standalone") {
+		t.Errorf("output does not mention standalone drafts; got:\n%s", out)
+	}
+}
+
+// TestCmdLineage_WithChains verifies that a dataset containing DerivedFrom links
+// renders chains with root and child.
+func TestCmdLineage_WithChains(t *testing.T) {
+	// Root has no DerivedFrom; child DerivedFrom points to root's ID.
+	path := writeTempJSONForDraft(t, `[
+		{"id":"aaaaaaaa-0000-4000-8000-000000000001","source_span":"root span","what_changed":"root change","observer":"analyst","extraction_stage":"span-harvest","extracted_by":"llm-pass1"},
+		{"id":"bbbbbbbb-0000-4000-8000-000000000002","source_span":"critique span","what_changed":"critique change","observer":"reviewer","extraction_stage":"reviewed","extracted_by":"human-reviewer","derived_from":"aaaaaaaa-0000-4000-8000-000000000001"}
+	]`)
+
+	var buf bytes.Buffer
+	err := cmdLineage(&buf, []string{path})
+	if err != nil {
+		t.Fatalf("cmdLineage() with chains returned unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	// Root ID prefix must appear.
+	if !strings.Contains(out, "aaaaaaaa") {
+		t.Errorf("root ID prefix not found in output; got:\n%s", out)
+	}
+	// Child must appear indented under root (indicated by └──).
+	if !strings.Contains(out, "└──") {
+		t.Errorf("child connector └── not found in output; got:\n%s", out)
+	}
+	// Child ID prefix must appear.
+	if !strings.Contains(out, "bbbbbbbb") {
+		t.Errorf("child ID prefix not found in output; got:\n%s", out)
+	}
+}
+
+// TestCmdLineage_IDFlag verifies that --id shows only the chain containing
+// the specified draft.
+func TestCmdLineage_IDFlag(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[
+		{"id":"aaaaaaaa-0000-4000-8000-000000000001","source_span":"root span","what_changed":"root","observer":"analyst","extraction_stage":"span-harvest","extracted_by":"llm-pass1"},
+		{"id":"bbbbbbbb-0000-4000-8000-000000000002","source_span":"child span","what_changed":"child","observer":"reviewer","extraction_stage":"reviewed","extracted_by":"human-reviewer","derived_from":"aaaaaaaa-0000-4000-8000-000000000001"},
+		{"id":"cccccccc-0000-4000-8000-000000000003","source_span":"unrelated span","what_changed":"unrelated","observer":"analyst","extraction_stage":"span-harvest","extracted_by":"llm-pass1"}
+	]`)
+
+	var buf bytes.Buffer
+	err := cmdLineage(&buf, []string{"--id", "aaaaaaaa-0000-4000-8000-000000000001", path})
+	if err != nil {
+		t.Fatalf("cmdLineage() --id returned unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	// Root and child must appear.
+	if !strings.Contains(out, "aaaaaaaa") {
+		t.Errorf("root not found in --id output; got:\n%s", out)
+	}
+	if !strings.Contains(out, "bbbbbbbb") {
+		t.Errorf("child not found in --id output; got:\n%s", out)
+	}
+	// Unrelated draft must NOT appear.
+	if strings.Contains(out, "cccccccc") {
+		t.Errorf("unrelated draft cccccccc appeared in --id output; got:\n%s", out)
+	}
+}
+
+// TestCmdLineage_IDFlagNotFound verifies that --id <unknown> returns an error.
+func TestCmdLineage_IDFlagNotFound(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[
+		{"source_span":"span a","what_changed":"a","observer":"analyst"}
+	]`)
+
+	var buf bytes.Buffer
+	err := cmdLineage(&buf, []string{"--id", "nonexistent-id-000", path})
+	if err == nil {
+		t.Fatal("cmdLineage() with unknown --id: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "nonexistent-id-000") {
+		t.Errorf("error %q does not name the unknown ID", err.Error())
+	}
+}
+
+// TestCmdLineage_FormatJSON verifies that --format json produces valid JSON
+// with a "chains" array containing anchor_id and members, and a "standalone"
+// integer. Uses a 3-level chain (A→B→C) to confirm that all descendants are
+// collected recursively, not just direct children.
+func TestCmdLineage_FormatJSON(t *testing.T) {
+	// Three-level chain: A is anchor, B is A's child, C is B's child.
+	// All three must appear in members; a shallow loop over root.subsequent
+	// would silently drop C.
+	path := writeTempJSONForDraft(t, `[
+		{"id":"aaaaaaaa-0000-4000-8000-000000000001","source_span":"root span","what_changed":"root","observer":"analyst","extraction_stage":"span-harvest","extracted_by":"llm-pass1"},
+		{"id":"bbbbbbbb-0000-4000-8000-000000000002","source_span":"child span","what_changed":"child","observer":"reviewer","extraction_stage":"reviewed","extracted_by":"human-reviewer","derived_from":"aaaaaaaa-0000-4000-8000-000000000001"},
+		{"id":"cccccccc-0000-4000-8000-000000000003","source_span":"grandchild span","what_changed":"grandchild","observer":"reviewer","extraction_stage":"reviewed","extracted_by":"human-reviewer","derived_from":"bbbbbbbb-0000-4000-8000-000000000002"}
+	]`)
+
+	var buf bytes.Buffer
+	err := cmdLineage(&buf, []string{"--format", "json", path})
+	if err != nil {
+		t.Fatalf("cmdLineage() --format json returned unexpected error: %v", err)
+	}
+
+	// Decode into a typed structure to verify chain contents, not just key presence.
+	type chain struct {
+		AnchorID string   `json:"anchor_id"`
+		Members  []string `json:"members"`
+	}
+	type result struct {
+		Chains     []chain `json:"chains"`
+		Standalone int     `json:"standalone"`
+	}
+	var got result
+	if err := json.Unmarshal([]byte(buf.String()), &got); err != nil {
+		t.Fatalf("parse JSON output: %v", err)
+	}
+
+	if len(got.Chains) != 1 {
+		t.Fatalf("chains count: got %d want 1", len(got.Chains))
+	}
+	ch := got.Chains[0]
+	if ch.AnchorID != "aaaaaaaa-0000-4000-8000-000000000001" {
+		t.Errorf("anchor_id = %q; want aaaaaaaa-0000-4000-8000-000000000001", ch.AnchorID)
+	}
+	// All three nodes — anchor, child, grandchild — must appear in members.
+	if len(ch.Members) != 3 {
+		t.Errorf("members count: got %d want 3 (anchor+child+grandchild); members: %v", len(ch.Members), ch.Members)
+	}
+	wantMembers := []string{
+		"aaaaaaaa-0000-4000-8000-000000000001",
+		"bbbbbbbb-0000-4000-8000-000000000002",
+		"cccccccc-0000-4000-8000-000000000003",
+	}
+	for i, want := range wantMembers {
+		if i >= len(ch.Members) {
+			t.Errorf("members[%d]: missing, want %q", i, want)
+			continue
+		}
+		if ch.Members[i] != want {
+			t.Errorf("members[%d] = %q; want %q", i, ch.Members[i], want)
+		}
+	}
+	// Standalone count: grandchild is part of the chain, not standalone.
+	if got.Standalone != 0 {
+		t.Errorf("standalone = %d; want 0", got.Standalone)
+	}
+}
+
+// TestCmdLineage_CycleDetection verifies that a circular DerivedFrom reference
+// (A→B→A) returns an error naming the cycle.
+func TestCmdLineage_CycleDetection(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[
+		{"id":"aaaaaaaa-0000-4000-8000-000000000001","source_span":"span a","derived_from":"bbbbbbbb-0000-4000-8000-000000000002"},
+		{"id":"bbbbbbbb-0000-4000-8000-000000000002","source_span":"span b","derived_from":"aaaaaaaa-0000-4000-8000-000000000001"}
+	]`)
+
+	var buf bytes.Buffer
+	err := cmdLineage(&buf, []string{path})
+	if err == nil {
+		t.Fatal("cmdLineage() with cycle: want error, got nil")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "cycle") {
+		t.Errorf("error %q does not mention cycle", err.Error())
+	}
+}
+
+// TestCmdLineage_MissingArg verifies that cmdLineage returns an error when
+// called with no positional argument.
+func TestCmdLineage_MissingArg(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdLineage(&buf, []string{})
+	if err == nil {
+		t.Fatal("cmdLineage() with no args: want error, got nil")
+	}
+}
+
+// TestCmdLineage_MalformedJSON verifies that cmdLineage returns an error
+// when the input file contains malformed JSON.
+func TestCmdLineage_MalformedJSON(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[{not valid json}]`)
+	var buf bytes.Buffer
+	err := cmdLineage(&buf, []string{path})
+	if err == nil {
+		t.Fatal("cmdLineage() with malformed JSON: want error, got nil")
+	}
+}
+
+// TestCmdLineage_InvalidFormat verifies that an unknown --format value returns
+// an error containing the invalid value.
+func TestCmdLineage_InvalidFormat(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[{"source_span":"span a"}]`)
+	var buf bytes.Buffer
+	err := cmdLineage(&buf, []string{"--format", "xml", path})
+	if err == nil {
+		t.Fatal("cmdLineage() with --format xml: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "xml") {
+		t.Errorf("error %q does not name the invalid format value", err.Error())
+	}
+}
+
+// TestCmdLineage_EmptyInput verifies that cmdLineage handles an empty drafts
+// array without error and reports zero standalone drafts.
+func TestCmdLineage_EmptyInput(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[]`)
+	var buf bytes.Buffer
+	err := cmdLineage(&buf, []string{path})
+	if err != nil {
+		t.Fatalf("cmdLineage() with empty array: want nil error, got %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "0") {
+		t.Errorf("expected standalone count 0 in output; got:\n%s", out)
+	}
+}
