@@ -1,0 +1,100 @@
+[
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "CVE-2026-44228: Authentication Bypass in fastmiddleware\n\nPublished: 2026-06-02\nCVSS 3.1 Base Score: 9.1 (Critical)\nAffected versions: fastmiddleware v1.0.0 through v1.4.2\nFixed in: v1.5.0",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-000000000001"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "When a request includes a malformed Authorization header with a truncated JWT, the middleware falls through to the next handler without rejecting the request.",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-000000000002"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "An unauthenticated attacker can craft requests that bypass all route-level authentication checks.",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-000000000003"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "Dependabot alert #387 — storefront-api\nSeverity: critical\nPackage: github.com/example/fastmiddleware\nVulnerable: v1.3.1 (pinned in go.mod)\nPatched version: \u003e= v1.5.0",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-000000000004"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "Picked up Dependabot #387. fastmiddleware auth bypass, CVSS 9.1. storefront-api uses this for all authenticated endpoints.",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-000000000005"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "Blast radius: every route behind AuthRequired() middleware, which is basically the entire checkout flow and account management. Customer-facing. Not theoretical — this is exploitable over the network with a crafted header.",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-000000000006"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "Holding off on a fix branch until we get sign-off on the upgrade path — v1.5.0 has a breaking change to the middleware signature so it's not a drop-in.",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-000000000007"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "Decision: Approve emergency hotfix. Risk accepted for breaking middleware signature change; regression coverage required before merge.",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-000000000008"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "semver-checker flags v1.5.0 as minor-version bump with breaking API surface — this contradicts semver contract but the security severity overrides.",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-000000000009"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "CI must pass with full integration suite before deployment.",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-00000000000a"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "CI status: all 847 tests passing, 0 lint violations",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-00000000000b"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "Canary: 5% traffic for 12 minutes, error rate 0.00%, p99 latency +2ms (within threshold)",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-00000000000c"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "Approver: Automated deployment gate (policy: security-critical-bypass). CI status: all 847 tests passing, 0 lint violations. Canary: 5% traffic for 12 minutes, error rate 0.00%, p99 latency +2ms (within threshold). Approved for full production rollout. 2026-06-02 17:45 UTC.",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-00000000000d"
+  },
+  {
+    "timestamp": "0001-01-01T00:00:00Z",
+    "source_span": "An authentication bypass vulnerability exists in the token validation middleware of fastmiddleware.",
+    "source_doc_ref": "cve_response_raw.md",
+    "extraction_stage": "reviewed",
+    "derived_from": "d0cve001-0000-4000-8000-00000000000e"
+  }
+]

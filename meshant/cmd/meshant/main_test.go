@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/automatedtomato/mesh-ant/meshant/loader"
 )
 
 // --- Group 1: cmdSummarize ---
@@ -1660,3 +1662,205 @@ func TestCmdPromote_MissingArg(t *testing.T) {
 		t.Fatal("cmdPromote() with no args: want error, got nil")
 	}
 }
+
+// --- Group 14: cmdRearticulate ---
+
+// cveDraftsDatasetForRearticulate is the path to the CVE drafts fixture
+// used by Group 14 tests.
+const cveDraftsDatasetForRearticulate = "../../../data/examples/cve_response_drafts.json"
+
+// TestCmdRearticulate_ValidDraftsFile verifies that cmdRearticulate produces a
+// skeleton JSON array when given a valid drafts file. Each skeleton record must
+// have SourceSpan set (copied verbatim from original), DerivedFrom set to the
+// original's ID, and content fields (what_changed, source, target, mediation,
+// observer, tags, uncertainty_note) blank. The ID and extracted_by must also
+// be blank (to be filled by the critiquing agent). extraction_stage must be
+// "reviewed".
+func TestCmdRearticulate_ValidDraftsFile(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdRearticulate(&buf, []string{cveDraftsDatasetForRearticulate})
+	if err != nil {
+		t.Fatalf("cmdRearticulate() returned unexpected error: %v", err)
+	}
+
+	var skeletons []map[string]interface{}
+	if err := json.Unmarshal([]byte(buf.String()), &skeletons); err != nil {
+		t.Fatalf("parse output JSON: %v", err)
+	}
+
+	// There should be 14 skeletons (one per original draft).
+	if len(skeletons) != 14 {
+		t.Errorf("skeleton count: got %d want 14", len(skeletons))
+	}
+
+	for i, sk := range skeletons {
+		// source_span must be set (copied verbatim).
+		span, _ := sk["source_span"].(string)
+		if span == "" {
+			t.Errorf("skeleton %d: source_span is blank; must be copied from original", i)
+		}
+
+		// derived_from must be non-empty (set to original's ID).
+		derivedFrom, _ := sk["derived_from"].(string)
+		if derivedFrom == "" {
+			t.Errorf("skeleton %d: derived_from is blank; must be original ID", i)
+		}
+
+		// extraction_stage must be "reviewed".
+		stage, _ := sk["extraction_stage"].(string)
+		if stage != "reviewed" {
+			t.Errorf("skeleton %d: extraction_stage = %q; want \"reviewed\"", i, stage)
+		}
+
+		// Content fields must be absent or blank — blank is the correct scaffold
+		// output, not a bug. P3: the scaffold must not pre-fill from original.
+		for _, field := range []string{"what_changed", "mediation", "observer", "uncertainty_note"} {
+			if v, ok := sk[field]; ok && v != "" && v != nil {
+				t.Errorf("skeleton %d: content field %q must be blank/absent; got %v", i, field, v)
+			}
+		}
+		// id and extracted_by must be blank/absent (to be assigned by meshant draft).
+		for _, field := range []string{"id", "extracted_by"} {
+			if v, ok := sk[field]; ok && v != "" && v != nil {
+				t.Errorf("skeleton %d: field %q must be blank/absent in skeleton; got %v", i, field, v)
+			}
+		}
+	}
+}
+
+// TestCmdRearticulate_IDFlag verifies that --id produces a single skeleton
+// record for that specific draft.
+func TestCmdRearticulate_IDFlag(t *testing.T) {
+	// E3's ID is the third draft in cve_response_drafts.json.
+	const e3ID = "d0cve001-0000-4000-8000-000000000003"
+
+	var buf bytes.Buffer
+	err := cmdRearticulate(&buf, []string{"--id", e3ID, cveDraftsDatasetForRearticulate})
+	if err != nil {
+		t.Fatalf("cmdRearticulate() --id returned unexpected error: %v", err)
+	}
+
+	var skeletons []map[string]interface{}
+	if err := json.Unmarshal([]byte(buf.String()), &skeletons); err != nil {
+		t.Fatalf("parse output JSON: %v", err)
+	}
+
+	if len(skeletons) != 1 {
+		t.Fatalf("--id flag: got %d skeletons; want 1", len(skeletons))
+	}
+
+	// DerivedFrom must link back to E3.
+	derivedFrom, _ := skeletons[0]["derived_from"].(string)
+	if derivedFrom != e3ID {
+		t.Errorf("skeleton derived_from = %q; want %q", derivedFrom, e3ID)
+	}
+
+	// SourceSpan must be E3's span.
+	span, _ := skeletons[0]["source_span"].(string)
+	if !strings.Contains(span, "unauthenticated attacker") {
+		t.Errorf("source_span %q does not contain E3's text", span)
+	}
+}
+
+// TestCmdRearticulate_IDFlagNotFound verifies that --id <unknown> returns an error
+// naming the unknown ID.
+func TestCmdRearticulate_IDFlagNotFound(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdRearticulate(&buf, []string{"--id", "nonexistent-id-000", cveDraftsDatasetForRearticulate})
+	if err == nil {
+		t.Fatal("cmdRearticulate() with unknown --id: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "nonexistent-id-000") {
+		t.Errorf("error %q does not name the unknown ID", err.Error())
+	}
+}
+
+// TestCmdRearticulate_OutputFlag verifies that --output writes the skeleton
+// JSON to a file and prints a confirmation message to stdout.
+func TestCmdRearticulate_OutputFlag(t *testing.T) {
+	outFile := filepath.Join(t.TempDir(), "skeleton.json")
+	var buf bytes.Buffer
+	err := cmdRearticulate(&buf, []string{"--output", outFile, cveDraftsDatasetForRearticulate})
+	if err != nil {
+		t.Fatalf("cmdRearticulate() --output returned unexpected error: %v", err)
+	}
+
+	// File must exist and contain valid JSON.
+	content, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("output file not created: %v", err)
+	}
+	var skeletons []map[string]interface{}
+	if err := json.Unmarshal(content, &skeletons); err != nil {
+		t.Fatalf("parse output file JSON: %v", err)
+	}
+	if len(skeletons) == 0 {
+		t.Error("output file contains empty array")
+	}
+
+	// stdout must contain a confirmation message (wrote <path>).
+	stdout := buf.String()
+	if !strings.Contains(stdout, outFile) {
+		t.Errorf("stdout does not confirm output file %q; got:\n%s", outFile, stdout)
+	}
+}
+
+// TestCmdRearticulate_MissingArg verifies that cmdRearticulate returns an error
+// when called with no positional argument.
+func TestCmdRearticulate_MissingArg(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdRearticulate(&buf, []string{})
+	if err == nil {
+		t.Fatal("cmdRearticulate() with no args: want error, got nil")
+	}
+}
+
+// TestCmdRearticulate_MalformedJSON verifies that cmdRearticulate returns an
+// error when the input file contains malformed JSON.
+func TestCmdRearticulate_MalformedJSON(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[{not valid json}]`)
+	var buf bytes.Buffer
+	err := cmdRearticulate(&buf, []string{path})
+	if err == nil {
+		t.Fatal("cmdRearticulate() with malformed JSON: want error, got nil")
+	}
+}
+
+// TestCmdRearticulate_SkeletonRoundTrip verifies that the skeleton output can be
+// decoded by LoadDrafts (all records pass Validate) after DerivedFrom is set and
+// source_span is present. The skeleton's SourceSpan is the required field;
+// Validate() must succeed even with content fields blank.
+func TestCmdRearticulate_SkeletonRoundTrip(t *testing.T) {
+	// Generate skeleton to a temp file.
+	skeletonFile := filepath.Join(t.TempDir(), "skeleton.json")
+	var buf bytes.Buffer
+	err := cmdRearticulate(&buf, []string{"--output", skeletonFile, cveDraftsDatasetForRearticulate})
+	if err != nil {
+		t.Fatalf("cmdRearticulate() round-trip setup: %v", err)
+	}
+
+	// LoadDrafts will assign UUIDs to blank IDs and call Validate on each record.
+	// All records should pass because source_span is set and that is the only
+	// required field (Validate() in tracedraft.go).
+	drafts, err := loader.LoadDrafts(skeletonFile)
+	if err != nil {
+		t.Fatalf("LoadDrafts() on skeleton output: want nil error (source_span present), got: %v", err)
+	}
+	if len(drafts) != 14 {
+		t.Errorf("round-trip draft count: got %d want 14", len(drafts))
+	}
+	for i, d := range drafts {
+		if d.SourceSpan == "" {
+			t.Errorf("draft %d: SourceSpan empty after round-trip", i)
+		}
+		if d.DerivedFrom == "" {
+			t.Errorf("draft %d: DerivedFrom empty after round-trip", i)
+		}
+		if d.ExtractionStage != "reviewed" {
+			t.Errorf("draft %d: ExtractionStage = %q; want \"reviewed\"", i, d.ExtractionStage)
+		}
+	}
+}
+
+// --- Group 15: cmdLineage ---
+

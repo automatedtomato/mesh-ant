@@ -8,6 +8,7 @@
 //   - follow:     follow a translation chain through an articulated graph
 //   - draft:      ingest LLM extraction JSON and produce TraceDraft records
 //   - promote:    promote TraceDraft records to canonical Traces
+//   - rearticulate:  produce a blank critique skeleton for each draft (M12)
 //
 // The testable logic lives in run() and each cmd* function. main() itself is
 // a thin wrapper that wires os.Stdout and os.Args, then exits non-zero on
@@ -200,6 +201,8 @@ func run(w io.Writer, args []string) error {
 		return cmdDraft(w, args[1:])
 	case "promote":
 		return cmdPromote(w, args[1:])
+	case "rearticulate":
+		return cmdRearticulate(w, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
@@ -836,3 +839,101 @@ func cmdPromote(w io.Writer, args []string) error {
 
 	return confirmOutput(w, outputPath)
 }
+
+// cmdRearticulate implements the "rearticulate" subcommand.
+//
+// Re-articulation is a cut, not a correction. This command reads a TraceDraft
+// JSON file and produces a skeleton JSON array: one skeleton record per draft,
+// with SourceSpan copied verbatim, DerivedFrom set to the original's ID, and
+// all content fields left blank. The critiquing agent fills in the
+// interpretation. Blank content fields are correct scaffold output — they are
+// honest abstentions, not missing data (P3 in plan_m12.md).
+//
+// Design constraints:
+//   - cmdRearticulate must NOT pre-fill content fields from the original (P3)
+//   - cmdRearticulate must NOT call Validate() on the skeleton output — the
+//     skeleton is intentionally incomplete (blank ID); Validate() would pass
+//     since source_span is present, but ID assignment is left to cmdDraft
+//   - "reviewed" is the extraction_stage for all skeletons (pipeline position,
+//     not a quality claim — Decision 7 in tracedraft-v1.md)
+//
+// Flags:
+//   - --id <id>      produce skeleton for a single draft by ID (default: all)
+//   - --output <path> write skeleton JSON to file (default: stdout)
+func cmdRearticulate(w io.Writer, args []string) error {
+	fs := flag.NewFlagSet("rearticulate", flag.ContinueOnError)
+
+	var idFilter string
+	fs.StringVar(&idFilter, "id", "", "produce skeleton for a single draft by ID")
+
+	var outputPath string
+	fs.StringVar(&outputPath, "output", "", "write skeleton JSON to file (default: stdout)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		return fmt.Errorf("rearticulate: path to drafts.json required\n\nUsage: meshant rearticulate [--id <id>] [--output <file>] <drafts.json>")
+	}
+	path := remaining[0]
+
+	// Load originals. LoadDrafts assigns UUIDs and validates SourceSpan.
+	originals, err := loader.LoadDrafts(path)
+	if err != nil {
+		return fmt.Errorf("rearticulate: %w", err)
+	}
+
+	// Apply --id filter if provided.
+	if idFilter != "" {
+		var found *schema.TraceDraft
+		for i := range originals {
+			if originals[i].ID == idFilter {
+				found = &originals[i]
+				break
+			}
+		}
+		if found == nil {
+			return fmt.Errorf("rearticulate: draft with id %q not found in %s", idFilter, path)
+		}
+		originals = []schema.TraceDraft{*found}
+	}
+
+	// Build skeleton records. Each skeleton:
+	//   - copies SourceSpan verbatim (the invariant, Decision 2)
+	//   - copies SourceDocRef if present (ground truth provenance, not interpretation)
+	//   - sets DerivedFrom to the original's ID
+	//   - sets ExtractionStage to "reviewed" (pipeline position, not quality)
+	//   - leaves all content fields blank (P3: no pre-filling)
+	//   - leaves ID and ExtractedBy blank (to be assigned by meshant draft)
+	skeletons := make([]schema.TraceDraft, len(originals))
+	for i, orig := range originals {
+		skeletons[i] = schema.TraceDraft{
+			SourceSpan:      orig.SourceSpan,
+			SourceDocRef:    orig.SourceDocRef,
+			DerivedFrom:     orig.ID,
+			ExtractionStage: "reviewed",
+			// All content fields intentionally blank — the critiquing agent
+			// provides the interpretation. Blank is correct, not incomplete.
+		}
+	}
+
+	// Determine output destination: file or stdout.
+	dest, err := outputWriter(w, outputPath)
+	if err != nil {
+		return fmt.Errorf("rearticulate: %w", err)
+	}
+	if f, ok := dest.(*os.File); ok {
+		defer f.Close()
+	}
+
+	enc := json.NewEncoder(dest)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(skeletons); err != nil {
+		return fmt.Errorf("rearticulate: encode output: %w", err)
+	}
+
+	return confirmOutput(w, outputPath)
+}
+
