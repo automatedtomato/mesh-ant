@@ -5,7 +5,7 @@
 M9 additions reviewed:
 - `meshant/cmd/meshant/main.go` and `main_test.go` — CLI subcommands (summarize, validate, articulate, diff)
 - `docs/authoring-traces.md` — trace authoring guide
-- `docs/decisions/cli-v1.md` — CLI design decisions
+- `docs/decisions/cli-v2.md` — CLI design decisions
 - `README.md` — "Who is this for?" section and CLI usage examples
 
 Full library also reviewed per SKILLS.md process:

@@ -339,7 +339,7 @@ Run ant-theorist agent across all M11 code and design. Key checks:
 Only after both reviews pass:
 
 **Files:**
-- `docs/decisions/tracedraft-v1.md`
+- `docs/decisions/tracedraft-v2.md`
   - Name the LLM-as-mediator commitment (not hidden extractor)
   - Document the ingestion contract
   - Acknowledge ExtractionStage/ExtractedBy/DerivedFrom as load-bearing for M11.5

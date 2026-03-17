@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-15 (M11 TraceDraft Ingestion)
+**Last Updated:** 2026-03-17 (M12 Re-articulation Pass)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -14,7 +14,7 @@
 | `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow` subcommands. |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage` subcommands. |
 
 ## Package: schema
 
@@ -192,7 +192,7 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft` and `cmdPromote` handlers (M11). |
+| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12) handlers. |
 | `main_test.go` | Tests: all subcommands, flag parsing, file output, error handling, criterion file loading, draft/promote pipeline (M11). |
 
 ### Types
@@ -210,7 +210,7 @@ None (persist carries no domain types; wraps graph types).
 | `parseTimeFlag` | `func parseTimeFlag(name, value string) (time.Time, error)` | Parse RFC3339 string to time.Time with contextual error message naming the flag. |
 | `parseTimeWindow` | `func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error)` | Parse two RFC3339 strings (one or both may be empty) into a TimeWindow. Validates only when both bounds are set. |
 | `main` | `func main()` | Entry point. Calls `run(os.Stdout, os.Args[1:])` and exits non-zero on error. |
-| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, or `cmdPromote()`. |
+| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, or `cmdLineage()`. |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
 | `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. |
@@ -218,6 +218,8 @@ None (persist carries no domain types; wraps graph types).
 | `cmdFollow` | `func cmdFollow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, follow translation chain from --element with `--direction forward\|backward`, `--depth N`, `--observer`, `--tag`, `--from`, `--to`. Optional `--criterion-file <path>` loads an EquivalenceCriterion before trace I/O. Classify and print via `PrintChain()`. `--format text\|json`, `--output <file>`. |
 | `cmdDraft` | `func cmdDraft(w io.Writer, args []string) error` | Subcommand: Load extraction JSON, assign UUIDs/timestamps, apply optional `--source-doc`, `--extracted-by`, `--stage` overrides, write TraceDraft JSON via `loader.LoadDrafts()`, print provenance summary via `PrintDraftSummary()`. `--output <file>` (M11). |
 | `cmdPromote` | `func cmdPromote(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON via `loader.LoadDrafts()`, call `IsPromotable()` on each, promote qualifying drafts to canonical Traces (each tagged with `TagValueDraft`), write promoted Trace JSON, report promotion summary naming failures (M11). `--output <file>`. |
+| `cmdRearticulate` | `func cmdRearticulate(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, produce skeleton JSON array — for each draft: `source_span` copied verbatim, `derived_from` set to original ID, all content fields blank, `extraction_stage:"reviewed"`. Flags: `--id <id>` (single draft only), `--output <file>` (M12). |
+| `cmdLineage` | `func cmdLineage(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, walk DerivedFrom links, render positional reading sequences as indented trees. Anchors (drafts with no DerivedFrom) are sequence roots. Cycle detection required (DFS grey-set). Flags: `--id <id>` (single chain), `--format text\|json` (M12). |
 | `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
 | `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
@@ -232,6 +234,7 @@ None (persist carries no domain types; wraps graph types).
 - **Format options**: `articulate` and `diff` both support text/json/dot/mermaid; `follow` supports text/json
 - **File output**: `--output <file>` writes to file instead of stdout (with deferred close for safety)
 - **Ingestion pipeline** (M11): `draft` command ingests LLM extraction JSON and produces TraceDraft records; `promote` command converts promotable TraceDraft records to canonical Traces (tagged with `draft` provenance signal)
+- **Re-articulation pipeline** (M12): `rearticulate` command produces critique skeletons (SourceSpan + DerivedFrom set, all content fields blank); `lineage` command walks DerivedFrom links and renders positional reading sequences as CLI output
 - **Binary installation**: `go install ./cmd/meshant` produces `meshant` binary at $GOPATH/bin; used in Dockerfile at `/usr/local/bin/meshant`
 
 ## Cross-Package Relationships
@@ -340,6 +343,9 @@ cmd/demo/
 | Summarise draft dataset | `loader/draftloader.go` → `SummariseDrafts()` |
 | Check if draft is promotable | `schema/tracedraft.go` → `TraceDraft.IsPromotable()` |
 | Promote draft to canonical Trace | `schema/tracedraft.go` → `TraceDraft.Promote()` |
+| Produce critique skeleton from draft | `cmd/meshant/main.go` → `cmdRearticulate()` |
+| Walk DerivedFrom lineage chain | `cmd/meshant/main.go` → `cmdLineage()` |
+| Read critique prompt contract | `data/prompts/critique_pass.md` |
 | Run minimal demo | `cmd/demo/main.go` → `run()` |
 
 ## Notable Design Patterns
@@ -404,6 +410,15 @@ cmd/demo/
 - `DisallowUnknownFields()` enforced for criterion files: precision over forward-compatibility tolerance
 - Zero criterion → v1 behaviour; all existing code paths unaffected
 
+### Re-articulation Pipeline (M12)
+- **Re-articulation is a cut, not a correction**: a critique draft is a parallel reading of the same SourceSpan, not a verdict on the original; both have equal standing in the DerivedFrom chain
+- **SourceSpan as invariant**: `cmdRearticulate` copies `source_span` and `source_doc_ref` verbatim; all interpretation fields are blank (honest abstentions, not missing data)
+- **Blank scaffold output is correct**: `cmdRearticulate` intentionally does not call `Validate()` on output (skeleton has no ID/Timestamp yet); critiquing agent fills content fields, then submits via `meshant draft`
+- **DerivedFrom is positional vocabulary**: `subsequent`/`anchors` naming (not `children`/`roots`) avoids genealogical framing; chain order names production sequence, not hierarchy
+- **Cycle detection via DFS grey-set**: `cmdLineage` detects circular DerivedFrom references (A→B→A) and returns a named error rather than looping
+- **cmdLineage is a chain reader, not a diff tool**: renders structure (which reading followed which, at what stage, by whom); comparing readings in a chain is the analyst's job
+- **Critique prompt template as methodological constraint**: `data/prompts/critique_pass.md` is the extraction contract that makes re-articulation ANT-faithful; the CLI enforces structural constraints, the template enforces interpretive constraints
+
 ### Ingestion Pipeline (M11)
 - **TraceDraft** is a first-class analytical object, not a halfway house to Trace
 - **SourceSpan** is the only required field; minimal record carrying verbatim source text without forcing resolution
@@ -434,6 +449,19 @@ cmd/demo/
 | CVE Response (Extraction) | `data/examples/cve_response_extraction.json` | Intermediate | LLM-produced extraction JSON (source_span required, other fields optional) |
 | CVE Response (Drafts) | `data/examples/cve_response_drafts.json` | Output | TraceDraft records after `meshant draft` processing (UUIDs assigned, validation applied) |
 
+### Re-articulation Datasets (M12)
+
+| Dataset | Location | Stage | Purpose |
+|---------|----------|-------|---------|
+| CVE Critique Skeleton | `data/examples/cve_critique_skeleton.json` | Scaffold | Skeleton output from `meshant rearticulate`: SourceSpan + DerivedFrom set, content fields blank, one record per CVE draft |
+| CVE Critique Drafts | `data/examples/cve_critique_drafts.json` | Reviewed | Filled critique drafts for E3 (resists "attacker" as stable actor) and E14 (reframes CVE as document, not agent); methodological demonstration material |
+
+### Extraction Prompt Templates
+
+| File | Purpose |
+|------|---------|
+| `data/prompts/critique_pass.md` | Extraction contract for the critique step: what to preserve (SourceSpan verbatim), what to question (stable actor attributions, imputed intentions), what honest abstention looks like, DerivedFrom semantics, worked E3 example |
+
 **Dataset M8 (Incident Response):**
 - **Observers:** monitoring-service, on-call-engineer, incident-commander, product-manager, customer-support
 - **Actants:** alerting-pipeline, auto-scaler, circuit-breaker, sla-timer, runbook-engine, dashboard-service, connection-pool-monitor, pagerduty-webhook
@@ -442,18 +470,19 @@ cmd/demo/
 
 ## Related Decision Records and Guides
 
-- `docs/decisions/trace-schema-v1.md` — core Trace type rationale
-- `docs/decisions/articulation-v1.md` — observer position and shadow design
+- `docs/decisions/trace-schema-v2.md` — core Trace type rationale
+- `docs/decisions/articulation-v2.md` — observer position and shadow design
 - `docs/decisions/time-window-v1.md` — temporal filtering
-- `docs/decisions/graph-diff-v1.md` — diff computation and shadow shifts
-- `docs/decisions/graph-as-actor-v1.md` — identified graphs as actants
+- `docs/decisions/graph-diff-v2.md` — diff computation and shadow shifts
+- `docs/decisions/graph-as-actor-v2.md` — identified graphs as actants
 - `docs/decisions/m7-serialisation-reflexivity-v1.md` — TimeWindow JSON codec and reflexive tracing
 - `docs/decisions/structured-export-v1.md` — graph export to JSON, DOT, Mermaid formats
-- `docs/decisions/cli-v1.md` — CLI design decisions (M9)
+- `docs/decisions/cli-v2.md` — CLI design decisions (M9)
 - `docs/decisions/m10-tag-filter-diff-export-cli-v1.md` — Tag-filter axis, diff visual export, CLI integration (M10)
-- `docs/decisions/translation-chain-v1.md` — Translation chain traversal, classification heuristics, first-match branching (M10.5)
+- `docs/decisions/translation-chain-v2.md` — Translation chain traversal, classification heuristics, first-match branching (M10.5)
 - `docs/decisions/equivalence-criterion-v1.md` — Equivalence criterion design, three-layer model, v1 implicit criterion, second-order shadow (M10.5+)
-- `docs/decisions/tracedraft-v1.md` — TraceDraft design, ingestion pipeline as analytical object, source span as ground truth, promotion criterion, provenance chain (M11)
+- `docs/decisions/tracedraft-v2.md` — TraceDraft design, ingestion pipeline as analytical object, source span as ground truth, promotion criterion, provenance chain (M11)
+- `docs/decisions/rearticulation-v2.md` — Re-articulation as cut not correction, SourceSpan invariant, blank scaffold as correct output, DerivedFrom positional vocabulary, cmdLineage as first-class CLI output, E3/E14 as demonstration material (M12)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 
@@ -478,4 +507,4 @@ cmd/demo/
 - `graph/incident_e2e_test.go` — E2E tests using incident response dataset
 - `persist/persist_test.go` — tests for file I/O functions
 - `cmd/demo/main_test.go` — E2E test
-- `cmd/meshant/main_test.go` — tests covering all CLI subcommands including follow, flag parsing, file output, error handling
+- `cmd/meshant/main_test.go` — tests covering all CLI subcommands including follow, draft, promote (M11), rearticulate, lineage (M12), flag parsing, file output, error handling; 659 total tests, 88.2% cmd/meshant coverage

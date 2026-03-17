@@ -472,10 +472,10 @@ for E2E tests against `data/examples/graph_ref_traces.json`.
 
 **Branch:** alongside M5.2 or M5.3
 
-**File:** `docs/decisions/graph-as-actor-v1.md`
+**File:** `docs/decisions/graph-as-actor-v2.md`
 
 10 decisions documented (see Design Decisions above), plus explicit deferred items and
-relation to `articulation-v1.md` Decision 5 (graph-as-actor noted there, fulfilled here).
+relation to `articulation-v2.md` Decision 5 (graph-as-actor noted there, fulfilled here).
 
 ---
 

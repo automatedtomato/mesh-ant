@@ -24,7 +24,7 @@ The goal of this milestone is to define what a trace is in MeshAnt and demonstra
 - [x] **M1.1 — Define the trace schema**
   - `meshant/schema/trace.go` — Trace struct, TagValue constants, Validate()
   - `meshant/schema/trace_test.go` — 27 tests, all passing
-  - `docs/decisions/trace-schema-v1.md` — design decision record
+  - `docs/decisions/trace-schema-v2.md` — design decision record
   - Key decisions: source/target as []string, observer required, tags open vocabulary
 
 - [x] **M1.2 — Write a small example trace dataset**
@@ -42,7 +42,7 @@ The goal of this milestone is to define what a trace is in MeshAnt and demonstra
   - All HIGH/MEDIUM findings resolved before merge
 
 - [x] **M1.4 — Record the schema cut**
-  - Done: `docs/decisions/trace-schema-v1.md` (completed alongside M1.1)
+  - Done: `docs/decisions/trace-schema-v2.md` (completed alongside M1.1)
 
 ---
 
@@ -53,7 +53,7 @@ articulation layer: a way to render a provisional graph from traces taken from a
 particular observer position. A graph is a cut — not a god's-eye view. Every cut names
 its shadow.
 
-**Full plan:** `tasks/plan_m2.md`
+**Full plan:** `tasks/done/plan_m2.md`
 
 ### Tasks
 
@@ -71,7 +71,7 @@ its shadow.
   - Code + security reviews passed; all HIGH/MEDIUM findings resolved
 
 - [x] **M2.3 — Record the articulation cut**
-  - `docs/decisions/articulation-v1.md`
+  - `docs/decisions/articulation-v2.md`
   - 6 decisions: observer axis, shadow mandatory, empty=full-cut, ExcludedObserverPositions,
     graph-as-actor noted, time/tag axes deferred
 
@@ -83,7 +83,7 @@ The goal of this milestone is to introduce temporal depth: a dataset that spans 
 days and a second cut axis (time-window) that lets an articulation ask not just "what did
 this observer see?" but "what did this observer see within this window?"
 
-**Full plan:** `tasks/plan_m3.md`
+**Full plan:** `tasks/done/plan_m3.md`
 
 ### Tasks
 
@@ -108,7 +108,7 @@ this observer see?" but "what did this observer see within this window?"
   - `docs/decisions/time-window-v1.md`
   - 8 decisions: TimeWindow in graph package, zero=full-cut, AND semantics, inclusive bounds,
     ShadowReason per element, Cut.TimeWindow stored verbatim, deferred items, relation to
-    articulation-v1.md Decision 6
+    articulation-v2.md Decision 6
 
 ---
 
@@ -117,12 +117,12 @@ this observer see?" but "what did this observer see within this window?"
 Situated comparison of two articulations. A diff is not a neutral changelog; it records
 both positions it compares and what became visible or invisible between them.
 
-**Full plan:** `tasks/plan_m4.md`
+**Full plan:** `tasks/done/plan_m4.md`
 
 - [x] **M4.1** — `Diff()` + `GraphDiff`, `PersistedNode`, `ShadowShift`, `ShadowShiftKind` types; 47 unit tests (groups 10–15)
 - [x] **M4.2** — `PrintDiff()` + output tests
 - [x] **M4.3** — E2E tests against longitudinal dataset (group 16, 8 tests)
-- [x] **M4.4** — `docs/decisions/graph-diff-v1.md`; `docs/potential-forms.md`
+- [x] **M4.4** — `docs/decisions/graph-diff-v2.md`; `docs/potential-forms.md`
 
 125 tests total; 99% graph coverage, 100% loader + schema.
 
@@ -134,7 +134,7 @@ The observation apparatus enters the mesh it observes. A produced `MeshGraph` or
 `GraphDiff` can be assigned a stable identifier and appear as a `Source` or `Target`
 in subsequent traces. Reflexivity: the framework can observe its own action in the network.
 
-**Full plan:** `tasks/plan_m5.md`
+**Full plan:** `tasks/done/plan_m5.md`
 
 - [x] **M5.1 — Schema additions**
   - `IsGraphRef`, `GraphRefKind`, `GraphRefID` in `meshant/schema/graphref.go`
@@ -153,7 +153,7 @@ in subsequent traces. Reflexivity: the framework can observe its own action in t
   - Branch: `feat/m5-loader` (merged to develop)
 
 - [x] **M5.4 — Decision record**
-  - `docs/decisions/graph-as-actor-v1.md`
+  - `docs/decisions/graph-as-actor-v2.md`
   - 10 decisions; ideological grounding (ANT/Strathern/Haraway/Principle 8)
 
 ---
@@ -285,7 +285,7 @@ domain (validates generality beyond the evacuation scenario).
 
 Library + CLI form. The framework can be used without writing Go.
 
-**Full plan:** `tasks/plan_m9.md`
+**Full plan:** `tasks/done/plan_m9.md`
 
 ### Tasks
 
@@ -307,7 +307,7 @@ Library + CLI form. The framework can be used without writing Go.
 
 - [x] **M9.5 — README, decision record, Dockerfile**
   - README: "Who is this for?", CLI usage, removed stale Principle 8 gap note
-  - `docs/decisions/cli-v1.md` — 6 decisions; Dockerfile: CLI at `/usr/local/bin/meshant`
+  - `docs/decisions/cli-v2.md` — 6 decisions; Dockerfile: CLI at `/usr/local/bin/meshant`
   - Branch: `feat/m9-readme`
 
 - [x] **M9.6 — Refactor and clean pass (whole codebase)**
@@ -371,7 +371,7 @@ paths) rather than *across* graphs (comparing cuts). Two connected capabilities:
 FollowTranslation (chain traversal) and ClassifyChain (intermediary/mediator/
 translation judgment). Classification is cut-dependent, not intrinsic.
 
-**Full plan:** `tasks/plan_m10_5.md`
+**Full plan:** `tasks/done/plan_m10_5.md`
 
 ### Tasks
 
@@ -403,7 +403,7 @@ translation judgment). Classification is cut-dependent, not intrinsic.
   - Branch: `24-m10-5-chain-traversal`
 
 - [x] **M10.5.5 — Decision record + codemap**
-  - `docs/decisions/translation-chain-v1.md` — 12 decisions
+  - `docs/decisions/translation-chain-v2.md` — 12 decisions
   - `docs/CODEMAPS/meshant.md` — updated with chain.go, classify.go, chain_print.go
   - `docs/reviews/equivalence_criterion_design_note.md` — three-layer criterion design
   - `docs/reviews/notes_on_mediator.md` — conditional readings design note
@@ -419,7 +419,7 @@ The missing cut axis: an explicit declaration of what counts as preserved,
 altered, or consequential across a passage. Layers 1–2 only; Layer 3
 (comparison function) deferred.
 
-**Full plan:** `tasks/plan_m10_5_plus.md`
+**Full plan:** `tasks/done/plan_m10_5_plus.md`
 
 ### Tasks
 
@@ -454,7 +454,7 @@ is external — `meshant draft` consumes LLM-produced extraction JSON. The extra
 (span → draft → critique → revision → canonical trace) is structurally followable from
 day one via `DerivedFrom` links.
 
-**Full plan:** `tasks/plan_m11.md`
+**Full plan:** `tasks/done/plan_m11.md`
 
 ### Tasks
 
@@ -488,9 +488,48 @@ day one via `DerivedFrom` links.
 - [x] **M11.5 — Review, clean, and document**
   - Refactor-cleaner: fixed dead constants, stale doc, non-deterministic map output, weak assertions
   - ANT review: ALIGNED WITH TENSIONS — 8 aligned, 6 tensions (5 productive, 1 partially unresolved)
-  - `docs/decisions/tracedraft-v1.md` — 10 decisions: LLM-as-mediator, ingestion contract,
+  - `docs/decisions/tracedraft-v2.md` — 10 decisions: LLM-as-mediator, ingestion contract,
     DerivedFrom chain, ExtractionStage as position not progress, over-actorized records by design
   - `docs/CODEMAPS/meshant.md` updated for M11
+
+---
+
+## Milestone 12: Anti-Ontology Critique Pass (Re-articulation as a Second Cut)
+
+Re-articulation as a first-class operation: given a TraceDraft, produce an alternative
+TraceDraft of the same SourceSpan, linked by DerivedFrom. A second cut, not a correction.
+
+**Full plan:** `tasks/done/plan_m12.md`
+**Parent issue:** #50
+
+### Tasks
+
+- [x] **M12.1 — Re-articulation scaffold** — PR #56 (`51-m12-rearticulate`)
+  - `cmdRearticulate` in `meshant/cmd/meshant/main.go`
+  - Reads drafts JSON → skeleton JSON: SourceSpan + DerivedFrom set, content fields blank, `extraction_stage:"reviewed"`
+  - Flags: `--id <id>` (single draft), `--output <path>`
+  - `data/examples/cve_critique_skeleton.json` — skeleton for all 14 CVE drafts
+  - `tasks/done/plan_m12.md` — full M12 plan
+  - Group 14 tests in `main_test.go` (9 tests)
+
+- [x] **M12.2 — DerivedFrom lineage reader** — PR #57 (`53-m12-lineage`)
+  - `cmdLineage` in `meshant/cmd/meshant/main.go`
+  - Walks DerivedFrom links; renders positional reading sequences as indented trees
+  - Cycle detection via DFS grey-set; `subsequent`/`anchors` vocabulary (not `children`/`roots`)
+  - Flags: `--id <id>`, `--format text|json`
+  - Group 15 tests in `main_test.go` (11 tests)
+  - `.claude/agents/qa-engineer.md` — QA engineer agent (test quality specialist)
+
+- [x] **M12.3 — Anti-ontology critique prompt template** — PR #58 (`54-m12-critique-template`)
+  - `data/prompts/critique_pass.md` — extraction contract for the critique step
+  - `data/examples/cve_critique_drafts.json` — filled critique drafts for E3 and E14
+
+- [x] **M12.4 — Decision record + codemap** — PR #59 (`55-m12-docs`)
+  - `docs/decisions/rearticulation-v2.md` — 8 decisions
+  - `docs/CODEMAPS/meshant.md` — updated for M12
+  - `tasks/todo.md` — M12 section added, all tasks marked complete
+
+659 total tests, 0 failures; cmd/meshant 88.2% coverage; `go vet` clean.
 
 ---
 
@@ -515,7 +554,7 @@ The most important next frontier — the direct interface with the user:
 
 - [x] **TraceDraft schema** — `TraceDraft` type with source span, candidate fields, provenance chain (M11)
 - [x] **Ingestion entrypoint** — `meshant draft` + `meshant promote`; LLM-external boundary; ingestion contract (M11)
-- [ ] **Anti-ontology critique pass** — second-pass LLM critique of premature actorization; `meshant critique` subcommand; DerivedFrom links critique to draft (M11.5 / M12)
+- [x] **Anti-ontology critique pass** — re-articulation as second cut: same SourceSpan, alternative draft, DerivedFrom link; `meshant rearticulate` + `meshant lineage`; critique prompt template (M12)
 - [ ] **Interactive review CLI** — human-in-the-loop refinement; surfaces ambiguity, shows provenance chain; the interactive layer before promotion (M12+)
 
 ### Interpretation support (Layer 3)

@@ -1,0 +1,34 @@
+[
+  {
+    "id": "c0cve001-0000-4000-8000-000000000003",
+    "timestamp": "2026-03-16T12:00:00Z",
+    "source_doc_ref": "cve_response_raw.md",
+    "source_span": "An unauthenticated attacker can craft requests that bypass all route-level authentication checks.",
+    "what_changed": "a condition was described in the advisory in which requests bypass route-level authentication checks",
+    "source": [],
+    "target": ["storefront-api-routes"],
+    "mediation": "fastmiddleware-token-validation",
+    "observer": "security-lead",
+    "tags": ["blockage"],
+    "uncertainty_note": "The span names a vulnerability class, not an attributable actor. 'Attacker' is an inference from the CVE framing, not from the span itself. The span describes a condition (requests that bypass checks) without naming a source agent. Source left blank: the span does not support confident actor attribution.",
+    "extraction_stage": "reviewed",
+    "extracted_by": "human-reviewer",
+    "derived_from": "d0cve001-0000-4000-8000-000000000003"
+  },
+  {
+    "id": "c0cve001-0000-4000-8000-00000000000e",
+    "timestamp": "2026-03-16T12:00:00Z",
+    "source_doc_ref": "cve_response_raw.md",
+    "source_span": "An authentication bypass vulnerability exists in the token validation middleware of fastmiddleware.",
+    "what_changed": "the CVE advisory document described an authentication bypass condition in fastmiddleware's token validation middleware",
+    "source": ["cve-advisory-document"],
+    "target": ["fastmiddleware-token-validation"],
+    "mediation": "advisory-publication",
+    "observer": "security-lead",
+    "tags": [],
+    "uncertainty_note": "The original extraction treats 'cve-2026-44228' as an acting agent with the power to 'enter a dependency chain' and 'threaten customer data'. The span does not support this framing. CVE-2026-44228 is an identifier — a document reference — not an actor with agency. The span describes a condition in the middleware, not an action by the CVE record. Reframed: the source here is the advisory document that described the condition, not the condition itself as an agent.",
+    "extraction_stage": "reviewed",
+    "extracted_by": "human-reviewer",
+    "derived_from": "d0cve001-0000-4000-8000-00000000000e"
+  }
+]

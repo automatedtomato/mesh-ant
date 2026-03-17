@@ -14,7 +14,7 @@ Define `meshant/schema/trace.go`: a Go struct representing a single MeshAnt trac
 | `meshant/go.mod` | Go module (`github.com/automatedtomato/mesh-ant/meshant`, go 1.22) |
 | `meshant/schema/trace.go` | `Trace` struct + `TagValue` constants + `Validate()` method |
 | `meshant/schema/trace_test.go` | Table-driven tests (JSON round-trip, validation, zero-value safety) |
-| `docs/decisions/trace-schema-v1.md` | Design decision record (what was cut and why) |
+| `docs/decisions/trace-schema-v2.md` | Design decision record (what was cut and why) |
 
 ## Phase 1 — Scaffold
 
@@ -38,7 +38,7 @@ non-empty `WhatChanged`, non-empty `Observer`.
 
 ## Phase 4 — Refactor + decision doc
 
-`gofmt`, review comments, write `docs/decisions/trace-schema-v1.md`.
+`gofmt`, review comments, write `docs/decisions/trace-schema-v2.md`.
 
 ## Risks
 

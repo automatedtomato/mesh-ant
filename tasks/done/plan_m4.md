@@ -393,7 +393,7 @@ Note: this diff is a comparison between two situated cuts, not an objective acco
 
 **Branch:** `feat/m4-diff` (same branch, or separate `feat/m4-decision` if preferred)
 
-**File:** `docs/decisions/graph-diff-v1.md`
+**File:** `docs/decisions/graph-diff-v2.md`
 
 **Decisions to record:** all 10 listed above, plus explicit deferred items (tag-filter axis,
 weighted diff, temporal visibility in shadow shifts, diff-as-actor, persistence, CLI, multi-step
@@ -419,7 +419,7 @@ M4 produces `GraphDiff`, a comparison between two situated cuts. Both `MeshGraph
 and `GraphDiff` (from M4) are now outputs that can *do things* in the mesh: a deforestation map
 triggers policy, a diff report prompts escalation. These outputs are actors, not just observations.
 
-M5 should implement the graph-as-actor principle noted in `docs/decisions/articulation-v1.md`
+M5 should implement the graph-as-actor principle noted in `docs/decisions/articulation-v2.md`
 Decision 5 and carried through M3's provisional note.
 
 **The core requirement:** a produced `MeshGraph` or `GraphDiff` can be assigned a stable

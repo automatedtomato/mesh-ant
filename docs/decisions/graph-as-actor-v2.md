@@ -242,16 +242,15 @@ concern.
   `MeshGraph.ID` or `GraphDiff.ID` is non-empty, `PrintArticulation`/`PrintDiff` do
   not output it. Deferred to avoid changing output format mid-milestone.
 
-- **JSON serialisation of `MeshGraph` and `GraphDiff`** — graphs remain in-memory
-  objects. Serialisation to disk is deferred.
+- ~~**JSON serialisation of `MeshGraph` and `GraphDiff`**~~ — resolved in M7: custom `TimeWindow` codec in `serial.go`; `PrintGraphJSON`/`PrintDiffJSON` in M8 `export.go`; `persist.WriteJSON`/`ReadGraphJSON`/`ReadDiffJSON` in M8.
 
-- **Tag-filter cut axis** — deferred since M2, still deferred.
+- ~~**Tag-filter cut axis**~~ — resolved in M10: `ArticulationOptions.Tags` with any-match semantics; `ShadowReasonTagFilter` as third shadow reason.
 
 ---
 
 ## Relation to earlier decisions
 
-- `articulation-v1.md` Decision 5: "graph-as-actor noted architecturally" — fulfilled
+- `articulation-v2.md` Decision 5: "graph-as-actor noted architecturally" — fulfilled
   here. `MeshGraph` is now a first-class actant, not just an analytical output.
-- `graph-diff-v1.md` is not changed by M5. `GraphDiff` gains `ID string` (zero value,
+- `graph-diff-v2.md` is not changed by M5. `GraphDiff` gains `ID string` (zero value,
   backward-compatible) and `IdentifyDiff`/`DiffRef` functions.
