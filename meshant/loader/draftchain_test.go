@@ -231,3 +231,40 @@ func TestClassifyDraftChain_ReasonNonEmpty(t *testing.T) {
 		t.Error("Reason is empty; must be non-empty for inspectability")
 	}
 }
+
+// TestFollowDraftChain_Fork verifies that when a parent has two children,
+// FollowDraftChain follows exactly one branch (the first child by input order)
+// and returns a linear chain — not both branches. This documents the
+// first-match behaviour described in the FollowDraftChain doc comment.
+func TestFollowDraftChain_Fork(t *testing.T) {
+	// root → child-a (first in slice)
+	//      → child-b (second in slice)
+	root := schema.TraceDraft{
+		ID: "f0000000-0000-4000-8000-000000000001", SourceSpan: "root",
+	}
+	childA := schema.TraceDraft{
+		ID: "f0000000-0000-4000-8000-000000000002", SourceSpan: "branch-a",
+		DerivedFrom: root.ID,
+	}
+	childB := schema.TraceDraft{
+		ID: "f0000000-0000-4000-8000-000000000003", SourceSpan: "branch-b",
+		DerivedFrom: root.ID,
+	}
+	// Pass drafts in deterministic order: root, childA, childB.
+	// FollowDraftChain appends children in slice-iteration order, so childA
+	// is kids[0] and will be followed.
+	drafts := []schema.TraceDraft{root, childA, childB}
+	chain := loader.FollowDraftChain(drafts, root.ID)
+
+	// Must be exactly 2 elements: root + one branch.
+	if len(chain) != 2 {
+		t.Fatalf("fork chain: got len %d; want 2", len(chain))
+	}
+	if chain[0].ID != root.ID {
+		t.Errorf("chain[0] = %q; want root %q", chain[0].ID, root.ID)
+	}
+	// The followed branch must be one of the two children (childA by first-match).
+	if chain[1].ID != childA.ID && chain[1].ID != childB.ID {
+		t.Errorf("chain[1] = %q; want one of childA or childB", chain[1].ID)
+	}
+}

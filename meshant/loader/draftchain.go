@@ -208,7 +208,7 @@ func draftContentChanged(prev, curr schema.TraceDraft) bool {
 // draftStageChanged reports whether extraction_stage changed between prev and
 // curr. A non-empty curr.ExtractionStage that differs from prev is a stage
 // change. An empty curr.ExtractionStage is not counted as a stage change —
-// it is more likely a missing field than a deliberate advancement.
+// it is more likely an unpopulated field than a deliberate advancement.
 func draftStageChanged(prev, curr schema.TraceDraft) bool {
 	return curr.ExtractionStage != "" && curr.ExtractionStage != prev.ExtractionStage
 }
