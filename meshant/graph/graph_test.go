@@ -2121,3 +2121,36 @@ func TestPrintArticulation_TagFilter_ShadowReasonAnnotation(t *testing.T) {
 		t.Errorf("output missing %q annotation\nGot:\n%s", "[tag-filter]", out)
 	}
 }
+
+// TestPrintArticulation_GraphID_ShownWhenIdentified verifies that an identified
+// MeshGraph prints its meshgraph:<uuid> reference in the output header.
+func TestPrintArticulation_GraphID_ShownWhenIdentified(t *testing.T) {
+	g := graph.IdentifyGraph(newGraphForPrint())
+	ref, err := graph.GraphRef(g)
+	if err != nil {
+		t.Fatalf("GraphRef: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := graph.PrintArticulation(&buf, g); err != nil {
+		t.Fatalf("PrintArticulation: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, ref) {
+		t.Errorf("output missing Graph ID line %q\nGot:\n%s", ref, out)
+	}
+	if !strings.Contains(out, "Graph ID:") {
+		t.Errorf("output missing %q label\nGot:\n%s", "Graph ID:", out)
+	}
+}
+
+// TestPrintArticulation_GraphID_AbsentWhenUnidentified verifies that an
+// unidentified MeshGraph does not print any "Graph ID" line.
+func TestPrintArticulation_GraphID_AbsentWhenUnidentified(t *testing.T) {
+	var buf bytes.Buffer
+	if err := graph.PrintArticulation(&buf, newGraphForPrint()); err != nil {
+		t.Fatalf("PrintArticulation: %v", err)
+	}
+	if strings.Contains(buf.String(), "Graph ID:") {
+		t.Errorf("unidentified graph should not print Graph ID line\nGot:\n%s", buf.String())
+	}
+}

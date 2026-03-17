@@ -344,6 +344,14 @@ func shadowShiftLine(s ShadowShift) string {
 // Returns the first write error encountered, if any.
 func PrintDiff(w io.Writer, d GraphDiff) error {
 	lines := []string{"=== Mesh Diff (situated comparison) ===", ""}
+
+	// If this diff has been identified as an actor, print its reference so
+	// callers can cite it in subsequent traces.
+	if d.ID != "" {
+		ref, _ := DiffRef(d) // error only when ID is empty; guarded above
+		lines = append(lines, fmt.Sprintf("Diff ID: %s", ref), "")
+	}
+
 	lines = append(lines, cutSummaryLines("From", d.From)...)
 	lines = append(lines, "")
 	lines = append(lines, cutSummaryLines("To", d.To)...)
