@@ -42,6 +42,13 @@ type DraftSummary struct {
 	// value for that field. This reveals which fields the ingestion pipeline
 	// is populating and which are being left empty (empty = honest abstention).
 	FieldFillRate map[string]int
+
+	// WithIntentionallyBlank is the number of drafts that declare at least
+	// one intentionally blank field — i.e., that set IntentionallyBlank on
+	// TraceDraft. These are typically critique-pass skeletons produced by
+	// meshant rearticulate, where blank content fields are correct choices,
+	// not missing data.
+	WithIntentionallyBlank int
 }
 
 // LoadDrafts reads a JSON array of TraceDraft records from path.
@@ -160,6 +167,9 @@ func SummariseDrafts(drafts []schema.TraceDraft) DraftSummary {
 		if d.DerivedFrom != "" {
 			s.FieldFillRate["derived_from"]++
 		}
+		if len(d.IntentionallyBlank) > 0 {
+			s.WithIntentionallyBlank++
+		}
 	}
 
 	return s
@@ -214,6 +224,8 @@ func PrintDraftSummary(w io.Writer, s DraftSummary) error {
 	}
 
 	lines = append(lines,
+		"",
+		fmt.Sprintf("Critique skeletons (intentionally_blank set): %d", s.WithIntentionallyBlank),
 		"",
 		"---",
 		"Note: empty fields are honest abstentions, not missing data.",

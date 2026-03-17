@@ -220,3 +220,61 @@ func TestTraceDraftChain(t *testing.T) {
 		t.Errorf("DerivedFrom: got %q want %q", child.DerivedFrom, parent.ID)
 	}
 }
+
+// --- IntentionallyBlank ---
+
+// TestTraceDraft_IntentionallyBlank_RoundTrip verifies that IntentionallyBlank
+// is preserved through struct construction and that Validate succeeds regardless
+// of whether the field is set.
+func TestTraceDraft_IntentionallyBlank_RoundTrip(t *testing.T) {
+	d := schema.TraceDraft{
+		SourceSpan:         "Raw span text.",
+		ExtractionStage:    "reviewed",
+		DerivedFrom:        "d0000000-0000-4000-8000-000000000001",
+		IntentionallyBlank: []string{"what_changed", "source", "target", "mediation", "observer", "tags"},
+	}
+
+	if err := d.Validate(); err != nil {
+		t.Fatalf("Validate() with IntentionallyBlank set: unexpected error: %v", err)
+	}
+
+	if len(d.IntentionallyBlank) != 6 {
+		t.Errorf("IntentionallyBlank length: got %d want 6", len(d.IntentionallyBlank))
+	}
+	for _, field := range []string{"what_changed", "source", "target", "mediation", "observer", "tags"} {
+		found := false
+		for _, b := range d.IntentionallyBlank {
+			if b == field {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("IntentionallyBlank missing %q", field)
+		}
+	}
+}
+
+// TestTraceDraft_IntentionallyBlank_ValidateStillRequiresSourceSpan verifies
+// that Validate still requires source_span even when IntentionallyBlank is set —
+// IntentionallyBlank does not relax the minimum invariant.
+func TestTraceDraft_IntentionallyBlank_ValidateStillRequiresSourceSpan(t *testing.T) {
+	d := schema.TraceDraft{
+		IntentionallyBlank: []string{"what_changed", "source"},
+		// SourceSpan deliberately absent.
+	}
+
+	if err := d.Validate(); err == nil {
+		t.Fatal("Validate() with empty SourceSpan: want error, got nil")
+	}
+}
+
+// TestTraceDraft_IntentionallyBlank_EmptyByDefault verifies that a TraceDraft
+// created without IntentionallyBlank has a nil/empty slice — not implicitly
+// populated.
+func TestTraceDraft_IntentionallyBlank_EmptyByDefault(t *testing.T) {
+	d := schema.TraceDraft{SourceSpan: "some span"}
+	if len(d.IntentionallyBlank) != 0 {
+		t.Errorf("IntentionallyBlank: want empty by default, got %v", d.IntentionallyBlank)
+	}
+}

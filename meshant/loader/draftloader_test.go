@@ -266,3 +266,65 @@ func TestPrintDraftSummary_ContainsExpectedFields(t *testing.T) {
 		}
 	}
 }
+
+// --- WithIntentionallyBlank ---
+
+// TestSummariseDrafts_WithIntentionallyBlank_CountsCorrectly verifies that
+// SummariseDrafts counts only drafts that have a non-empty IntentionallyBlank
+// slice.
+func TestSummariseDrafts_WithIntentionallyBlank_CountsCorrectly(t *testing.T) {
+	blanked := schema.TraceDraft{
+		SourceSpan:         "span A",
+		IntentionallyBlank: []string{"what_changed", "source"},
+	}
+	notBlanked := schema.TraceDraft{SourceSpan: "span B"}
+	alsoBlanked := schema.TraceDraft{
+		SourceSpan:         "span C",
+		IntentionallyBlank: []string{"observer"},
+	}
+
+	s := loader.SummariseDrafts([]schema.TraceDraft{blanked, notBlanked, alsoBlanked})
+
+	if s.WithIntentionallyBlank != 2 {
+		t.Errorf("WithIntentionallyBlank: got %d want 2", s.WithIntentionallyBlank)
+	}
+}
+
+// TestSummariseDrafts_WithIntentionallyBlank_ZeroWhenNoneSet verifies that the
+// count is zero when no drafts set IntentionallyBlank.
+func TestSummariseDrafts_WithIntentionallyBlank_ZeroWhenNoneSet(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		{SourceSpan: "a"},
+		{SourceSpan: "b"},
+	}
+	s := loader.SummariseDrafts(drafts)
+	if s.WithIntentionallyBlank != 0 {
+		t.Errorf("WithIntentionallyBlank: got %d want 0", s.WithIntentionallyBlank)
+	}
+}
+
+// TestPrintDraftSummary_ShowsIntentionallyBlankCount verifies that
+// PrintDraftSummary includes the critique-skeleton count in its output.
+func TestPrintDraftSummary_ShowsIntentionallyBlankCount(t *testing.T) {
+	s := loader.DraftSummary{
+		Total:                  4,
+		ByStage:                map[string]int{"reviewed": 2},
+		ByExtractedBy:          map[string]int{},
+		FieldFillRate:          map[string]int{"source_span": 4},
+		WithIntentionallyBlank: 2,
+	}
+
+	var buf bytes.Buffer
+	if err := loader.PrintDraftSummary(&buf, s); err != nil {
+		t.Fatalf("PrintDraftSummary: unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "2") {
+		t.Errorf("output does not contain critique skeleton count '2'; output:\n%s", out)
+	}
+	// The label "intentionally_blank" or "Critique skeletons" should appear.
+	if !strings.Contains(out, "intentionally_blank") && !strings.Contains(out, "Critique skeletons") {
+		t.Errorf("output missing intentionally_blank label; output:\n%s", out)
+	}
+}
