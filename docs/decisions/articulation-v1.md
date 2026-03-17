@@ -124,7 +124,7 @@ This respects the separation of concerns: `Articulate` knows the full picture;
 
 ---
 
-## Decision 5 — Graph-as-actor: noted, not implemented
+## Decision 5 — Graph-as-actor: noted, not implemented *(resolved in M5)*
 
 A graph produced by `Articulate` is not a neutral object. Once produced, it
 can enter the mesh as a force — a deforestation map that triggers policy, a
@@ -134,53 +134,41 @@ the mesh; it becomes part of the mesh.
 This is consistent with ANT: a scientific paper, a map, a report — these are
 actors, not just descriptions of actors.
 
-**Decision:** This is noted architecturally, not implemented in M2. A future
-milestone could represent the graph as a potential source/target in a trace
-(i.e., the articulation itself gets a trace ID and can appear in subsequent
-trace datasets). This would close the loop: MeshAnt's own output is subject
-to MeshAnt's own tracing.
-
-Implementing this in M2 would require either:
-- A convention for trace IDs that refer to graphs, or
-- A new field type in the schema
-
-Neither is ready yet. The form should emerge from the work.
+**Decision:** Noted architecturally in M2; implemented in M5 (`docs/decisions/graph-as-actor-v1.md`).
+`IdentifyGraph` assigns a UUID to `MeshGraph.ID`; `GraphRef` produces a `"meshgraph:<uuid>"`
+string that can appear in any `Source` or `Target` slice. Graph-reference strings travel
+via the same `[]string` fields as all other element names — no new field type was needed.
+M7 extended this to reflexive tracing: `ArticulationTrace` records the act of articulation
+as a `schema.Trace` in the mesh.
 
 ---
 
-## Decision 6 — Time-window and tag-filter axes: deferred
+## Decision 6 — Time-window and tag-filter axes: deferred *(both resolved)*
 
-Both are useful cut axes for future milestones:
+Both are useful cut axes:
 
-- **Time-window filter**: useful once datasets span multiple days or events.
-  Would let a caller ask "what was visible on 2026-03-11 from the satellite
-  operator?" This requires a time range in `ArticulationOptions`.
-- **Tag filter**: useful for highlighting structural patterns across a cut
-  (e.g., "show only traces tagged threshold"). Would let a caller see all the
-  friction points from a given position.
+- **Time-window filter** *(resolved in M3)*: `ArticulationOptions.TimeWindow` added in M3.
+  AND semantics with inclusive bounds. Zero value = no filter. Reason tracking per shadow
+  element (`ShadowReasonTimeWindow`). See `docs/decisions/time-window-v1.md`.
+- **Tag filter** *(resolved in M10)*: `ArticulationOptions.Tags` added in M10. Any-match
+  (OR) semantics — a trace passes if it carries any of the specified tags. Third shadow
+  reason: `ShadowReasonTagFilter`. See `docs/decisions/m10-tag-filter-diff-export-cli-v1.md`.
 
-Both are explicitly deferred. Adding them prematurely would lock in an API
-before understanding how they interact with observer-position filtering
-(e.g., does a tag filter apply before or after the observer filter?).
-
-**When to add:** When the project has followed enough traces from enough
-positions that the need for a second axis becomes evident from the work,
-not from anticipation.
+The interaction question was resolved: all three axes use AND semantics across filters —
+a trace must pass observer, time-window, AND tag filters simultaneously to be included.
 
 ---
 
-## What this cut excludes
+## What this cut excludes (M2 shadow — many since resolved)
 
-- No composite filters (time + observer + tag in one call)
-- No longitudinal articulation (comparing the same mesh across two time points)
-- No graph diff (comparing two articulations from different positions)
-- No weighted edges (all traces contribute equally regardless of recency or
-  frequency; a future milestone could add weights)
-- No graph-as-actor implementation (noted above)
-- No persistence of articulations (graphs are in-memory only)
+- ~~No composite filters (time + observer + tag in one call)~~ — resolved in M10: all three axes combined with AND semantics
+- ~~No longitudinal articulation~~ — resolved in M3: `TimeWindow` in `ArticulationOptions`
+- ~~No graph diff~~ — resolved in M4: `Diff(g1, g2) GraphDiff` in `diff.go`
+- No weighted edges (still open: all traces contribute equally regardless of recency or frequency)
+- ~~No graph-as-actor implementation~~ — resolved in M5: `IdentifyGraph`, `GraphRef`; M7: `ArticulationTrace`
+- ~~No persistence of articulations~~ — resolved in M8: `persist.WriteJSON`, `ReadGraphJSON`
 
-These exclusions are not gaps — they are the shadow of this cut. They define
-what M2 is by naming what it is not.
+These exclusions were the shadow of M2's cut. Naming them made the subsequent milestones legible.
 
 ---
 

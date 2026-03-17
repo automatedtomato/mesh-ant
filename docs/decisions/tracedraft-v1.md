@@ -201,10 +201,11 @@ model will remain the same.
 
 ## What M11 does NOT do
 
-- **Anti-ontology critique pass** — deferred to M11.5/M12; the data structure (DerivedFrom)
-  is ready, but the `meshant critique` subcommand does not yet exist
-- **Interactive trace review** — deferred to M11.5/M12
-- **Per-step criteria for the ingestion chain** — deferred to M12+
+- ~~**Anti-ontology critique pass**~~ — resolved in M12: `meshant rearticulate` builds
+  `DerivedFrom`-linked critique skeletons from seeded drafts; `meshant lineage` walks the
+  derivation chain. See `docs/decisions/rearticulation-v1.md`.
+- **Interactive trace review** — deferred to v2.0.0
+- **Per-step criteria for the ingestion chain** — deferred to M13+
 - **Live LLM calls from the CLI** — deferred to v2.0.0
 - **Graphiti / Neo4j adapter** — future-compatible boundary only
 

@@ -158,22 +158,15 @@ No package-boundary change was needed: `diff.go` is `package graph` and shares a
 unexported types with `graph.go` (including `timeWindowLabel`, used by `cutSummaryLines`
 in `diff.go`).
 
-### 11. What M4 explicitly defers
+### 11. What M4 explicitly defers (resolution status)
 
-The following were considered and deliberately not implemented in M4:
-
-- **Tag-filter axis**: articulation-level concern; a future `ArticulationOptions.Tags`
-  filter would flow transparently into `Diff` via the `Cut` fields.
-- **Weighted diff**: all edges contribute equally; no recency or frequency weighting.
-- **Temporal visibility in shadow shifts**: `ShadowShift` records reasons but not "which
-  time window would make this element visible again."
-- **Diff-as-actor** (M5): a `GraphDiff` does not receive a trace ID and cannot appear as
-  a source/target in traces. See `docs/decisions/articulation-v1.md` Decision 5 and the
-  Provisional M5 Note in `tasks/plan_m4.md`.
-- **Persistence**: diffs remain in-memory only.
-- **CLI**: form factor deliberately left open; see `docs/potential-forms.md`.
-- **Multi-step diff chains**: no "diff of diffs" or timeline of graph evolution. Each
-  `Diff` call is a single pairwise comparison.
+- ~~**Tag-filter axis**~~ — resolved in M10: `ArticulationOptions.Tags` flows into `Diff` transparently via `Cut` fields; `ShadowReasonTagFilter` is the third shadow reason.
+- **Weighted diff** — still open: all edges contribute equally; no recency or frequency weighting.
+- **Temporal visibility in shadow shifts** — still open: `ShadowShift` records reasons but not "which time window would make this element visible again."
+- ~~**Diff-as-actor** (M5)~~ — resolved in M5: `GraphDiff.ID` assigned by `IdentifyDiff`; `DiffRef` produces `"meshdiff:<uuid>"`; `DiffTrace` records the diff act as a reflexive trace (M7).
+- ~~**Persistence**~~ — resolved in M8: `persist.WriteJSON` and `ReadDiffJSON` in `meshant/persist`.
+- ~~**CLI**~~ — resolved in M9: `meshant diff` subcommand with `--observer-a/b`, `--tag-a/b`, `--from/to`, `--format text|json|dot|mermaid`, `--output`.
+- **Multi-step diff chains** — still open: no "diff of diffs" or timeline of graph evolution.
 
 ---
 
@@ -198,5 +191,4 @@ The following were considered and deliberately not implemented in M4:
   `ToReasons` carry the same `ShadowReason` values produced by `Articulate`.
 - M3 Decision 4 (TimeWindow stored verbatim in Cut): `copyCut` preserves this guarantee
   across the diff boundary.
-- articulation-v1.md Decision 5 (graph-as-actor noted): remains deferred; Diff produces
-  a `GraphDiff` value but it has no trace ID. M5 addresses this.
+- articulation-v1.md Decision 5 (graph-as-actor): resolved in M5. `GraphDiff` now carries `ID string`; `IdentifyDiff`/`DiffRef` make it a first-class actant. `DiffTrace` (M7) records the diffing act as a reflexive trace.
