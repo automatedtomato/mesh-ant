@@ -917,8 +917,13 @@ func cmdRearticulate(w io.Writer, args []string) error {
 			SourceDocRef:    orig.SourceDocRef,
 			DerivedFrom:     orig.ID,
 			ExtractionStage: "reviewed",
-			// All content fields intentionally blank — the critiquing agent
-			// provides the interpretation. Blank is correct, not incomplete.
+			// IntentionallyBlank declares which content fields were
+			// deliberately left empty by this cut — the critique agent
+			// provides its own interpretation. Blank is correct, not incomplete.
+			IntentionallyBlank: []string{
+				"what_changed", "source", "target",
+				"mediation", "observer", "tags",
+			},
 		}
 	}
 

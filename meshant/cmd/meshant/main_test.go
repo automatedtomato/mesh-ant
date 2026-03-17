@@ -1862,6 +1862,54 @@ func TestCmdRearticulate_SkeletonRoundTrip(t *testing.T) {
 	}
 }
 
+// TestCmdRearticulate_SkeletonHasIntentionallyBlank verifies that each skeleton
+// record produced by cmdRearticulate carries an intentionally_blank array naming
+// all six content fields. This distinguishes "blank by design" from "never
+// extracted" — a critique cut, not an incomplete draft.
+func TestCmdRearticulate_SkeletonHasIntentionallyBlank(t *testing.T) {
+	var buf bytes.Buffer
+	if err := cmdRearticulate(&buf, []string{cveDraftsDatasetForRearticulate}); err != nil {
+		t.Fatalf("cmdRearticulate() returned unexpected error: %v", err)
+	}
+
+	var skeletons []map[string]interface{}
+	if err := json.Unmarshal([]byte(buf.String()), &skeletons); err != nil {
+		t.Fatalf("parse skeleton JSON: %v", err)
+	}
+
+	wantFields := []string{"what_changed", "source", "target", "mediation", "observer", "tags"}
+
+	for i, sk := range skeletons {
+		raw, ok := sk["intentionally_blank"]
+		if !ok {
+			t.Errorf("skeleton %d: intentionally_blank key absent", i)
+			continue
+		}
+		arr, ok := raw.([]interface{})
+		if !ok {
+			t.Errorf("skeleton %d: intentionally_blank is not an array; got %T", i, raw)
+			continue
+		}
+		got := make([]string, len(arr))
+		for j, v := range arr {
+			s, _ := v.(string)
+			got[j] = s
+		}
+		for _, want := range wantFields {
+			found := false
+			for _, g := range got {
+				if g == want {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("skeleton %d: intentionally_blank missing %q; got %v", i, want, got)
+			}
+		}
+	}
+}
+
 // --- Group 15: cmdLineage ---
 
 

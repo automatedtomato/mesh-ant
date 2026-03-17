@@ -90,6 +90,20 @@ type TraceDraft struct {
 	// DerivedFrom is the ID of the parent draft, linking revision records
 	// into a structurally followable chain. Empty for root drafts.
 	DerivedFrom string `json:"derived_from,omitempty"`
+
+	// IntentionallyBlank lists the names of content fields that were
+	// deliberately left empty during a critique or review pass — not because
+	// information is missing, but because the analyst decided the field
+	// should not be filled from this source span.
+	//
+	// This distinguishes "never extracted" (field absent, no entry here) from
+	// "deliberately not filled" (field absent AND name listed here). Useful
+	// for critique-pass skeletons produced by meshant rearticulate, where
+	// blank content fields are correct, not incomplete.
+	//
+	// Known field names: "what_changed", "source", "target", "mediation",
+	// "observer", "tags".
+	IntentionallyBlank []string `json:"intentionally_blank,omitempty"`
 }
 
 // Validate checks that the minimum required field is present.
