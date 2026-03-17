@@ -533,6 +533,74 @@ TraceDraft of the same SourceSpan, linked by DerivedFrom. A second cut, not a co
 
 ---
 
+## M12.5 — IntentionallyBlank on TraceDraft
+
+**Status:** Complete
+**Parent issue:** #64
+**PR:** #67 (`64-intentionally-blank`)
+
+Adds `IntentionallyBlank []string` to `TraceDraft`. Blank content fields on critique skeletons
+are now structurally declared: the difference between "never extracted" and "deliberately not
+extracted" is a named distinction, not an absence.
+
+### Tasks
+
+- [x] **M12.5.1 — IntentionallyBlank field** — PR #67
+  - `IntentionallyBlank []string \`json:"intentionally_blank,omitempty"\`` on `TraceDraft`
+  - `cmdRearticulate` sets `IntentionallyBlank` on every skeleton
+  - `DraftSummary.WithIntentionallyBlank int` — count of drafts with at least one intentionally blank field
+  - `PrintDraftSummary` shows count line
+  - Tests: tracedraft_test.go (3 tests), draftloader_test.go (3 tests), main_test.go (1 test)
+
+---
+
+## M13 — Shadow Analysis + Observer Gap + Ingestion Deepening
+
+**Status:** Complete
+**Parent issue:** #52
+**Branch base:** `develop`
+
+Six issues deepening the analytical core and ingestion pipeline. Shadow and observer-gap make
+positional incompleteness into first-class analytical objects. FollowDraftChain and CriterionRef
+deepen the ingestion pipeline.
+
+### Tasks
+
+- [x] **M13.1 — FollowDraftChain** — PR #70 (`68-follow-draft-chain`) — Issue #68
+  - `meshant/loader/draftchain.go` — `FollowDraftChain`, `ClassifyDraftChain`, `DraftStepKind`, `DraftStepClassification`
+  - `meshant/loader/draftchain_test.go` — 11 tests
+  - v1 heuristics: DraftIntermediary, DraftMediator, DraftTranslation
+
+- [x] **M13.2 — CriterionRef on TraceDraft** — PR #71 (`69-criterion-ref`) — Issue #69
+  - `CriterionRef string \`json:"criterion_ref,omitempty"\`` on `TraceDraft`
+  - `--criterion-file <path>` flag on `cmdRearticulate`; sets CriterionRef on each skeleton
+  - `DraftSummary.WithCriterionRef int`; `PrintDraftSummary` shows count
+  - Tests: tracedraft_test.go (5), draftloader_test.go (2), main_test.go (3)
+
+- [x] **M13.3 — ShadowSummary** — PR #72 (`13-shadow-summary`) — Issue #13
+  - `meshant/graph/shadow.go` — `SummariseShadow`, `PrintShadowSummary`, `ShadowSummary`
+  - `meshant/graph/shadow_test.go` — 10 tests
+  - Shadow language throughout: "shadowed" not "missing"
+
+- [x] **M13.4 — ObserverGapReport** — PR #73 (`14-observer-gap`) — Issue #14
+  - `meshant/graph/gaps.go` — `AnalyseGaps`, `PrintObserverGap`, `ObserverGap`
+  - `meshant/graph/gaps_test.go` — 9 tests
+  - Takes pre-articulated MeshGraph values; composable, not re-articulating
+
+- [x] **M13.5 — CLI shadow + gaps subcommands** — PR #74 (`15-cli-shadow-gaps`) — Issue #15
+  - `meshant shadow --observer <pos> [flags] <traces.json>`
+  - `meshant gaps --observer-a <pos> --observer-b <pos> [flags] <traces.json>`
+  - 8 tests (shadow), 9 tests (gaps) in main_test.go
+
+- [x] **M13.6 — Decision record + codemap** — Issue #16
+  - `docs/decisions/shadow-analysis-v1.md` — 6 decisions for M13
+  - `docs/CODEMAPS/meshant.md` — updated with new files, types, functions
+  - `tasks/todo.md` — M13 section added, all tasks marked complete
+
+`go test ./...` green; `go vet ./...` clean.
+
+---
+
 ## Post-v1.0.0 — Open Horizon
 
 Informed by v1.0.0 review (`docs/reviews/release_v1_review_13-mar-26.md`) and earlier
@@ -545,7 +613,7 @@ These deepen the analytical core — deferred across earlier milestones:
 
 - [x] **Tag-filter cut axis** — third cut axis alongside observer and time-window (completed in M10)
 - [x] **GraphDiff DOT / Mermaid export** — `PrintDiffDOT`, `PrintDiffMermaid` (completed in M10)
-- [ ] **Shadow analysis operations** — shadow summary, shadow-first mode, unstable-boundary reports
+- [x] **Shadow analysis operations** — shadow summary, observer-gap report, shadow/gaps CLI subcommands (completed in M13)
 - [ ] **Re-articulation** — re-cutting the same dataset; showing how one articulation provokes another
 
 ### Authoring support (Layer 1)
@@ -561,7 +629,7 @@ The most important next frontier — the direct interface with the user:
 
 How outputs become actionable:
 
-- [ ] **Interpretive outputs** — observer-gap report, bottleneck note, shadow summary, re-articulation suggestion, incident narrative draft
+- [x] **Interpretive outputs (partial)** — observer-gap report and shadow summary completed in M13; bottleneck note, re-articulation suggestion, incident narrative draft remain
 - [ ] **More real-world examples** — validate authoring conventions and interpretation patterns across domains
 
 ### Constraints
