@@ -26,8 +26,9 @@ import (
 // unexported copies for use in its string-level predicates (schema.IsGraphRef etc.)
 // without creating an import cycle.
 const (
-	graphRefPrefixGraph = "meshgraph:"
-	graphRefPrefixDiff  = "meshdiff:"
+	graphRefPrefixGraph  = "meshgraph:"
+	graphRefPrefixDiff   = "meshdiff:"
+	graphRefPrefixChain  = "meshchain:"
 )
 
 // IdentifyGraph assigns a fresh, stable UUID to g.ID and returns the updated
@@ -77,6 +78,29 @@ func DiffRef(d GraphDiff) (string, error) {
 		return "", fmt.Errorf("graph.DiffRef: diff has no ID; call IdentifyDiff first")
 	}
 	return graphRefPrefixDiff + d.ID, nil
+}
+
+// IdentifyChain assigns a fresh, stable UUID to c.ID and returns the updated
+// TranslationChain. The input c is not modified (immutable pattern).
+//
+// Call IdentifyChain only when you intend to use the chain as an actor in the
+// mesh — i.e., when you plan to reference it in subsequent traces via ChainRef.
+// Most chains produced for analysis do not need to be actors.
+func IdentifyChain(c TranslationChain) TranslationChain {
+	c.ID = newUUID4()
+	return c
+}
+
+// ChainRef returns the chain-reference string for c ("meshchain:<c.ID>").
+// Returns an error if c.ID is empty — call IdentifyChain first.
+//
+// The returned string can be placed in Trace.Source or Trace.Target to record
+// that this chain acted in the mesh, consistent with generalised symmetry.
+func ChainRef(c TranslationChain) (string, error) {
+	if c.ID == "" {
+		return "", fmt.Errorf("graph.ChainRef: chain has no ID; call IdentifyChain first")
+	}
+	return graphRefPrefixChain + c.ID, nil
 }
 
 // newUUID4 generates a random version-4 UUID string in lowercase hyphenated form:
