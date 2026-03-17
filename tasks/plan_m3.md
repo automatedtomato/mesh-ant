@@ -368,7 +368,7 @@ Decisions to record:
 5. `ShadowReason` per element (not separate shadow lists)
 6. `Cut.TimeWindow` stored verbatim
 7. What M3 explicitly defers
-8. Relation to articulation-v1.md Decision 6 (fulfilled here)
+8. Relation to articulation-v2.md Decision 6 (fulfilled here)
 
 ---
 
@@ -377,7 +377,7 @@ Decisions to record:
 - **Tag-filter axis**: useful for pattern highlighting within a cut; deferred until longitudinal cuts demonstrate the natural need
 - **Temporal visibility in shadow**: `SeenFrom` records who could see an element, not when it would become visible; adding `SeenInWindow` is premature before the axis has been used in practice
 - **Graph diff**: comparing two `MeshGraph` values; architecturally ready but semantics and types need their own milestone
-- **Graph-as-actor**: noted in articulation-v1.md Decision 5; longitudinal dataset makes it more urgent but schema convention for graph-reference IDs still unresolved
+- **Graph-as-actor**: noted in articulation-v2.md Decision 5; longitudinal dataset makes it more urgent but schema convention for graph-reference IDs still unresolved
 - **Weighted edges by recency**: all edges contribute equally
 - **Persistence**: articulations remain in-memory
 - **CLI**: form factor still deliberately open

@@ -305,7 +305,7 @@ meshant/
 // always names what it excludes: the shadow elements visible from other positions
 // but not from the chosen one.
 //
-// See docs/decisions/articulation-v1.md for the rationale behind these design
+// See docs/decisions/articulation-v2.md for the rationale behind these design
 // choices and what has been explicitly deferred to future milestones.
 package graph
 
@@ -506,7 +506,7 @@ Observer position(s) not included: deforestation-detection-algorithm,
 ### M2.3 — Articulation Decision Record
 
 **Branch:** `feat/m2-graph`
-**File:** `docs/decisions/articulation-v1.md`
+**File:** `docs/decisions/articulation-v2.md`
 
 Content to record:
 1. Observer position as primary cut axis — rationale (ANT: no god's-eye view)
@@ -544,7 +544,7 @@ Content to record:
 
 ### M2.3 — Decision record
 
-1. Write `docs/decisions/articulation-v1.md`
+1. Write `docs/decisions/articulation-v2.md`
 2. Include in same branch/PR as M2.2
 
 ---

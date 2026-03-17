@@ -113,7 +113,7 @@ Use these when the act of articulation or comparison itself became an actor in
 the network — for example, when a graph produced from one set of traces was
 then used as input to a decision in another trace. This is reflexive tracing:
 the observation apparatus enters the mesh it observes. See
-[docs/decisions/graph-as-actor-v1.md](./decisions/graph-as-actor-v1.md) for
+[docs/decisions/graph-as-actor-v2.md](./decisions/graph-as-actor-v2.md) for
 the design rationale.
 
 ---

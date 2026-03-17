@@ -24,7 +24,7 @@ The goal of this milestone is to define what a trace is in MeshAnt and demonstra
 - [x] **M1.1 — Define the trace schema**
   - `meshant/schema/trace.go` — Trace struct, TagValue constants, Validate()
   - `meshant/schema/trace_test.go` — 27 tests, all passing
-  - `docs/decisions/trace-schema-v1.md` — design decision record
+  - `docs/decisions/trace-schema-v2.md` — design decision record
   - Key decisions: source/target as []string, observer required, tags open vocabulary
 
 - [x] **M1.2 — Write a small example trace dataset**
@@ -42,7 +42,7 @@ The goal of this milestone is to define what a trace is in MeshAnt and demonstra
   - All HIGH/MEDIUM findings resolved before merge
 
 - [x] **M1.4 — Record the schema cut**
-  - Done: `docs/decisions/trace-schema-v1.md` (completed alongside M1.1)
+  - Done: `docs/decisions/trace-schema-v2.md` (completed alongside M1.1)
 
 ---
 
@@ -71,7 +71,7 @@ its shadow.
   - Code + security reviews passed; all HIGH/MEDIUM findings resolved
 
 - [x] **M2.3 — Record the articulation cut**
-  - `docs/decisions/articulation-v1.md`
+  - `docs/decisions/articulation-v2.md`
   - 6 decisions: observer axis, shadow mandatory, empty=full-cut, ExcludedObserverPositions,
     graph-as-actor noted, time/tag axes deferred
 
@@ -108,7 +108,7 @@ this observer see?" but "what did this observer see within this window?"
   - `docs/decisions/time-window-v1.md`
   - 8 decisions: TimeWindow in graph package, zero=full-cut, AND semantics, inclusive bounds,
     ShadowReason per element, Cut.TimeWindow stored verbatim, deferred items, relation to
-    articulation-v1.md Decision 6
+    articulation-v2.md Decision 6
 
 ---
 
@@ -122,7 +122,7 @@ both positions it compares and what became visible or invisible between them.
 - [x] **M4.1** — `Diff()` + `GraphDiff`, `PersistedNode`, `ShadowShift`, `ShadowShiftKind` types; 47 unit tests (groups 10–15)
 - [x] **M4.2** — `PrintDiff()` + output tests
 - [x] **M4.3** — E2E tests against longitudinal dataset (group 16, 8 tests)
-- [x] **M4.4** — `docs/decisions/graph-diff-v1.md`; `docs/potential-forms.md`
+- [x] **M4.4** — `docs/decisions/graph-diff-v2.md`; `docs/potential-forms.md`
 
 125 tests total; 99% graph coverage, 100% loader + schema.
 
@@ -153,7 +153,7 @@ in subsequent traces. Reflexivity: the framework can observe its own action in t
   - Branch: `feat/m5-loader` (merged to develop)
 
 - [x] **M5.4 — Decision record**
-  - `docs/decisions/graph-as-actor-v1.md`
+  - `docs/decisions/graph-as-actor-v2.md`
   - 10 decisions; ideological grounding (ANT/Strathern/Haraway/Principle 8)
 
 ---
@@ -307,7 +307,7 @@ Library + CLI form. The framework can be used without writing Go.
 
 - [x] **M9.5 — README, decision record, Dockerfile**
   - README: "Who is this for?", CLI usage, removed stale Principle 8 gap note
-  - `docs/decisions/cli-v1.md` — 6 decisions; Dockerfile: CLI at `/usr/local/bin/meshant`
+  - `docs/decisions/cli-v2.md` — 6 decisions; Dockerfile: CLI at `/usr/local/bin/meshant`
   - Branch: `feat/m9-readme`
 
 - [x] **M9.6 — Refactor and clean pass (whole codebase)**
@@ -403,7 +403,7 @@ translation judgment). Classification is cut-dependent, not intrinsic.
   - Branch: `24-m10-5-chain-traversal`
 
 - [x] **M10.5.5 — Decision record + codemap**
-  - `docs/decisions/translation-chain-v1.md` — 12 decisions
+  - `docs/decisions/translation-chain-v2.md` — 12 decisions
   - `docs/CODEMAPS/meshant.md` — updated with chain.go, classify.go, chain_print.go
   - `docs/reviews/equivalence_criterion_design_note.md` — three-layer criterion design
   - `docs/reviews/notes_on_mediator.md` — conditional readings design note
@@ -488,7 +488,7 @@ day one via `DerivedFrom` links.
 - [x] **M11.5 — Review, clean, and document**
   - Refactor-cleaner: fixed dead constants, stale doc, non-deterministic map output, weak assertions
   - ANT review: ALIGNED WITH TENSIONS — 8 aligned, 6 tensions (5 productive, 1 partially unresolved)
-  - `docs/decisions/tracedraft-v1.md` — 10 decisions: LLM-as-mediator, ingestion contract,
+  - `docs/decisions/tracedraft-v2.md` — 10 decisions: LLM-as-mediator, ingestion contract,
     DerivedFrom chain, ExtractionStage as position not progress, over-actorized records by design
   - `docs/CODEMAPS/meshant.md` updated for M11
 
@@ -525,7 +525,7 @@ TraceDraft of the same SourceSpan, linked by DerivedFrom. A second cut, not a co
   - `data/examples/cve_critique_drafts.json` — filled critique drafts for E3 and E14
 
 - [x] **M12.4 — Decision record + codemap** — PR #59 (`55-m12-docs`)
-  - `docs/decisions/rearticulation-v1.md` — 8 decisions
+  - `docs/decisions/rearticulation-v2.md` — 8 decisions
   - `docs/CODEMAPS/meshant.md` — updated for M12
   - `tasks/todo.md` — M12 section added, all tasks marked complete
 

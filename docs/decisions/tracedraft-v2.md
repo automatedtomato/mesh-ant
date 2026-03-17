@@ -203,7 +203,7 @@ model will remain the same.
 
 - ~~**Anti-ontology critique pass**~~ — resolved in M12: `meshant rearticulate` builds
   `DerivedFrom`-linked critique skeletons from seeded drafts; `meshant lineage` walks the
-  derivation chain. See `docs/decisions/rearticulation-v1.md`.
+  derivation chain. See `docs/decisions/rearticulation-v2.md`.
 - **Interactive trace review** — deferred to v2.0.0
 - **Per-step criteria for the ingestion chain** — deferred to M13+
 - **Live LLM calls from the CLI** — deferred to v2.0.0
@@ -216,6 +216,6 @@ model will remain the same.
 - `docs/reviews/llm_limit_14-mar-26.md` — LLM-as-mediator framing, what the LLM should
   and should not be asked to do
 - `tasks/plan_m11.md` — full M11 plan including phase breakdown and design rules
-- `docs/decisions/trace-schema-v1.md` — canonical Trace type that TraceDraft promotes into
+- `docs/decisions/trace-schema-v2.md` — canonical Trace type that TraceDraft promotes into
 - `docs/decisions/equivalence-criterion-v1.md` — interpretive declaration pattern (parallel
   to TraceDraft's role as provisional analytical object)

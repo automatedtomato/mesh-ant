@@ -161,11 +161,11 @@ validation before use.
 
 ## Relation to prior decisions
 
-- **articulation-v1.md Decision 6** (time-window axis deferred): fulfilled here. The
+- **articulation-v2.md Decision 6** (time-window axis deferred): fulfilled here. The
   dataset now has longitudinal depth (3 days); the time-window axis becomes meaningful.
-- **articulation-v1.md Decision 3** (empty filter = full cut): the zero `TimeWindow`
+- **articulation-v2.md Decision 3** (empty filter = full cut): the zero `TimeWindow`
   extends the same principle to the temporal axis.
-- **articulation-v1.md Decision 2** (shadow as mandatory output): the shadow section
+- **articulation-v2.md Decision 2** (shadow as mandatory output): the shadow section
   is still mandatory. `ShadowReason` adds nuance but does not change the requirement
   that every articulation names what it excludes.
 

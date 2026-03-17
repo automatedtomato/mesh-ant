@@ -250,7 +250,7 @@ concern.
 
 ## Relation to earlier decisions
 
-- `articulation-v1.md` Decision 5: "graph-as-actor noted architecturally" — fulfilled
+- `articulation-v2.md` Decision 5: "graph-as-actor noted architecturally" — fulfilled
   here. `MeshGraph` is now a first-class actant, not just an analytical output.
-- `graph-diff-v1.md` is not changed by M5. `GraphDiff` gains `ID string` (zero value,
+- `graph-diff-v2.md` is not changed by M5. `GraphDiff` gains `ID string` (zero value,
   backward-compatible) and `IdentifyDiff`/`DiffRef` functions.

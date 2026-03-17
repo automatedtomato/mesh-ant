@@ -134,7 +134,7 @@ the mesh; it becomes part of the mesh.
 This is consistent with ANT: a scientific paper, a map, a report — these are
 actors, not just descriptions of actors.
 
-**Decision:** Noted architecturally in M2; implemented in M5 (`docs/decisions/graph-as-actor-v1.md`).
+**Decision:** Noted architecturally in M2; implemented in M5 (`docs/decisions/graph-as-actor-v2.md`).
 `IdentifyGraph` assigns a UUID to `MeshGraph.ID`; `GraphRef` produces a `"meshgraph:<uuid>"`
 string that can appear in any `Source` or `Target` slice. Graph-reference strings travel
 via the same `[]string` fields as all other element names — no new field type was needed.
@@ -174,7 +174,7 @@ These exclusions were the shadow of M2's cut. Naming them made the subsequent mi
 
 ## Relation to prior decisions
 
-- **trace-schema-v1.md**: The `Observer` field on `Trace` is required, which
+- **trace-schema-v2.md**: The `Observer` field on `Trace` is required, which
   makes observer-position filtering possible. This was the correct decision.
   The schema's open-vocabulary `Tags` and optional `Mediation` fields mean
   future axes (tag filter, mediation filter) are available without schema

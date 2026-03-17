@@ -8,8 +8,8 @@ This note is intended as a frank review of the current state of MeshAnt after re
 - `meshant/loader/*`
 - `meshant/graph/*`
 - `meshant/cmd/meshant/main.go`
-- `docs/decisions/trace-schema-v1.md`
-- `docs/decisions/articulation-v1.md`
+- `docs/decisions/trace-schema-v2.md`
+- `docs/decisions/articulation-v2.md`
 - `docs/directions.md`
 
 It focuses especially on the questions and unease that have emerged around:

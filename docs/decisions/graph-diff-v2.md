@@ -191,4 +191,4 @@ in `diff.go`).
   `ToReasons` carry the same `ShadowReason` values produced by `Articulate`.
 - M3 Decision 4 (TimeWindow stored verbatim in Cut): `copyCut` preserves this guarantee
   across the diff boundary.
-- articulation-v1.md Decision 5 (graph-as-actor): resolved in M5. `GraphDiff` now carries `ID string`; `IdentifyDiff`/`DiffRef` make it a first-class actant. `DiffTrace` (M7) records the diffing act as a reflexive trace.
+- articulation-v2.md Decision 5 (graph-as-actor): resolved in M5. `GraphDiff` now carries `ID string`; `IdentifyDiff`/`DiffRef` make it a first-class actant. `DiffTrace` (M7) records the diffing act as a reflexive trace.

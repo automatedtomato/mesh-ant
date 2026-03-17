@@ -158,7 +158,7 @@ Documentation pass. Release tag comes after the quality gates (M9.6–M9.8).
   - Update "Run from source" section to mention the CLI binary alongside the demo
   - Remove the "Known gap — Principle 8 partially open" note (closed in M7-B)
 
-- `docs/decisions/cli-v1.md` (new) — 6 decisions:
+- `docs/decisions/cli-v2.md` (new) — 6 decisions:
   1. Stdlib `flag` only — no cobra/viper; zero new dependencies; consistent with project policy
   2. Subcommand dispatch via `os.Args[1]` string match — simplest approach for 4 commands
   3. `--observer` as repeatable flag (custom `stringSliceFlag`) — more explicit than comma-separated; handles observer names containing commas
@@ -347,7 +347,7 @@ git tag v1.0.0
 - [ ] README contains CLI usage examples for all 4 subcommands
 - [ ] README does not contain "Known gap — Principle 8" note
 - [ ] `docs/authoring-traces.md` exists and is ≤ 200 lines
-- [ ] `docs/decisions/cli-v1.md` exists
+- [ ] `docs/decisions/cli-v2.md` exists
 - [ ] `docs/CODEMAPS/meshant.md` updated with `cmd/meshant`
 - [ ] Docker image builds; `meshant` binary available inside container
 - [ ] `go vet ./...` and `staticcheck ./...` pass with no findings

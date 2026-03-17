@@ -7,16 +7,16 @@
 
 ## What the audit found
 
-Reading all decision records in sequence — from `trace-schema-v1.md` (M1) through
-`rearticulation-v1.md` (M12) — revealed two categories of drift:
+Reading all decision records in sequence — from `trace-schema-v2.md` (M1) through
+`rearticulation-v2.md` (M12) — revealed two categories of drift:
 
 1. **Deferred items that were resolved but not marked** — at least 15 items across
    6 documents were listed as open when the resolution had already landed in code.
 2. **Type signatures that diverged significantly from the final implementation** —
-   primarily in `translation-chain-v1.md`, where the chain traversal design was
+   primarily in `translation-chain-v2.md`, where the chain traversal design was
    substantially refactored before merge.
 
-The divergence in `translation-chain-v1.md` is the most instructive case. The original
+The divergence in `translation-chain-v2.md` is the most instructive case. The original
 design embedded a `ChainStep` inside `ChainBreak` (to carry the alternative edge in full),
 used a named `ChainBreakKind` type, and stored `Direction`, `Observer`, and `GraphID`
 separately on `TranslationChain`. The final implementation moved to `AtElement string` +
@@ -30,9 +30,9 @@ described the discarded design.
 
 ### 1. The shadow philosophy extended further than the code
 
-The chain's `branch-not-taken` break mechanism (Decision 6, translation-chain-v1.md)
+The chain's `branch-not-taken` break mechanism (Decision 6, translation-chain-v2.md)
 is explicitly modeled on the shadow element pattern from articulation (Decision 2,
-articulation-v1.md): *named absence is methodologically significant*. But the decision
+articulation-v2.md): *named absence is methodologically significant*. But the decision
 record never draws the conclusion fully: every `ChainBreak` is, in ANT terms, a shadow of
 the chain — the path that was present but not followed.
 
@@ -45,11 +45,11 @@ followed.
 
 ### 2. `ClassifyOptions.Criterion` is provenance, not a cut — a meaningful asymmetry
 
-From `graph-as-actor-v1.md` (Decision 3): the `Cut` struct is stored verbatim on
+From `graph-as-actor-v2.md` (Decision 3): the `Cut` struct is stored verbatim on
 `MeshGraph` because it situates the articulation. The equivalent in classification would
 be `ClassifyOptions.Criterion` situating the classification pass.
 
-The current design (Decision 9, `translation-chain-v1.md`) marks `Criterion` as
+The current design (Decision 9, `translation-chain-v2.md`) marks `Criterion` as
 "envelope metadata only — does not alter v1 step heuristics." This is epistemologically
 honest: the criterion declares the analyst's interpretive frame without retroactively
 changing what edges say. But it creates a productive tension: if the criterion names what
@@ -65,8 +65,8 @@ only. This would make the criterion analytically active rather than decorative.
 
 ### 3. The `GraphRef` + `TranslationChain.Cut` gap
 
-From `graph-as-actor-v1.md` (Decision 8): `MeshSummary.GraphRefs` collects
-graph-reference strings in encounter order. From `translation-chain-v1.md` (Decision 1):
+From `graph-as-actor-v2.md` (Decision 8): `MeshSummary.GraphRefs` collects
+graph-reference strings in encounter order. From `translation-chain-v2.md` (Decision 1):
 `TranslationChain.Cut` situates the chain within its articulation.
 
 But `TranslationChain` has no `ID` field. A chain cannot yet appear as an actant in traces
@@ -80,14 +80,14 @@ own vocabulary.
 `ChainRef(c TranslationChain) (string, error)` function would then allow chains to appear
 in `Source`/`Target` slices — consistent with generalised symmetry.
 
-The decision record (`translation-chain-v1.md`, "What M10.5 explicitly defers") already
+The decision record (`translation-chain-v2.md`, "What M10.5 explicitly defers") already
 names this as "chain-as-actor: a `TranslationChain` does not receive an ID and cannot
 appear in traces." The infrastructure from M5 is ready to extend.
 
 ### 4. `DerivedFrom` as the missing link between ingestion and articulation
 
-From `tracedraft-v1.md` (Decision 5): `DerivedFrom` links drafts in a derivation chain.
-From `rearticulation-v1.md`: `cmdRearticulate` builds skeleton critique drafts with
+From `tracedraft-v2.md` (Decision 5): `DerivedFrom` links drafts in a derivation chain.
+From `rearticulation-v2.md`: `cmdRearticulate` builds skeleton critique drafts with
 `DerivedFrom` set. The decision record explicitly frames re-articulation as a *second cut*
 on the extraction chain.
 
@@ -108,7 +108,7 @@ rather than an external pipeline that feeds data in.
 
 ### 5. The observer-position gap in the ingestion pipeline
 
-From `articulation-v1.md` (Decision 1): the observer position is the primary cut axis
+From `articulation-v2.md` (Decision 1): the observer position is the primary cut axis
 because it asks *who is doing the seeing*, not just *what is being selected*.
 
 `TraceDraft` has `ExtractedBy string` — who produced the draft. But the canonical `Trace`
@@ -125,8 +125,8 @@ articulation. This tension warrants a future decision record.
 
 ### 6. The "sorted alphabetically" decision and temporal meaning
 
-Multiple decision records (graph-diff-v1.md Decision 8, graph-as-actor-v1.md Decision 8,
-articulation-v1.md) choose alphabetical sort for stable test assertions and to avoid
+Multiple decision records (graph-diff-v2.md Decision 8, graph-as-actor-v2.md Decision 8,
+articulation-v2.md) choose alphabetical sort for stable test assertions and to avoid
 implying rank. But `MeshSummary.Mediations` and `GraphRefs` are encounter-order for
 explicit ANT reasons: "the first appearance marks when the actant entered the mesh."
 
@@ -160,7 +160,7 @@ decisions were made, not just what. The "explicitly defers" sections at the end 
 record are particularly valuable — they name what was not done and often forecast exactly
 what the next milestone will address.
 
-The `translation-chain-v1.md` record demonstrates the best practice: it documents not just
+The `translation-chain-v2.md` record demonstrates the best practice: it documents not just
 the accepted design but a significant design revision (the shift from embedded `ChainStep`
 in `ChainBreak` to plain `AtElement`+`Reason`). After the type signature corrections in
 this audit, the record is a reliable guide to the implementation.
