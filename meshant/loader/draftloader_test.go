@@ -328,3 +328,44 @@ func TestPrintDraftSummary_ShowsIntentionallyBlankCount(t *testing.T) {
 		t.Errorf("output missing intentionally_blank label; output:\n%s", out)
 	}
 }
+
+// --- WithCriterionRef ---
+
+func TestSummariseDrafts_WithCriterionRef_CountsCorrectly(t *testing.T) {
+	withRef := schema.TraceDraft{SourceSpan: "a", CriterionRef: "actor-stability-v1"}
+	withoutRef := schema.TraceDraft{SourceSpan: "b"}
+	alsoWithRef := schema.TraceDraft{SourceSpan: "c", CriterionRef: "actor-stability-v1"}
+
+	s := loader.SummariseDrafts([]schema.TraceDraft{withRef, withoutRef, alsoWithRef})
+	if s.WithCriterionRef != 2 {
+		t.Errorf("WithCriterionRef: got %d want 2", s.WithCriterionRef)
+	}
+}
+
+func TestSummariseDrafts_WithCriterionRef_ZeroWhenNoneSet(t *testing.T) {
+	s := loader.SummariseDrafts([]schema.TraceDraft{
+		{SourceSpan: "a"},
+		{SourceSpan: "b"},
+	})
+	if s.WithCriterionRef != 0 {
+		t.Errorf("WithCriterionRef: got %d want 0", s.WithCriterionRef)
+	}
+}
+
+func TestPrintDraftSummary_ShowsCriterionRefCount(t *testing.T) {
+	s := loader.DraftSummary{
+		Total:            3,
+		ByStage:          map[string]int{},
+		ByExtractedBy:    map[string]int{},
+		FieldFillRate:    map[string]int{"source_span": 3},
+		WithCriterionRef: 2,
+	}
+	var buf bytes.Buffer
+	if err := loader.PrintDraftSummary(&buf, s); err != nil {
+		t.Fatalf("PrintDraftSummary: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "criterion_ref") && !strings.Contains(out, "Self-situated") {
+		t.Errorf("output missing criterion_ref label; output:\n%s", out)
+	}
+}

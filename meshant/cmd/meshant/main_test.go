@@ -1910,6 +1910,62 @@ func TestCmdRearticulate_SkeletonHasIntentionallyBlank(t *testing.T) {
 	}
 }
 
+// TestCmdRearticulate_CriterionFileSetsCriterionRef verifies that --criterion-file
+// populates criterion_ref on every skeleton with the criterion's Name field.
+func TestCmdRearticulate_CriterionFileSetsCriterionRef(t *testing.T) {
+	// Write a minimal criterion file.
+	criterionJSON := `{"name":"actor-stability-v1","declaration":"Only juridical–scientific crossings count"}`
+	criterionPath := writeTempJSONForDraft(t, criterionJSON)
+
+	var buf bytes.Buffer
+	err := cmdRearticulate(&buf, []string{"--criterion-file", criterionPath, cveDraftsDatasetForRearticulate})
+	if err != nil {
+		t.Fatalf("cmdRearticulate() --criterion-file returned error: %v", err)
+	}
+
+	var skeletons []map[string]interface{}
+	if err := json.Unmarshal([]byte(buf.String()), &skeletons); err != nil {
+		t.Fatalf("parse skeleton JSON: %v", err)
+	}
+
+	for i, sk := range skeletons {
+		ref, _ := sk["criterion_ref"].(string)
+		if ref != "actor-stability-v1" {
+			t.Errorf("skeleton %d: criterion_ref = %q; want %q", i, ref, "actor-stability-v1")
+		}
+	}
+}
+
+// TestCmdRearticulate_CriterionFileAbsent_NoCriterionRef verifies that when
+// --criterion-file is not provided, criterion_ref is absent from skeletons.
+func TestCmdRearticulate_CriterionFileAbsent_NoCriterionRef(t *testing.T) {
+	var buf bytes.Buffer
+	if err := cmdRearticulate(&buf, []string{cveDraftsDatasetForRearticulate}); err != nil {
+		t.Fatalf("cmdRearticulate() returned error: %v", err)
+	}
+
+	var skeletons []map[string]interface{}
+	if err := json.Unmarshal([]byte(buf.String()), &skeletons); err != nil {
+		t.Fatalf("parse skeleton JSON: %v", err)
+	}
+
+	for i, sk := range skeletons {
+		if v, ok := sk["criterion_ref"]; ok && v != "" && v != nil {
+			t.Errorf("skeleton %d: criterion_ref should be absent; got %v", i, v)
+		}
+	}
+}
+
+// TestCmdRearticulate_CriterionFileBadPath verifies that a non-existent
+// --criterion-file path returns an error.
+func TestCmdRearticulate_CriterionFileBadPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdRearticulate(&buf, []string{"--criterion-file", "/nonexistent/criterion.json", cveDraftsDatasetForRearticulate})
+	if err == nil {
+		t.Fatal("expected error for bad criterion-file path, got nil")
+	}
+}
+
 // --- Group 15: cmdLineage ---
 
 

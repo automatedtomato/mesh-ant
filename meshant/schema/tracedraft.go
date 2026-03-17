@@ -91,6 +91,19 @@ type TraceDraft struct {
 	// into a structurally followable chain. Empty for root drafts.
 	DerivedFrom string `json:"derived_from,omitempty"`
 
+	// CriterionRef is the name of the EquivalenceCriterion under which this
+	// draft was produced or reviewed. Set by meshant rearticulate --criterion-file
+	// to record the interpretive frame that governed the critique pass.
+	//
+	// CriterionRef stores the criterion's Name string — a citation, not a copy.
+	// The criterion file remains the authoritative source; CriterionRef names it
+	// so that the skeleton is self-situated: you know not just that fields were
+	// left blank, but under what interpretive conditions.
+	//
+	// Empty means no criterion was declared. Does not affect Validate(),
+	// IsPromotable(), or Promote().
+	CriterionRef string `json:"criterion_ref,omitempty"`
+
 	// IntentionallyBlank lists the names of content fields that were
 	// deliberately left empty during a critique or review pass — not because
 	// information is missing, but because the analyst decided the field
