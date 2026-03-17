@@ -110,13 +110,16 @@ func PrintShadowSummary(w io.Writer, s ShadowSummary) error {
 		return writeLines(w, lines)
 	}
 
-	// Breakdown by reason.
+	// Breakdown by reason — iterate over all keys in ByReason so any future
+	// ShadowReason values appear automatically without a code change here.
 	lines = append(lines, "", "By exclusion reason:")
-	reasons := []string{"observer", "tag-filter", "time-window"}
-	for _, r := range reasons {
-		if n, ok := s.ByReason[r]; ok {
-			lines = append(lines, fmt.Sprintf("  %-20s %d", r, n))
-		}
+	reasonKeys := make([]string, 0, len(s.ByReason))
+	for r := range s.ByReason {
+		reasonKeys = append(reasonKeys, r)
+	}
+	sort.Strings(reasonKeys)
+	for _, r := range reasonKeys {
+		lines = append(lines, fmt.Sprintf("  %-20s %d", r, s.ByReason[r]))
 	}
 
 	// Observer coverage of the shadow: who sees what this cut cannot.
