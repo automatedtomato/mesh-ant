@@ -9,6 +9,7 @@
 // The string convention (defined authoritatively in the graph package) is:
 //   - "meshgraph:<uuid>" for an identified MeshGraph
 //   - "meshdiff:<uuid>"  for an identified GraphDiff
+//   - "meshchain:<uuid>" for an identified TranslationChain
 //
 // This file provides predicate functions that let any package inspect whether a
 // source/target string is a graph-reference, without importing the graph package
@@ -23,30 +24,33 @@ import "strings"
 // The authoritative definition (which also uses these literals to produce
 // reference strings) lives in the graph package.
 const (
-	graphRefPrefixGraph = "meshgraph:"
-	graphRefPrefixDiff  = "meshdiff:"
+	graphRefPrefixGraph  = "meshgraph:"
+	graphRefPrefixDiff   = "meshdiff:"
+	graphRefPrefixChain  = "meshchain:"
 )
 
 // parseGraphRef splits a string on its first colon and checks whether the
 // part before the colon is a known graph-reference kind. Returns (kind, id)
-// where kind is "meshgraph" or "meshdiff" and id is the portion after the colon.
-// Returns ("", "") if s is not a graph-reference.
+// where kind is "meshgraph", "meshdiff", or "meshchain" and id is the portion
+// after the colon. Returns ("", "") if s is not a graph-reference.
 //
 // Using strings.Cut avoids the paired HasPrefix+TrimPrefix pattern and ensures
-// that both kind and id are extracted in a single pass.
+// that both kind and id are extracted in a single pass. Adding a new prefix
+// requires editing only this one function.
 func parseGraphRef(s string) (kind, id string) {
 	before, after, ok := strings.Cut(s, ":")
 	if !ok {
 		return "", ""
 	}
-	if before != "meshgraph" && before != "meshdiff" {
+	if before != "meshgraph" && before != "meshdiff" && before != "meshchain" {
 		return "", ""
 	}
 	return before, after
 }
 
 // IsGraphRef reports whether s is a graph-reference string — i.e., whether it
-// begins with "meshgraph:" or "meshdiff:". It does not validate the UUID portion.
+// begins with "meshgraph:", "meshdiff:", or "meshchain:". It does not validate
+// the UUID portion.
 func IsGraphRef(s string) bool {
 	kind, _ := parseGraphRef(s)
 	return kind != ""
@@ -55,6 +59,7 @@ func IsGraphRef(s string) bool {
 // GraphRefKind returns the kind prefix of a graph-reference string:
 //   - "meshgraph" if s begins with "meshgraph:"
 //   - "meshdiff"  if s begins with "meshdiff:"
+//   - "meshchain" if s begins with "meshchain:"
 //   - ""          if s is not a graph-reference
 func GraphRefKind(s string) string {
 	kind, _ := parseGraphRef(s)

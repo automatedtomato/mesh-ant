@@ -152,3 +152,48 @@ func TestValidate_GraphRefInTarget_Valid(t *testing.T) {
 		t.Errorf("Validate() returned error for trace with graph-ref in Target: %v", err)
 	}
 }
+
+// --- meshchain: prefix ---
+
+// TestIsGraphRef_ChainRef_True verifies that IsGraphRef recognises a
+// meshchain: reference.
+func TestIsGraphRef_ChainRef_True(t *testing.T) {
+	s := "meshchain:aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01"
+	if !schema.IsGraphRef(s) {
+		t.Errorf("IsGraphRef(%q) = false; want true", s)
+	}
+}
+
+// TestGraphRefKind_ChainRef verifies that GraphRefKind returns "meshchain"
+// for a meshchain: reference.
+func TestGraphRefKind_ChainRef(t *testing.T) {
+	s := "meshchain:aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01"
+	if got := schema.GraphRefKind(s); got != "meshchain" {
+		t.Errorf("GraphRefKind(%q) = %q; want %q", s, got, "meshchain")
+	}
+}
+
+// TestGraphRefID_ChainRef verifies that GraphRefID extracts the UUID from
+// a meshchain: reference.
+func TestGraphRefID_ChainRef(t *testing.T) {
+	id := "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01"
+	s := "meshchain:" + id
+	if got := schema.GraphRefID(s); got != id {
+		t.Errorf("GraphRefID(%q) = %q; want %q", s, got, id)
+	}
+}
+
+// TestValidate_ChainRefInSource_Valid confirms that Validate() accepts a trace
+// whose Source contains a meshchain: reference string.
+func TestValidate_ChainRefInSource_Valid(t *testing.T) {
+	tr := schema.Trace{
+		ID:          "c3d4e5f6-f6a7-4b8c-9d0e-f1a2b3c4d5e6",
+		Timestamp:   time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC),
+		WhatChanged: "translation chain triggered policy review",
+		Source:      []string{"meshchain:aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee01"},
+		Observer:    "policy-agent/position-A",
+	}
+	if err := tr.Validate(); err != nil {
+		t.Errorf("Validate() returned error for trace with meshchain: in Source: %v", err)
+	}
+}
