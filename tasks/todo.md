@@ -53,7 +53,7 @@ articulation layer: a way to render a provisional graph from traces taken from a
 particular observer position. A graph is a cut — not a god's-eye view. Every cut names
 its shadow.
 
-**Full plan:** `tasks/plan_m2.md`
+**Full plan:** `tasks/done/plan_m2.md`
 
 ### Tasks
 
@@ -83,7 +83,7 @@ The goal of this milestone is to introduce temporal depth: a dataset that spans 
 days and a second cut axis (time-window) that lets an articulation ask not just "what did
 this observer see?" but "what did this observer see within this window?"
 
-**Full plan:** `tasks/plan_m3.md`
+**Full plan:** `tasks/done/plan_m3.md`
 
 ### Tasks
 
@@ -117,7 +117,7 @@ this observer see?" but "what did this observer see within this window?"
 Situated comparison of two articulations. A diff is not a neutral changelog; it records
 both positions it compares and what became visible or invisible between them.
 
-**Full plan:** `tasks/plan_m4.md`
+**Full plan:** `tasks/done/plan_m4.md`
 
 - [x] **M4.1** — `Diff()` + `GraphDiff`, `PersistedNode`, `ShadowShift`, `ShadowShiftKind` types; 47 unit tests (groups 10–15)
 - [x] **M4.2** — `PrintDiff()` + output tests
@@ -134,7 +134,7 @@ The observation apparatus enters the mesh it observes. A produced `MeshGraph` or
 `GraphDiff` can be assigned a stable identifier and appear as a `Source` or `Target`
 in subsequent traces. Reflexivity: the framework can observe its own action in the network.
 
-**Full plan:** `tasks/plan_m5.md`
+**Full plan:** `tasks/done/plan_m5.md`
 
 - [x] **M5.1 — Schema additions**
   - `IsGraphRef`, `GraphRefKind`, `GraphRefID` in `meshant/schema/graphref.go`
@@ -285,7 +285,7 @@ domain (validates generality beyond the evacuation scenario).
 
 Library + CLI form. The framework can be used without writing Go.
 
-**Full plan:** `tasks/plan_m9.md`
+**Full plan:** `tasks/done/plan_m9.md`
 
 ### Tasks
 
@@ -371,7 +371,7 @@ paths) rather than *across* graphs (comparing cuts). Two connected capabilities:
 FollowTranslation (chain traversal) and ClassifyChain (intermediary/mediator/
 translation judgment). Classification is cut-dependent, not intrinsic.
 
-**Full plan:** `tasks/plan_m10_5.md`
+**Full plan:** `tasks/done/plan_m10_5.md`
 
 ### Tasks
 
@@ -419,7 +419,7 @@ The missing cut axis: an explicit declaration of what counts as preserved,
 altered, or consequential across a passage. Layers 1–2 only; Layer 3
 (comparison function) deferred.
 
-**Full plan:** `tasks/plan_m10_5_plus.md`
+**Full plan:** `tasks/done/plan_m10_5_plus.md`
 
 ### Tasks
 
@@ -454,7 +454,7 @@ is external — `meshant draft` consumes LLM-produced extraction JSON. The extra
 (span → draft → critique → revision → canonical trace) is structurally followable from
 day one via `DerivedFrom` links.
 
-**Full plan:** `tasks/plan_m11.md`
+**Full plan:** `tasks/done/plan_m11.md`
 
 ### Tasks
 
@@ -499,7 +499,7 @@ day one via `DerivedFrom` links.
 Re-articulation as a first-class operation: given a TraceDraft, produce an alternative
 TraceDraft of the same SourceSpan, linked by DerivedFrom. A second cut, not a correction.
 
-**Full plan:** `tasks/plan_m12.md`
+**Full plan:** `tasks/done/plan_m12.md`
 **Parent issue:** #50
 
 ### Tasks
@@ -509,7 +509,7 @@ TraceDraft of the same SourceSpan, linked by DerivedFrom. A second cut, not a co
   - Reads drafts JSON → skeleton JSON: SourceSpan + DerivedFrom set, content fields blank, `extraction_stage:"reviewed"`
   - Flags: `--id <id>` (single draft), `--output <path>`
   - `data/examples/cve_critique_skeleton.json` — skeleton for all 14 CVE drafts
-  - `tasks/plan_m12.md` — full M12 plan
+  - `tasks/done/plan_m12.md` — full M12 plan
   - Group 14 tests in `main_test.go` (9 tests)
 
 - [x] **M12.2 — DerivedFrom lineage reader** — PR #57 (`53-m12-lineage`)
