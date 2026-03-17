@@ -186,9 +186,9 @@ These closures are deferred intentionally. As the project follows more traces an
 
 ## Relation to prior decisions
 
-- **trace-schema-v1.md:** The `Observer` field on `Trace` is required. M7 enforces this for reflexive traces: both functions error if observer is empty.
-- **graph-as-actor-v1.md (M5):** Graphs are identified as actors via `IdentifyGraph` and `IdentifyDiff`. M7 makes the graph's entry into the mesh explicit: `ArticulationTrace` and `DiffTrace` are the acts of recording.
-- **articulation-v1.md (M2):** Every articulation names what it excludes. M7 extends this: reflexive traces include the Cut parameters in their `whatChanged` field, making the position explicit.
+- **trace-schema-v2.md:** The `Observer` field on `Trace` is required. M7 enforces this for reflexive traces: both functions error if observer is empty.
+- **graph-as-actor-v2.md (M5):** Graphs are identified as actors via `IdentifyGraph` and `IdentifyDiff`. M7 makes the graph's entry into the mesh explicit: `ArticulationTrace` and `DiffTrace` are the acts of recording.
+- **articulation-v2.md (M2):** Every articulation names what it excludes. M7 extends this: reflexive traces include the Cut parameters in their `whatChanged` field, making the position explicit.
 - **Principle 8 (designer inside the mesh):** M7 embodies this fully. The observation apparatus (the caller performing the articulation) is named as the observer in the reflexive trace. The cut and its shadow are recorded.
 
 ---

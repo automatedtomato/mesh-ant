@@ -4,7 +4,7 @@
 **Status:** Active
 **Milestone:** M12 — Anti-ontology critique pass
 **Packages:** `meshant/cmd/meshant` (cmdRearticulate, cmdLineage)
-**Related:** `docs/decisions/tracedraft-v1.md`, `tasks/plan_m12.md`
+**Related:** `docs/decisions/tracedraft-v2.md`, `tasks/plan_m12.md`
 
 ---
 
@@ -33,7 +33,7 @@ The CVE dataset contains two seeded over-actorized records:
 - E14 (`d0cve001-0000-4000-8000-00000000000e`): treats "cve-2026-44228" as an agent
 
 These are structurally indistinguishable from well-drafted records (Decision 9 in
-`tracedraft-v1.md`). M12 introduces the mechanism for producing an alternative reading
+`tracedraft-v2.md`). M12 introduces the mechanism for producing an alternative reading
 of the same source span, linked by DerivedFrom.
 
 ---
@@ -80,7 +80,7 @@ the filled skeleton.
 
 Blank content fields are correct output. They are honest abstentions: the scaffold records
 that the critiquing agent has not yet provided an interpretation, not that interpretation
-is missing or unknown. This mirrors Decision 3 in `tracedraft-v1.md`: "Empty is
+is missing or unknown. This mirrors Decision 3 in `tracedraft-v2.md`: "Empty is
 structurally enforced."
 
 The test `TestCmdRearticulate_SkeletonRoundTrip` verifies that skeleton output can be
@@ -117,7 +117,7 @@ more refined), or a correction chain (the child is not a fix of the parent).
 Both the original extraction and the critique share the same `source_span`. The DerivedFrom
 link makes their relationship followable without implying a direction of improvement.
 
-This follows Decision 5 in `tracedraft-v1.md`: "DerivedFrom is named as a positional link,
+This follows Decision 5 in `tracedraft-v2.md`: "DerivedFrom is named as a positional link,
 not a genealogical one."
 
 ---
@@ -131,7 +131,7 @@ a quality claim about the critique.
 A "reviewed" draft may be wrong, partial, or itself over-actorized. It is "reviewed" in
 the sense of "produced at the review step," not "authoritative" or "approved."
 
-This follows Decision 7 in `tracedraft-v1.md`: "ExtractionStage names positions, not
+This follows Decision 7 in `tracedraft-v2.md`: "ExtractionStage names positions, not
 progress." The framework does not enforce movement between stages, and "reviewed" does not
 imply a higher quality than "span-harvest" or "weak-draft."
 
@@ -162,7 +162,7 @@ A human reviewer or a different LLM pass might produce different critique drafts
 same spans. That is expected. E3 and E14 are not ground truth for what critique should
 look like; they are one instance of what critique can look like.
 
-Their seeded over-actorization (Decision 9 in `tracedraft-v1.md`) was intentional: they
+Their seeded over-actorization (Decision 9 in `tracedraft-v2.md`) was intentional: they
 were placed in the dataset to be the targets of critique demonstration. They are not
 evidence that the framework failed to catch them — they are evidence that the framework
 preserves them for deliberate analytical engagement.
@@ -173,7 +173,7 @@ preserves them for deliberate analytical engagement.
 
 - **Automated critique**: the critiquing agent is always external (human or LLM via file)
 - **Live LLM calls**: the file-as-boundary from M11 is preserved (Decision 4 in
-  `tracedraft-v1.md`)
+  `tracedraft-v2.md`)
 - **Criterion-aware critique**: EquivalenceCriterion from M10.5+ is not wired into the
   critique pass — this is a future milestone
 - **Structural distinction between original and critique**: both are `TraceDraft` records;
@@ -183,7 +183,7 @@ preserves them for deliberate analytical engagement.
 
 ## Related
 
-- `docs/decisions/tracedraft-v1.md` — Decision 2 (SourceSpan), Decision 5 (DerivedFrom),
+- `docs/decisions/tracedraft-v2.md` — Decision 2 (SourceSpan), Decision 5 (DerivedFrom),
   Decision 7 (ExtractionStage), Decision 9 (over-actorized by design)
 - `data/prompts/critique_pass.md` — extraction contract for the critique step
 - `data/examples/cve_critique_skeleton.json` — skeleton output for all CVE drafts

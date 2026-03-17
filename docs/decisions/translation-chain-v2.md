@@ -17,7 +17,7 @@
 6. **Alternatives recorded as `branch-not-taken` breaks (consistent with shadow philosophy)**
 7. **Cycle detection records closing step before adding break (asymmetry documented)**
 8. **Classification uses v1 heuristics; acknowledged as outsourcing judgment to trace author**
-9. **`ClassifyOptions{}` is empty struct designed as extension point for future equivalence criterion**
+9. **`ClassifyOptions` has `Criterion EquivalenceCriterion` field (added M10.5+); zero value preserves v1 behaviour**
 10. **Intermediary is NOT a new Trace field; it emerges as analytical judgment at chain level**
 11. **CLI `follow` subcommand with --observer, --tag, --from, --to, --element, --direction, --depth, --format flags**
 12. **Three new files: chain.go, classify.go, chain_print.go**
@@ -54,25 +54,31 @@ func FollowTranslation(g MeshGraph, opts FollowOptions) TranslationChain
 
 ```go
 type StepClassification struct {
-    Kind        StepKind  // Intermediary, Mediator, Translation
-    Rationale   string    // Why this classification
+    StepIndex int      // index into TranslationChain.Steps
+    Kind      StepKind // intermediary, mediator, or translation
+    Reason    string   // human-readable justification (edge-driven, not criterion-driven)
 }
 
 type StepKind string
 const (
-    StepKindIntermediary StepKind = "intermediary"  // no mediation
-    StepKindMediator     StepKind = "mediator"      // mediation present
-    StepKindTranslation  StepKind = "translation"   // mediation + "translation" tag
+    StepIntermediary StepKind = "intermediary"  // no mediation observed
+    StepMediator     StepKind = "mediator"      // mediation present
+    StepTranslation  StepKind = "translation"   // mediation + "translation" tag
 )
 ```
 
 Each step in a chain receives a classification derived from heuristics:
 
-- **Intermediary** (`StepKindIntermediary`): edge has no `Mediation` field (or empty). The source and target are connected directly without transformation.
-- **Mediator** (`StepKindMediator`): edge has a `Mediation` value. The edge transforms the source into something sent to the target.
-- **Translation** (`StepKindTranslation`): edge has both a `Mediation` value AND the trace is tagged `TagTranslation`. Translation is a special, marked case of mediation.
+- **Intermediary** (`StepIntermediary`): edge has no `Mediation` field (or empty). The source and target are connected directly without recorded transformation.
+- **Mediator** (`StepMediator`): edge has a `Mediation` value. The edge transforms the source into something sent to the target.
+- **Translation** (`StepTranslation`): edge has both a `Mediation` value AND the trace is tagged `TagTranslation`. Translation is a special, marked case of mediation.
 
-Rationale strings explain the classification: `"no mediation"`, `"mediation present"`, `"mediation + translation tag"`.
+Reason strings explain the classification (edge-driven, not criterion-driven — see M10.5+ / Decision 9 below):
+- `"no mediation observed — action relayed without recorded transformation"`
+- `"mediation present — action transformed in passage"`
+- `"mediation present with translation tag — regime boundary crossed"`
+
+*Note: the field was named `Rationale` in the design; the implementation uses `Reason`.*
 
 **Why use Author judgment?** MeshAnt does not define what counts as mediation; the trace author does, by whether they wrote a `Mediation` value and applied tags. We outsource judgment to the observer who recorded the traces. This is epistemologically honest: the classification reflects *what the author said made a difference*, not an imposed analytical framework.
 
@@ -80,27 +86,22 @@ Rationale strings explain the classification: `"no mediation"`, `"mediation pres
 
 ```go
 type TranslationChain struct {
-    Element      string         // starting element
-    Direction    Direction      // "forward" (target) or "backward" (source)
-    Steps        []ChainStep    // path from start to terminal
-    Breaks       []ChainBreak   // alternative edges, cycles, depth limit
-    Observer     string         // observer position of the graph this chain came from
-    GraphID      string         // ID of the graph (empty if unidentified)
+    StartElement string       // node where chain was entered
+    Steps        []ChainStep  // ordered sequence of edge traversals
+    Breaks       []ChainBreak // points where chain stopped or alternatives exist
+    Cut          Cut          // articulation parameters — chain is situated within this cut
 }
 
 type ClassifiedChain struct {
-    Chain           TranslationChain         // original chain
-    ClassifiedSteps []ClassifiedStep        // each step with its classification
-    StepCount       int                     // length of classified path
-}
-
-type ClassifiedStep struct {
-    Step           ChainStep
-    Classification StepClassification
+    Chain           TranslationChain      // original chain
+    Classifications []StepClassification  // one entry per step, same order as Chain.Steps
+    Criterion       EquivalenceCriterion  // envelope metadata only; does not alter v1 heuristics
 }
 
 func ClassifyChain(chain TranslationChain, opts ClassifyOptions) ClassifiedChain
 ```
+
+*Note: The design used `ClassifiedSteps []ClassifiedStep` with a `StepCount int` field. The implementation replaced these with `Classifications []StepClassification` (direct classification slice, no wrapper type) and dropped `StepCount`. `TranslationChain` dropped `Direction`, `Observer`, `GraphID` — direction is not stored post-traversal; the full `Cut` replaces the bare `Observer string` and `GraphID string` fields.*
 
 `ClassifyChain` takes a `TranslationChain` (the raw path) and applies heuristic classification to each step. Returns a `ClassifiedChain` that preserves the original chain and adds a parallel `[]ClassifiedStep` slice with classifications.
 
@@ -115,17 +116,20 @@ At each step, if a node has 2+ outgoing edges:
 
 ```go
 type ChainBreak struct {
-    Step    ChainStep   // the alternative edge that was not followed
-    Kind    ChainBreakKind
+    AtElement string // node where the break occurred
+    Reason    string // why the chain stopped or why an alternative was not followed
 }
-
-type ChainBreakKind string
-const (
-    BranchNotTaken  ChainBreakKind = "branch-not-taken"
-    DepthExceeded   ChainBreakKind = "depth-exceeded"
-    CycleDetected   ChainBreakKind = "cycle-detected"
-)
 ```
+
+Break reason values (plain strings, not a named type):
+- `"element-not-in-graph"` — start element does not exist in the graph
+- `"no-outgoing-edges"` — no edges leave this node (forward direction)
+- `"no-incoming-edges"` — no edges enter this node (backward direction)
+- `"depth-limit"` — `MaxDepth` reached
+- `"cycle-detected"` — chain would revisit an already-visited node; the cycle-closing step IS recorded in `Steps`
+- `"branch-not-taken"` — an alternative edge was available but not followed
+
+*Note: The design used `Kind ChainBreakKind` (named type with constants) and embedded a `Step ChainStep` to record the alternative edge. The implementation replaced both with plain `AtElement string` and `Reason string`. The alternative edge is no longer embedded in the break record; the node name is sufficient to locate the branching point.*
 
 This matches the shadow philosophy: alternatives exist and are named; a choice was made and is recorded. The chain is not pretending to be the only possible path — it is being transparent about what it excluded.
 
@@ -178,12 +182,14 @@ These are *not* universal definitions of what makes something a mediator. They a
 ### 9. `ClassifyOptions{}` is empty struct designed as extension point
 
 ```go
-type ClassifyOptions struct{}
+type ClassifyOptions struct {
+    Criterion EquivalenceCriterion // interpretive declaration; stored on ClassifiedChain as provenance
+}
 
 func ClassifyChain(chain TranslationChain, opts ClassifyOptions) ClassifiedChain
 ```
 
-`ClassifyOptions` is an empty struct in v1. It exists to signal that classification will become parameterized in future versions (e.g., with an equivalence criterion, a custom step-kind taxonomy, or mediation-content filters). The function signature is future-proof.
+`ClassifyOptions` was originally designed as an empty struct — an explicit extension point for future parameterization. In M10.5+, `EquivalenceCriterion` was added as the first field. **Zero value is always safe**: empty `ClassifyOptions{}` preserves v1 behaviour for all existing callers. The `Criterion` is stored on `ClassifiedChain` as envelope metadata only — it does NOT alter the v1 step heuristics (design rule C1). Step `Reason` strings remain purely edge-driven.
 
 ### 10. Intermediary is NOT a new Trace field; it emerges as analytical judgment at chain level
 
@@ -233,43 +239,34 @@ Keeping chain logic separate from articulation/diff logic matches the existing p
 ```go
 type Direction string
 const (
-    DirectionForward  Direction = "forward"  // follow edges as target
-    DirectionBackward Direction = "backward" // follow edges as source
+    DirectionForward  Direction = "forward"  // follow edges from source to target
+    DirectionBackward Direction = "backward" // follow edges from target to source
 )
 
+type FollowOptions struct {
+    Direction Direction // zero value means forward
+    MaxDepth  int       // 0 = unlimited, >0 = max steps
+}
+
 type ChainStep struct {
-    Step       int       // 0-indexed position in chain
-    Edge       Edge      // the trace that forms this step
-    TargetNode string    // element name we arrived at
+    Edge           Edge   // graph edge traversed in this step
+    ElementExited  string // node the chain was at before this step
+    ElementEntered string // node the chain arrived at via this edge
 }
 
 type ChainBreak struct {
-    Step ChainStep  // the alternative edge
-    Kind ChainBreakKind
+    AtElement string `json:"at_element"` // node where the break occurred
+    Reason    string `json:"reason"`     // plain string; see known values in Decision 4
 }
-
-type ChainBreakKind string
-const (
-    BranchNotTaken  ChainBreakKind = "branch-not-taken"
-    DepthExceeded   ChainBreakKind = "depth-exceeded"
-    CycleDetected   ChainBreakKind = "cycle-detected"
-)
 
 type TranslationChain struct {
-    Element   string      // starting element
-    Direction Direction   // "forward" or "backward"
-    Steps     []ChainStep
-    Breaks    []ChainBreak
-    Observer  string      // observer position of the graph
-    GraphID   string      // ID of the graph (empty if unidentified)
+    StartElement string       // node where chain was entered
+    Steps        []ChainStep  // ordered sequence of edge traversals
+    Breaks       []ChainBreak // points where chain stopped or alternatives exist
+    Cut          Cut          // articulation parameters — chain is self-situated
 }
 
-type FollowOptions struct {
-    Direction Direction  // forward or backward
-    DepthLimit int       // 0 = no limit, >0 = max steps
-}
-
-func FollowTranslation(g MeshGraph, element string, opts FollowOptions) TranslationChain
+func FollowTranslation(g MeshGraph, from string, opts FollowOptions) TranslationChain
 ```
 
 ### In meshant/graph/classify.go
@@ -277,28 +274,26 @@ func FollowTranslation(g MeshGraph, element string, opts FollowOptions) Translat
 ```go
 type StepKind string
 const (
-    StepKindIntermediary StepKind = "intermediary"
-    StepKindMediator     StepKind = "mediator"
-    StepKindTranslation  StepKind = "translation"
+    StepIntermediary StepKind = "intermediary" // no mediation observed
+    StepMediator     StepKind = "mediator"     // mediation present
+    StepTranslation  StepKind = "translation"  // mediation + "translation" tag
 )
 
 type StepClassification struct {
-    Kind      StepKind
-    Rationale string
-}
-
-type ClassifiedStep struct {
-    Step           ChainStep
-    Classification StepClassification
+    StepIndex int      `json:"step_index"` // index into TranslationChain.Steps
+    Kind      StepKind `json:"kind"`
+    Reason    string   `json:"reason"` // human-readable; edge-driven, always non-empty
 }
 
 type ClassifiedChain struct {
-    Chain           TranslationChain
-    ClassifiedSteps []ClassifiedStep
-    StepCount       int
+    Chain           TranslationChain     // original chain
+    Classifications []StepClassification // one entry per step, same order as Chain.Steps
+    Criterion       EquivalenceCriterion // envelope metadata; does not alter v1 heuristics
 }
 
-type ClassifyOptions struct{}
+type ClassifyOptions struct {
+    Criterion EquivalenceCriterion // stored on ClassifiedChain as provenance; zero value safe
+}
 
 func ClassifyChain(chain TranslationChain, opts ClassifyOptions) ClassifiedChain
 ```

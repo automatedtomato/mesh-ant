@@ -172,7 +172,7 @@ In `meshant/cmd/meshant/main_test.go`
 
 ### Decision record
 
-**File:** `docs/decisions/translation-chain-v1.md` — 10 decisions
+**File:** `docs/decisions/translation-chain-v2.md` — 10 decisions
 
 ### Codemap update
 

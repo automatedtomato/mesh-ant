@@ -374,7 +374,7 @@ is not a claim that humans and sensors are the same. It is a methodological rule
 the human/non-human distinction into your analytical apparatus before you have followed the
 traces.
 
-See: [`docs/decisions/graph-as-actor-v1.md`](decisions/graph-as-actor-v1.md) — Decision 2
+See: [`docs/decisions/graph-as-actor-v2.md`](decisions/graph-as-actor-v2.md) — Decision 2
 
 Related: [Actant](#actant), [Graph-as-actor](#graph-as-actor)
 

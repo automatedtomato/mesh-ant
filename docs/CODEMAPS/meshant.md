@@ -470,19 +470,19 @@ cmd/demo/
 
 ## Related Decision Records and Guides
 
-- `docs/decisions/trace-schema-v1.md` — core Trace type rationale
-- `docs/decisions/articulation-v1.md` — observer position and shadow design
+- `docs/decisions/trace-schema-v2.md` — core Trace type rationale
+- `docs/decisions/articulation-v2.md` — observer position and shadow design
 - `docs/decisions/time-window-v1.md` — temporal filtering
-- `docs/decisions/graph-diff-v1.md` — diff computation and shadow shifts
-- `docs/decisions/graph-as-actor-v1.md` — identified graphs as actants
+- `docs/decisions/graph-diff-v2.md` — diff computation and shadow shifts
+- `docs/decisions/graph-as-actor-v2.md` — identified graphs as actants
 - `docs/decisions/m7-serialisation-reflexivity-v1.md` — TimeWindow JSON codec and reflexive tracing
 - `docs/decisions/structured-export-v1.md` — graph export to JSON, DOT, Mermaid formats
-- `docs/decisions/cli-v1.md` — CLI design decisions (M9)
+- `docs/decisions/cli-v2.md` — CLI design decisions (M9)
 - `docs/decisions/m10-tag-filter-diff-export-cli-v1.md` — Tag-filter axis, diff visual export, CLI integration (M10)
-- `docs/decisions/translation-chain-v1.md` — Translation chain traversal, classification heuristics, first-match branching (M10.5)
+- `docs/decisions/translation-chain-v2.md` — Translation chain traversal, classification heuristics, first-match branching (M10.5)
 - `docs/decisions/equivalence-criterion-v1.md` — Equivalence criterion design, three-layer model, v1 implicit criterion, second-order shadow (M10.5+)
-- `docs/decisions/tracedraft-v1.md` — TraceDraft design, ingestion pipeline as analytical object, source span as ground truth, promotion criterion, provenance chain (M11)
-- `docs/decisions/rearticulation-v1.md` — Re-articulation as cut not correction, SourceSpan invariant, blank scaffold as correct output, DerivedFrom positional vocabulary, cmdLineage as first-class CLI output, E3/E14 as demonstration material (M12)
+- `docs/decisions/tracedraft-v2.md` — TraceDraft design, ingestion pipeline as analytical object, source span as ground truth, promotion criterion, provenance chain (M11)
+- `docs/decisions/rearticulation-v2.md` — Re-articulation as cut not correction, SourceSpan invariant, blank scaffold as correct output, DerivedFrom positional vocabulary, cmdLineage as first-class CLI output, E3/E14 as demonstration material (M12)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 

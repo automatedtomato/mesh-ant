@@ -3,7 +3,7 @@
 **Date**: 2026-03-16
 **Status**: Confirmed — follows from M11 (TraceDraft + provenance-first ingestion) and brainstorm session 2026-03-16
 **Parent issue**: #50
-**Source**: `docs/tmp/brainstorm_next_2026-03-16.md`, `docs/decisions/tracedraft-v1.md`
+**Source**: `docs/tmp/brainstorm_next_2026-03-16.md`, `docs/decisions/tracedraft-v2.md`
 
 ---
 
@@ -16,7 +16,7 @@ stable actors, intentions, root causes, causal chains — enters unchallenged.
 
 The CVE dataset already contains two seeded over-actorized records (E3: "attacker", E14:
 "cve-2026-44228"). These are structurally indistinguishable from well-drafted records by
-design (Decision 9 in `tracedraft-v1.md`). What is missing is a mechanism to *critically
+design (Decision 9 in `tracedraft-v2.md`). What is missing is a mechanism to *critically
 re-examine* them — not to correct them, but to produce an alternative reading of the same
 source span that is equally provenance-bearing and equally provisional.
 
@@ -43,7 +43,7 @@ provenance-bearing.
 ## Non-goals
 
 - Automated critique judgment or scoring
-- Live LLM calls (the boundary remains a file on disk, per tracedraft-v1.md Decision 4)
+- Live LLM calls (the boundary remains a file on disk, per tracedraft-v2.md Decision 4)
 - New TraceDraft fields (the existing schema fully supports this)
 - Structural distinction between "good" and "over-actorized" drafts (Decision 9)
 - Finalising which observer positions should produce critique drafts (future: M12.5+)
@@ -61,7 +61,7 @@ are analytical objects with equal standing in the DerivedFrom chain.
 ### P2: SourceSpan is the invariant
 
 A re-articulation must preserve the SourceSpan verbatim. This is the ground truth anchor
-(tracedraft-v1.md Decision 2). Everything else — WhatChanged, Source, Target, Mediation,
+(tracedraft-v2.md Decision 2). Everything else — WhatChanged, Source, Target, Mediation,
 Observer — is the critiquing agent's interpretation and may differ freely.
 
 ### P3: The scaffold's job is to set DerivedFrom, not to pre-fill content
@@ -69,7 +69,7 @@ Observer — is the critiquing agent's interpretation and may differ freely.
 `meshant rearticulate` outputs a skeleton: SourceSpan copied, ID blank (to be assigned
 by `meshant draft`), DerivedFrom set to the original's ID, content fields blank. The
 critiquing agent fills in the interpretation. Blank content fields are correct output for
-the scaffold — they are honest abstentions, not missing data (tracedraft-v1.md Decision 3).
+the scaffold — they are honest abstentions, not missing data (tracedraft-v2.md Decision 3).
 
 ### P4: The critique prompt template is the methodological constraint
 
@@ -198,7 +198,7 @@ the living proof-of-concept for this template.
 
 ### Phase 4 — Decision record + codemap (M12.4, issue TBD)
 
-**File**: `docs/decisions/rearticulation-v1.md`
+**File**: `docs/decisions/rearticulation-v2.md`
 
 Decisions to record:
 1. Re-articulation is a cut, not a correction (P1)
@@ -279,7 +279,7 @@ Total: moderate scope, high methodological weight.
 
 ## Related
 
-- `docs/decisions/tracedraft-v1.md` — Decision 2 (SourceSpan as ground truth), Decision 5
+- `docs/decisions/tracedraft-v2.md` — Decision 2 (SourceSpan as ground truth), Decision 5
   (DerivedFrom chain), Decision 9 (over-actorized by design)
 - `docs/directions.md` — Layer 1 work, ingestion critique before widening the mouth
 - `data/examples/cve_response_extraction.json` — E3, E14 (seeded re-articulation targets)

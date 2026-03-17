@@ -43,18 +43,24 @@ The primary content of the trace. Required because a trace without a description
 of the difference it records is not a trace — it is an empty marker. No length
 constraint is imposed; the schema does not police how much or how little is said.
 
-### `source` (string, optional)
+### `source` ([]string, optional)
 
-Names what produced this trace. Left as a plain `string` — not a typed `Actor`
-struct — because the schema must not decide in advance what counts as an actor.
-A source could be a human, a rule, a queue, a sensor, a threshold, a form, or
-anything else that redirects, amplifies, blocks, or transforms action. Optional
-because attribution is sometimes genuinely unknown or unattributable.
+Names what produced this trace. A `[]string` slice — not a typed `Actor` struct —
+because the schema must not decide in advance what counts as an actor. A source
+could be a human, a rule, a queue, a sensor, a threshold, a form, or anything else
+that redirects, amplifies, blocks, or transforms action. A slice rather than a single
+string allows heterogeneous assemblages as co-producers of a trace. Optional because
+attribution is sometimes genuinely unknown or unattributable.
 
-### `target` (string, optional)
+*Note: this was listed as `string` in the v1 draft ("Whether `source` and `target`
+should become `[]string`"). The decision was made during M2 implementation — the
+multi-element dataset revealed that single-string source was too restrictive.*
 
-Names what was affected. Same openness as `source`. Optional because effects are
-sometimes diffuse, deferred, or not yet observable at the moment of trace capture.
+### `target` ([]string, optional)
+
+Names what was affected. Same openness and slice rationale as `source`. Optional
+because effects are sometimes diffuse, deferred, or not yet observable at the moment
+of trace capture.
 
 ### `mediation` (string, optional)
 
@@ -147,8 +153,7 @@ categories.
 - How traces relate to each other (chains, graphs, temporal sequences).
 - What counts as a "valid" source or target string.
 - Whether `observer` should itself become a structured type.
-- Whether `source` and `target` should become `[]string` to accommodate
-  heterogeneous assemblages as producers or targets of a trace.
+- ~~Whether `source` and `target` should become `[]string`~~ — resolved in M2: both are `[]string`.
 - What happens when the same event is traced from multiple observer positions.
 
 ---

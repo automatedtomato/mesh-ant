@@ -52,7 +52,7 @@ The implementation cost is minimal (wraps `loader.Load` which already validates 
 
 ---
 
-## Decision 5 — All output to stdout; no `--output` file flag
+## Decision 5 — All output to stdout; no `--output` file flag *(reversed in M10)*
 
 Every subcommand writes to stdout. File redirection is left to the shell: `meshant articulate ... > graph.dot`.
 
@@ -61,9 +61,15 @@ adding `--output` would duplicate that capability and require handling file crea
 and error reporting in every subcommand. Keeping all output on stdout also makes the
 functions easy to test without touching the filesystem.
 
+**Reversed in M10**: `--output <file>` flag added to `articulate`, `diff`, and `follow`.
+Rationale for reversal: users working with VS Code Graphviz/Mermaid extensions need files
+they can open directly; shell redirection loses the confirmation message. The implementation
+uses `outputWriter(w, outputPath)` + `defer f.Close()` + `confirmOutput(w, outputPath)`,
+keeping the testable structure unchanged (tests still pass a `bytes.Buffer` as `w`).
+
 ---
 
-## Decision 6 — `diff --format` restricted to `text|json`
+## Decision 6 — `diff --format` restricted to `text|json` *(reversed in M10)*
 
 `meshant articulate` supports four output formats: text, json, dot, mermaid.
 `meshant diff` supports only text and json.
@@ -73,3 +79,21 @@ rendering two cuts side by side with delta annotations — a non-trivial layout 
 deferred since M8 (see `docs/decisions/structured-export-v1.md`, "What M8 does not close").
 Requesting `--format dot` or `--format mermaid` on `diff` returns a clear error:
 `"diff: --format %q not supported (text|json only)"`.
+
+**Reversed in M10**: `PrintDiffDOT` and `PrintDiffMermaid` implemented in M10 (`export.go`).
+`meshant diff` now supports all four formats. Visual conventions: added=green/bold,
+removed=red/dashed, shadow shifts in dedicated subgraph. See `docs/decisions/m10-tag-filter-diff-export-cli-v1.md` Decision 3.
+
+---
+
+## M9 scope note
+
+The four subcommands at v1.0.0: `summarize`, `validate`, `articulate`, `diff`.
+
+Subsequent milestones added:
+- **M10**: `--tag`, `--output`, `--format dot|mermaid` on `diff` (no new subcommands)
+- **M10.5**: `follow` subcommand (`--element`, `--direction`, `--depth`, `--criterion-file`)
+- **M11**: `draft`, `promote` subcommands (TraceDraft ingestion pipeline)
+- **M12**: `rearticulate`, `lineage` subcommands (re-articulation as second cut)
+
+Total at M12: 9 subcommands. The `run()` dispatcher switch remains the routing mechanism; no CLI framework has been introduced.
