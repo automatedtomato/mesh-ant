@@ -64,6 +64,12 @@ type DraftStepClassification struct {
 // the draft with ID from. It returns the drafts in derivation order — the root
 // draft first, then each successive derivation.
 //
+// When a parent has more than one child (a fork in the derivation tree),
+// FollowDraftChain follows the first child by encounter order in the drafts
+// slice. Sibling branches are not traversed. The result is always a single
+// linear path, not a tree. Callers that need the full tree should use cmdLineage
+// or build their own traversal from the DerivedFrom links.
+//
 // Cycle detection is performed via a visited set: if a draft's DerivedFrom
 // points to an already-visited ID the traversal stops (the cycle-closing draft
 // is NOT included, consistent with the traversal stopping before re-entry).

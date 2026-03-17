@@ -139,11 +139,30 @@ go build -o meshant ./meshant/cmd/meshant
 
 ### Commands
 
+**Trace analysis**
+
 ```
 meshant summarize   traces.json
 meshant validate    traces.json
-meshant articulate  traces.json --observer <pos> [--from RFC3339] [--to RFC3339] [--format text|json|dot|mermaid]
-meshant diff        traces.json --observer-a <pos> --observer-b <pos> [--from-a ...] [--to-a ...] [--from-b ...] [--to-b ...] [--format text|json]
+meshant articulate  --observer <pos> [--tag <t>] [--from RFC3339] [--to RFC3339] [--format text|json|dot|mermaid] [--output <file>] traces.json
+meshant diff        --observer-a <pos> --observer-b <pos> [per-side --tag/--from/--to] [--format text|json|dot|mermaid] [--output <file>] traces.json
+meshant follow      --observer <pos> --element <name> [--direction forward|backward] [--depth N] [--criterion-file <path>] [--format text|json] traces.json
+```
+
+**Shadow and gap analysis**
+
+```
+meshant shadow      --observer <pos> [--tag <t>] [--from RFC3339] [--to RFC3339] [--output <file>] traces.json
+meshant gaps        --observer-a <pos> --observer-b <pos> [per-side --tag/--from/--to] [--output <file>] traces.json
+```
+
+**Ingestion pipeline**
+
+```
+meshant draft       [--source-doc <ref>] [--extracted-by <label>] [--stage <stage>] [--output <file>] extraction.json
+meshant promote     [--output <file>] drafts.json
+meshant rearticulate [--id <id>] [--criterion-file <path>] [--output <file>] drafts.json
+meshant lineage     [--id <id>] [--format text|json] drafts.json
 ```
 
 ### Example
@@ -162,8 +181,21 @@ meshant diff data/examples/evacuation_order.json \
   --observer-a meteorological-analyst --from-a 2026-04-14T00:00:00Z --to-a 2026-04-14T23:59:59Z \
   --observer-b local-mayor           --from-b 2026-04-16T00:00:00Z --to-b 2026-04-16T23:59:59Z
 
+# Show what is shadowed from the meteorological analyst's position
+meshant shadow data/examples/evacuation_order.json \
+  --observer meteorological-analyst
+
+# Compare what each observer can and cannot see — neither is authoritative
+meshant gaps data/examples/evacuation_order.json \
+  --observer-a meteorological-analyst \
+  --observer-b local-mayor
+
 # Export as Graphviz DOT
 meshant articulate data/examples/evacuation_order.json \
   --observer meteorological-analyst --format dot > graph.dot
+
+# Follow a translation chain through the graph
+meshant follow data/examples/evacuation_order.json \
+  --observer meteorological-analyst --element evacuation-order
 ```
 

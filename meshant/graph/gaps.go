@@ -134,10 +134,5 @@ func PrintObserverGap(w io.Writer, gap ObserverGap) error {
 		"Note: neither position is authoritative. Each sees from where it stands.",
 	)
 
-	for _, line := range lines {
-		if _, err := fmt.Fprintln(w, line); err != nil {
-			return fmt.Errorf("graph: PrintObserverGap: %w", err)
-		}
-	}
-	return nil
+	return writeLines(w, lines)
 }
