@@ -1103,3 +1103,48 @@ func TestPrintDiff_WriteError_Propagated(t *testing.T) {
 	}
 }
 
+// TestPrintDiff_DiffID_ShownWhenIdentified verifies that an identified GraphDiff
+// prints its meshdiff:<uuid> reference at the top of the output.
+func TestPrintDiff_DiffID_ShownWhenIdentified(t *testing.T) {
+	tr := validTraceWithElements(
+		"aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee99", "obs-a",
+		[]string{"alpha"}, []string{"beta"},
+	)
+	g1 := singleEdgeGraph(tr)
+	g2 := graph.MeshGraph{} // empty second cut
+	d := graph.IdentifyDiff(graph.Diff(g1, g2))
+	ref, err := graph.DiffRef(d)
+	if err != nil {
+		t.Fatalf("DiffRef: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := graph.PrintDiff(&buf, d); err != nil {
+		t.Fatalf("PrintDiff: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, ref) {
+		t.Errorf("output missing Diff ID %q\nGot:\n%s", ref, out)
+	}
+	if !strings.Contains(out, "Diff ID:") {
+		t.Errorf("output missing %q label\nGot:\n%s", "Diff ID:", out)
+	}
+}
+
+// TestPrintDiff_DiffID_AbsentWhenUnidentified verifies that an unidentified
+// GraphDiff does not print any "Diff ID" line.
+func TestPrintDiff_DiffID_AbsentWhenUnidentified(t *testing.T) {
+	tr := validTraceWithElements(
+		"aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeee98", "obs-a",
+		[]string{"alpha"}, []string{"beta"},
+	)
+	g1 := singleEdgeGraph(tr)
+	d := graph.Diff(g1, graph.MeshGraph{})
+	var buf bytes.Buffer
+	if err := graph.PrintDiff(&buf, d); err != nil {
+		t.Fatalf("PrintDiff: %v", err)
+	}
+	if strings.Contains(buf.String(), "Diff ID:") {
+		t.Errorf("unidentified diff should not print Diff ID line\nGot:\n%s", buf.String())
+	}
+}
+
