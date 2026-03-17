@@ -637,3 +637,47 @@ How outputs become actionable:
 - Do not hide the cut in the name of usability.
 - LLM integration enters as assisted authoring with visible uncertainty, not automated truth.
 - The project is still in formation. Keep directions open-ended and revisable.
+
+---
+
+## v2.0.0 Roadmap — Rough Plan (B → A → C → F)
+
+**Full rough plan:** `tasks/plan_v2_roadmap.md`
+Detailed per-milestone plans to be written before implementation begins.
+
+### Thread B — Remaining Interpretive Outputs (v1.x, next)
+
+- [ ] **B.1 — Bottleneck note** — `IdentifyBottlenecks`, `BottleneckNote`, `meshant bottleneck`
+- [ ] **B.2 — Re-articulation suggestion** — `SuggestRearticulations`, `RearticSuggestion`, `--suggest` on `meshant gaps`
+- [ ] **B.3 — Incident narrative draft** — `DraftNarrative`, `NarrativeDraft`, `meshant narrative`
+- [ ] **B.4 — Decision record + codemap**
+
+### Thread A — Interactive Review CLI (v1.x → v2.0.0 prereq)
+
+- [ ] **A.1 — Draft review session** — `meshant review`; accept/edit/skip; each acceptance is a new derived draft
+- [ ] **A.2 — Provenance chain display** — inline lineage + ClassifyDraftChain in the review session
+- [ ] **A.3 — Ambiguity surfacing** — empty fields, UncertaintyNote, CriterionRef mismatch warnings
+- [ ] **A.4 — Decision record + docs**
+
+### Thread C — Multi-Analyst Ingestion Comparison
+
+- [ ] **C.1 — Multi-analyst draft set schema** — clarify ExtractedBy as analyst-position cut axis
+- [ ] **C.2 — Extraction gap analysis** — `CompareExtractions`, `ExtractionGap`, `meshant extraction-gap`
+- [ ] **C.3 — Classification comparison** — `CompareChainClassifications`, `ClassificationDiff`
+- [ ] **C.4 — Multi-analyst example dataset** — `data/examples/multi_analyst_drafts.json`
+- [ ] **C.5 — Decision record + docs**
+
+### Thread D — Real-World Datasets (runs alongside all threads)
+
+- [ ] **D.1 — Software incident dataset** — `data/examples/software_incident.json`
+- [ ] **D.2 — Multi-agent pipeline dataset** — `data/examples/multi_agent_pipeline.json`
+- [ ] **D.3 — Policy / procurement dataset** — `data/examples/policy_process.json`
+
+### Thread F — v2.0.0: LLM-Internal Boundary
+
+- [ ] **F.1 — LLM mediator convention** — `docs/decisions/llm-as-mediator-v1.md`; ExtractedBy + UncertaintyNote as discipline
+- [ ] **F.2 — `meshant extract`** — LLM-assisted draft extraction from source document
+- [ ] **F.3 — `meshant assist`** — interactive authoring companion; LLM suggests, user confirms
+- [ ] **F.4 — LLM critique pass** — `meshant critique`; automated rearticulation via LLM
+- [ ] **F.5 — Real-world LLM-assisted extraction example**
+- [ ] **F.6 — Decision record + docs + v2.0.0 release**
