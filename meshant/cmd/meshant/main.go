@@ -206,6 +206,10 @@ func run(w io.Writer, args []string) error {
 		return cmdRearticulate(w, args[1:])
 	case "lineage":
 		return cmdLineage(w, args[1:])
+	case "shadow":
+		return cmdShadow(w, args[1:])
+	case "gaps":
+		return cmdGaps(w, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
@@ -228,6 +232,8 @@ Commands:
   follow      follow a translation chain through an articulation (flags: --observer, --tag, --from, --to, --element, --direction, --depth, --format, --criterion-file, --output)
   draft       ingest extraction JSON and produce TraceDraft records (flags: --source-doc, --extracted-by, --stage, --output)
   promote     promote TraceDraft records to canonical Traces (flags: --output)
+  shadow      summarise shadowed elements from an observer-situated articulation (flags: --observer, --tag, --from, --to, --output)
+  gaps        compare element visibility between two observer positions (flags: --observer-a, --observer-b, --tag-a, --tag-b, --from-a, --to-a, --from-b, --to-b, --output)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }
@@ -1325,4 +1331,179 @@ func chainContainsID(n *lineageNode, id string) bool {
 		}
 	}
 	return false
+}
+
+// cmdShadow implements the "shadow" subcommand.
+//
+// It articulates an observer-situated graph from the traces file and prints
+// a shadow summary — the set of elements that are shadowed (not visible from
+// the given observer position) and why. Shadow is a cut decision, not missing
+// data: a shadowed element was visible to some observer but not the one named
+// by this cut.
+//
+// It accepts the following flags:
+//   - --observer (repeatable, required) — observer position(s) for articulation
+//   - --tag      (repeatable, optional) — tag filter (any-match / OR semantics)
+//   - --from, --to (optional, RFC3339) — time window
+//   - --output (optional)             — write output to file instead of stdout
+//
+// Returns an error if --observer is missing, a time flag is not RFC3339,
+// the path is missing or unloadable, or writing fails.
+func cmdShadow(w io.Writer, args []string) error {
+	fs := flag.NewFlagSet("shadow", flag.ContinueOnError)
+
+	var observers stringSliceFlag
+	fs.Var(&observers, "observer", "observer position to include (repeatable)")
+
+	var tags stringSliceFlag
+	fs.Var(&tags, "tag", "tag filter (repeatable, any-match / OR semantics)")
+
+	var fromStr, toStr string
+	fs.StringVar(&fromStr, "from", "", "start of time window (RFC3339)")
+	fs.StringVar(&toStr, "to", "", "end of time window (RFC3339)")
+
+	var outputPath string
+	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. shadow.txt)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if len(observers) == 0 {
+		return fmt.Errorf("shadow: --observer is required")
+	}
+
+	tw, err := parseTimeWindow("from", fromStr, "to", toStr)
+	if err != nil {
+		return fmt.Errorf("shadow: %w", err)
+	}
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		return fmt.Errorf("shadow: path to traces.json required\n\nUsage: meshant shadow --observer <pos> [--tag <tag>] [--from RFC3339] [--to RFC3339] [--output <file>] <traces.json>")
+	}
+	path := remaining[0]
+
+	traces, err := loader.Load(path)
+	if err != nil {
+		return fmt.Errorf("shadow: %w", err)
+	}
+
+	opts := graph.ArticulationOptions{
+		ObserverPositions: []string(observers),
+		TimeWindow:        tw,
+		Tags:              []string(tags),
+	}
+	g := graph.Articulate(traces, opts)
+	s := graph.SummariseShadow(g)
+
+	dest, err := outputWriter(w, outputPath)
+	if err != nil {
+		return fmt.Errorf("shadow: %w", err)
+	}
+	if f, ok := dest.(*os.File); ok {
+		defer f.Close()
+	}
+
+	if err := graph.PrintShadowSummary(dest, s); err != nil {
+		return err
+	}
+	return confirmOutput(w, outputPath)
+}
+
+// cmdGaps implements the "gaps" subcommand.
+//
+// It articulates two observer-situated graphs from the same traces file and
+// prints an observer-gap report — what each position can see that the other
+// cannot. Neither position is treated as authoritative; the report names both
+// and the asymmetry between them.
+//
+// It accepts the following flags:
+//   - --observer-a (repeatable, required) — observer positions for graph A
+//   - --observer-b (repeatable, required) — observer positions for graph B
+//   - --tag-a      (repeatable, optional) — tag filter for graph A
+//   - --tag-b      (repeatable, optional) — tag filter for graph B
+//   - --from-a, --to-a (optional, RFC3339) — time window for graph A
+//   - --from-b, --to-b (optional, RFC3339) — time window for graph B
+//   - --output (optional)                  — write output to file instead of stdout
+//
+// Returns an error if --observer-a or --observer-b is missing, a time flag
+// is not RFC3339, the path is missing or unloadable, or writing fails.
+func cmdGaps(w io.Writer, args []string) error {
+	fs := flag.NewFlagSet("gaps", flag.ContinueOnError)
+
+	var observersA, observersB stringSliceFlag
+	fs.Var(&observersA, "observer-a", "observer positions for graph A (repeatable)")
+	fs.Var(&observersB, "observer-b", "observer positions for graph B (repeatable)")
+
+	var tagsA, tagsB stringSliceFlag
+	fs.Var(&tagsA, "tag-a", "tag filter for graph A (repeatable, any-match / OR semantics)")
+	fs.Var(&tagsB, "tag-b", "tag filter for graph B (repeatable, any-match / OR semantics)")
+
+	var fromAStr, toAStr, fromBStr, toBStr string
+	fs.StringVar(&fromAStr, "from-a", "", "start of time window for graph A (RFC3339)")
+	fs.StringVar(&toAStr, "to-a", "", "end of time window for graph A (RFC3339)")
+	fs.StringVar(&fromBStr, "from-b", "", "start of time window for graph B (RFC3339)")
+	fs.StringVar(&toBStr, "to-b", "", "end of time window for graph B (RFC3339)")
+
+	var outputPath string
+	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. gaps.txt)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if len(observersA) == 0 {
+		return fmt.Errorf("gaps: --observer-a is required")
+	}
+	if len(observersB) == 0 {
+		return fmt.Errorf("gaps: --observer-b is required")
+	}
+
+	twA, err := parseTimeWindow("from-a", fromAStr, "to-a", toAStr)
+	if err != nil {
+		return fmt.Errorf("gaps: %w", err)
+	}
+	twB, err := parseTimeWindow("from-b", fromBStr, "to-b", toBStr)
+	if err != nil {
+		return fmt.Errorf("gaps: %w", err)
+	}
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		return fmt.Errorf("gaps: path to traces.json required\n\nUsage: meshant gaps --observer-a <pos> --observer-b <pos> [flags] <traces.json>")
+	}
+	path := remaining[0]
+
+	traces, err := loader.Load(path)
+	if err != nil {
+		return fmt.Errorf("gaps: %w", err)
+	}
+
+	optsA := graph.ArticulationOptions{
+		ObserverPositions: []string(observersA),
+		TimeWindow:        twA,
+		Tags:              []string(tagsA),
+	}
+	optsB := graph.ArticulationOptions{
+		ObserverPositions: []string(observersB),
+		TimeWindow:        twB,
+		Tags:              []string(tagsB),
+	}
+	gA := graph.Articulate(traces, optsA)
+	gB := graph.Articulate(traces, optsB)
+	gap := graph.AnalyseGaps(gA, gB)
+
+	dest, err := outputWriter(w, outputPath)
+	if err != nil {
+		return fmt.Errorf("gaps: %w", err)
+	}
+	if f, ok := dest.(*os.File); ok {
+		defer f.Close()
+	}
+
+	if err := graph.PrintObserverGap(dest, gap); err != nil {
+		return err
+	}
+	return confirmOutput(w, outputPath)
 }
