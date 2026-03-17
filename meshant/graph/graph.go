@@ -681,9 +681,20 @@ func PrintArticulation(w io.Writer, g MeshGraph) error {
 		fmt.Sprintf("Tag filter:           %s", tagLabel),
 		fmt.Sprintf("Traces included: %d of %d (distinct observers in full dataset: %d)",
 			g.Cut.TracesIncluded, g.Cut.TracesTotal, g.Cut.DistinctObserversTotal),
+	}
+
+	// If this graph has been identified as an actor, print its reference so
+	// callers can cite it in subsequent traces. The ID is omitted when zero
+	// (most articulations are not identified; that is the correct default).
+	if g.ID != "" {
+		ref, _ := GraphRef(g) // error only when ID is empty; guarded above
+		lines = append(lines, fmt.Sprintf("Graph ID:             %s", ref))
+	}
+
+	lines = append(lines,
 		"",
 		"Nodes (elements visible from this position):",
-	}
+	)
 	for _, ne := range nodeEntries {
 		lines = append(lines, fmt.Sprintf("  %-50s x%d", ne.name, ne.count))
 	}

@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-17 (M12 Re-articulation Pass)
+**Last Updated:** 2026-03-17 (M13 Shadow Analysis + Observer Gap + Ingestion Deepening)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -11,10 +11,10 @@
 |---------|---------|
 | `schema` | Core trace types, graph-reference predicates, and validators. |
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
-| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, export to JSON/DOT/Mermaid. |
+| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage` subcommands. |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps` subcommands. |
 
 ## Package: schema
 
@@ -32,7 +32,7 @@
 |------|-----------|---------|
 | `Trace` | `ID` (uuid), `Timestamp` (time), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Tags` ([]string), `Observer` (string, required) | Fundamental unit of record: a moment where something made a difference in a network. |
 | `TagValue` | (string constant type) | Vocabulary for trace descriptors: `TagDelay`, `TagThreshold`, `TagBlockage`, `TagAmplification`, `TagRedirection`, `TagTranslation`, `TagValueArticulation`, `TagValueDraft` (M11). |
-| `TraceDraft` | `ID` (uuid, optional), `Timestamp` (time), `SourceSpan` (string, required), `SourceDocRef` (string), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Observer` (string), `Tags` ([]string), `UncertaintyNote` (string), `ExtractionStage` (string), `ExtractedBy` (string), `DerivedFrom` (string) | Provisional, provenance-bearing record from ingestion pipeline. Minimal requirement: `SourceSpan`. May be promoted to canonical `Trace` when sufficiently complete (M11). |
+| `TraceDraft` | `ID` (uuid, optional), `Timestamp` (time), `SourceSpan` (string, required), `SourceDocRef` (string), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Observer` (string), `Tags` ([]string), `UncertaintyNote` (string), `ExtractionStage` (string), `ExtractedBy` (string), `DerivedFrom` (string), `CriterionRef` (string, M13), `IntentionallyBlank` ([]string, M12.5) | Provisional, provenance-bearing record from ingestion pipeline. Minimal requirement: `SourceSpan`. May be promoted to canonical `Trace` when sufficiently complete (M11). `CriterionRef` names the EquivalenceCriterion governing a critique skeleton (citation, not copy). `IntentionallyBlank` names content fields deliberately left empty (honest abstention, not missing data). |
 
 ### Functions
 
@@ -53,7 +53,8 @@
 | File | Contains |
 |------|----------|
 | `loader.go` | `Load`, `Summarise`, `PrintSummary`; `MeshSummary`, `FlaggedTrace` types. |
-| `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; UUID generation (M11). |
+| `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; UUID generation (M11). `WithIntentionallyBlank` and `WithCriterionRef` counts added (M12.5, M13). |
+| `draftchain.go` | `FollowDraftChain`, `ClassifyDraftChain`; `DraftStepKind`, `DraftStepClassification` types (M13). |
 
 ### Types
 
@@ -61,7 +62,9 @@
 |------|-----------|---------|
 | `MeshSummary` | `Elements` (map[string]int), `Mediations` ([]string), `MediatedTraceCount` (int), `FlaggedTraces` ([]FlaggedTrace), `GraphRefs` ([]string) | Provisional first-pass reading of a trace dataset. |
 | `FlaggedTrace` | `ID` (string), `WhatChanged` (string), `Tags` ([]string) | Minimal projection of traces tagged delay or threshold. |
-| `DraftSummary` | `Total` (int), `Promotable` (int), `ByStage` (map[string]int), `ByExtractedBy` (map[string]int), `FieldFillRate` (map[string]int) | Provenance-aware reading of a TraceDraft dataset. Reveals ingestion pipeline breakdown and field fill rates (M11). |
+| `DraftSummary` | `Total` (int), `Promotable` (int), `ByStage` (map[string]int), `ByExtractedBy` (map[string]int), `FieldFillRate` (map[string]int), `WithIntentionallyBlank` (int, M12.5), `WithCriterionRef` (int, M13) | Provenance-aware reading of a TraceDraft dataset. Reveals ingestion pipeline breakdown and field fill rates (M11). Counts critique skeletons and self-situated skeletons. |
+| `DraftStepKind` | (string constant: `DraftIntermediary`, `DraftMediator`, `DraftTranslation`) | Classification of a draft chain step; mirrors `StepKind` from graph package. Heuristics are v1 and provisional (M13). |
+| `DraftStepClassification` | `StepIndex` (int), `Kind` (DraftStepKind), `Reason` (string) | Classification and justification for a single draft chain step (M13). |
 
 ### Functions
 
@@ -72,7 +75,9 @@
 | `PrintSummary` | `func PrintSummary(w io.Writer, s MeshSummary) error` | Write formatted summary to io.Writer. Elements sorted by descending frequency, mediations in encounter order. |
 | `LoadDrafts` | `func LoadDrafts(path string) ([]schema.TraceDraft, error)` | Load JSON file of TraceDraft records; assign UUIDs and timestamps to missing fields; validate each via `TraceDraft.Validate()`; max 50 MB (M11). |
 | `SummariseDrafts` | `func SummariseDrafts(drafts []schema.TraceDraft) DraftSummary` | Build DraftSummary from TraceDraft slice: count by stage/extracted-by, count promotable records, compute per-field fill rates (M11). |
-| `PrintDraftSummary` | `func PrintDraftSummary(w io.Writer, s DraftSummary) error` | Write provenance summary to io.Writer. Shows total/promotable, breakdown by extraction stage and extracted_by, per-field fill rates (M11). |
+| `PrintDraftSummary` | `func PrintDraftSummary(w io.Writer, s DraftSummary) error` | Write provenance summary to io.Writer. Shows total/promotable, breakdown by extraction stage and extracted_by, per-field fill rates, critique skeleton counts (M11, M12.5, M13). |
+| `FollowDraftChain` | `func FollowDraftChain(drafts []schema.TraceDraft, from string) []schema.TraceDraft` | Traverse DerivedFrom links from draft with id `from`; return chain in derivation order. Empty slice if `from` not found. Cycle detection via visited set (M13). |
+| `ClassifyDraftChain` | `func ClassifyDraftChain(chain []schema.TraceDraft) []DraftStepClassification` | Apply v1 heuristic classification to consecutive draft pairs. Returns `len(chain)-1` classifications (M13). |
 
 ## Package: graph
 
@@ -90,6 +95,8 @@
 | `classify.go` | Chain classification: `ClassifiedChain`, `StepClassification`, `StepKind`, `ClassifyOptions`. `ClassifyChain()` function. Heuristic classification (intermediary, mediator, translation). Carries criterion as envelope metadata. |
 | `chain_print.go` | Chain output formatting: `PrintChain`, `PrintChainJSON`. Text and JSON rendering of classified chains, including criterion block when present. |
 | `export.go` | Export functions: `PrintGraphJSON`, `PrintDiffJSON`, `PrintGraphDOT`, `PrintGraphMermaid`, `PrintDiffDOT`, `PrintDiffMermaid`. Internal helpers for DOT/Mermaid formatting. `stripNewlines()` security helper prevents injection from crafted trace values. |
+| `shadow.go` | Shadow analysis: `SummariseShadow`, `PrintShadowSummary`; `ShadowSummary` type (M13). |
+| `gaps.go` | Observer-gap analysis: `AnalyseGaps`, `PrintObserverGap`; `ObserverGap` type (M13). |
 
 ### Types
 
@@ -118,6 +125,8 @@
 | `StepClassification` | `StepIndex` (int), `Kind` (StepKind), `Reason` (string) | Classification and justification for a single chain step. Reason strings are purely edge-driven (v1 heuristics). |
 | `ClassifiedChain` | `Chain` (TranslationChain), `Classifications` ([]StepClassification), `Criterion` (EquivalenceCriterion) | Translation chain with step-by-step classifications and optional criterion metadata. Criterion is envelope-only — does not alter v1 heuristics. |
 | `ClassifyOptions` | `Criterion` (EquivalenceCriterion) | Parameters for chain classification. Zero value = v1 heuristics (backwards-compatible). Criterion is carried into ClassifiedChain as provenance; does not alter step logic yet. |
+| `ShadowSummary` | `TotalShadowed` (int), `ByReason` (map[string]int), `Elements` ([]ShadowElement), `SeenFromCounts` (map[string]int), `Cut` (Cut) | Summary of shadowed elements in an articulated graph. ByReason counts by ShadowReason; SeenFromCounts maps excluded observer position to the count of elements seen from it; Elements sorted by name (M13). |
+| `ObserverGap` | `OnlyInA` ([]string), `OnlyInB` ([]string), `InBoth` ([]string), `CutA` (Cut), `CutB` (Cut) | Visibility asymmetry between two articulations. All three element lists sorted alphabetically. Both cuts retained for self-situated reporting (M13). |
 
 ### Functions
 
@@ -149,6 +158,10 @@
 | `EquivalenceCriterion.Validate` | `(c EquivalenceCriterion) Validate() error` | Error if Preserve or Ignore non-empty but Declaration empty (layer ordering: Layer 2 requires Layer 1 grounds). |
 | `PrintChain` | `func PrintChain(w io.Writer, cc ClassifiedChain) error` | Write human-readable classified chain to io.Writer. Includes steps with classifications, breaks with reasons, and criterion block when non-zero. |
 | `PrintChainJSON` | `func PrintChainJSON(w io.Writer, cc ClassifiedChain) error` | Export `ClassifiedChain` as JSON to io.Writer. Criterion key omitted entirely when zero (pointer + omitempty). |
+| `SummariseShadow` | `func SummariseShadow(g MeshGraph) ShadowSummary` | Read `g.Cut.ShadowElements`; count total shadowed, count by ShadowReason, count SeenFrom per excluded observer; return self-contained summary (M13). |
+| `PrintShadowSummary` | `func PrintShadowSummary(w io.Writer, s ShadowSummary) error` | Write shadow report to io.Writer. Observer position, shadow count by reason, SeenFrom counts descending, element list. Includes "No shadow" path when no elements shadowed (M13). |
+| `AnalyseGaps` | `func AnalyseGaps(g1, g2 MeshGraph) ObserverGap` | Compare node sets of two pre-articulated graphs; partition names into OnlyInA, OnlyInB, InBoth; retain both Cuts. Does not re-articulate (M13). |
+| `PrintObserverGap` | `func PrintObserverGap(w io.Writer, gap ObserverGap) error` | Write observer-gap report to io.Writer. Names both positions, three-way partition with element lists, "No gap" message when identical; neither position treated as authoritative (M13). |
 
 ## Package: persist
 
@@ -192,7 +205,7 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12) handlers. |
+| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13) handlers. |
 | `main_test.go` | Tests: all subcommands, flag parsing, file output, error handling, criterion file loading, draft/promote pipeline (M11). |
 
 ### Types
@@ -210,7 +223,7 @@ None (persist carries no domain types; wraps graph types).
 | `parseTimeFlag` | `func parseTimeFlag(name, value string) (time.Time, error)` | Parse RFC3339 string to time.Time with contextual error message naming the flag. |
 | `parseTimeWindow` | `func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error)` | Parse two RFC3339 strings (one or both may be empty) into a TimeWindow. Validates only when both bounds are set. |
 | `main` | `func main()` | Entry point. Calls `run(os.Stdout, os.Args[1:])` and exits non-zero on error. |
-| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, or `cmdLineage()`. |
+| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, or `cmdGaps()`. |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
 | `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. |
@@ -220,6 +233,8 @@ None (persist carries no domain types; wraps graph types).
 | `cmdPromote` | `func cmdPromote(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON via `loader.LoadDrafts()`, call `IsPromotable()` on each, promote qualifying drafts to canonical Traces (each tagged with `TagValueDraft`), write promoted Trace JSON, report promotion summary naming failures (M11). `--output <file>`. |
 | `cmdRearticulate` | `func cmdRearticulate(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, produce skeleton JSON array — for each draft: `source_span` copied verbatim, `derived_from` set to original ID, all content fields blank, `extraction_stage:"reviewed"`. Flags: `--id <id>` (single draft only), `--output <file>` (M12). |
 | `cmdLineage` | `func cmdLineage(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, walk DerivedFrom links, render positional reading sequences as indented trees. Anchors (drafts with no DerivedFrom) are sequence roots. Cycle detection required (DFS grey-set). Flags: `--id <id>` (single chain), `--format text\|json` (M12). |
+| `cmdShadow` | `func cmdShadow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, print shadow summary via `graph.SummariseShadow()` + `PrintShadowSummary()`. Flags: `--observer` (repeatable, required), `--tag` (repeatable), `--from`, `--to` (RFC3339), `--output <file>` (M13). |
+| `cmdGaps` | `func cmdGaps(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts from the same file, compare node sets via `graph.AnalyseGaps()`, print observer-gap report via `PrintObserverGap()`. Flags: `--observer-a`, `--observer-b` (repeatable, both required), per-side `--tag-a/b`, `--from-a/b`, `--to-a/b` (RFC3339), `--output <file>` (M13). |
 | `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
 | `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
@@ -235,6 +250,7 @@ None (persist carries no domain types; wraps graph types).
 - **File output**: `--output <file>` writes to file instead of stdout (with deferred close for safety)
 - **Ingestion pipeline** (M11): `draft` command ingests LLM extraction JSON and produces TraceDraft records; `promote` command converts promotable TraceDraft records to canonical Traces (tagged with `draft` provenance signal)
 - **Re-articulation pipeline** (M12): `rearticulate` command produces critique skeletons (SourceSpan + DerivedFrom set, all content fields blank); `lineage` command walks DerivedFrom links and renders positional reading sequences as CLI output
+- **Shadow analysis** (M13): `shadow` subcommand summarises shadowed elements from a cut; `gaps` subcommand compares element visibility between two observer positions; neither position is authoritative
 - **Binary installation**: `go install ./cmd/meshant` produces `meshant` binary at $GOPATH/bin; used in Dockerfile at `/usr/local/bin/meshant`
 
 ## Cross-Package Relationships
@@ -345,6 +361,14 @@ cmd/demo/
 | Promote draft to canonical Trace | `schema/tracedraft.go` → `TraceDraft.Promote()` |
 | Produce critique skeleton from draft | `cmd/meshant/main.go` → `cmdRearticulate()` |
 | Walk DerivedFrom lineage chain | `cmd/meshant/main.go` → `cmdLineage()` |
+| Traverse DerivedFrom chain programmatically | `loader/draftchain.go` → `FollowDraftChain()` |
+| Classify draft chain steps | `loader/draftchain.go` → `ClassifyDraftChain()` |
+| Summarise shadow elements from a graph | `graph/shadow.go` → `SummariseShadow()` |
+| Print shadow summary | `graph/shadow.go` → `PrintShadowSummary()` |
+| Compare two graph node sets | `graph/gaps.go` → `AnalyseGaps()` |
+| Print observer-gap report | `graph/gaps.go` → `PrintObserverGap()` |
+| Shadow summary via CLI | `cmd/meshant/main.go` → `cmdShadow()` |
+| Observer-gap report via CLI | `cmd/meshant/main.go` → `cmdGaps()` |
 | Read critique prompt contract | `data/prompts/critique_pass.md` |
 | Run minimal demo | `cmd/demo/main.go` → `run()` |
 
@@ -419,6 +443,14 @@ cmd/demo/
 - **cmdLineage is a chain reader, not a diff tool**: renders structure (which reading followed which, at what stage, by whom); comparing readings in a chain is the analyst's job
 - **Critique prompt template as methodological constraint**: `data/prompts/critique_pass.md` is the extraction contract that makes re-articulation ANT-faithful; the CLI enforces structural constraints, the template enforces interpretive constraints
 
+### Shadow Analysis (M13)
+- **Shadow is a cut decision**: `SummariseShadow` reads `Cut.ShadowElements` (already computed by Articulate); "shadowed" not "missing"
+- **ObserverGap is composable**: `AnalyseGaps` takes two pre-articulated `MeshGraph` values; does not re-articulate
+- **Both cuts retained**: `ObserverGap.CutA` and `CutB` preserved so any report is self-situated
+- **FollowDraftChain mirrors FollowTranslation**: same first-match, cycle-detection, and empty-if-not-found semantics
+- **CriterionRef is string-only**: stores criterion `Name` (not the struct) to prevent `schema`→`graph` import cycle
+- **DraftStepKind is v1 provisional**: mirrors StepKind; will be revisited when criteria govern draft chains
+
 ### Ingestion Pipeline (M11)
 - **TraceDraft** is a first-class analytical object, not a halfway house to Trace
 - **SourceSpan** is the only required field; minimal record carrying verbatim source text without forcing resolution
@@ -482,7 +514,8 @@ cmd/demo/
 - `docs/decisions/translation-chain-v2.md` — Translation chain traversal, classification heuristics, first-match branching (M10.5)
 - `docs/decisions/equivalence-criterion-v1.md` — Equivalence criterion design, three-layer model, v1 implicit criterion, second-order shadow (M10.5+)
 - `docs/decisions/tracedraft-v2.md` — TraceDraft design, ingestion pipeline as analytical object, source span as ground truth, promotion criterion, provenance chain (M11)
-- `docs/decisions/rearticulation-v2.md` — Re-articulation as cut not correction, SourceSpan invariant, blank scaffold as correct output, DerivedFrom positional vocabulary, cmdLineage as first-class CLI output, E3/E14 as demonstration material (M12)
+- `docs/decisions/rearticulation-v1.md` — Re-articulation as cut not correction, SourceSpan invariant, blank scaffold as correct output, DerivedFrom positional vocabulary, cmdLineage as first-class CLI output, E3/E14 as demonstration material (M12)
+- `docs/decisions/shadow-analysis-v1.md` — Shadow as cut decision, ObserverGap composability, FollowDraftChain design, CriterionRef as citation metadata, DraftStepKind v1 heuristics, shadow/gaps CLI-first design (M13)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 
@@ -507,4 +540,8 @@ cmd/demo/
 - `graph/incident_e2e_test.go` — E2E tests using incident response dataset
 - `persist/persist_test.go` — tests for file I/O functions
 - `cmd/demo/main_test.go` — E2E test
-- `cmd/meshant/main_test.go` — tests covering all CLI subcommands including follow, draft, promote (M11), rearticulate, lineage (M12), flag parsing, file output, error handling; 659 total tests, 88.2% cmd/meshant coverage
+- `graph/shadow_test.go` — 10 tests for SummariseShadow and PrintShadowSummary (M13)
+- `graph/gaps_test.go` — 9 tests for AnalyseGaps and PrintObserverGap (M13)
+- `loader/draftchain_test.go` — 11 tests for FollowDraftChain and ClassifyDraftChain (M13)
+- `schema/tracedraft_test.go` — includes tests for CriterionRef (M13) and IntentionallyBlank (M12.5)
+- `cmd/meshant/main_test.go` — tests covering all CLI subcommands including follow, draft, promote (M11), rearticulate, lineage (M12), shadow, gaps (M13), flag parsing, file output, error handling

@@ -183,3 +183,68 @@ func TestDiff_IDEmpty_ByDefault(t *testing.T) {
 		t.Errorf("Diff: d.ID = %q; want empty string", d.ID)
 	}
 }
+
+// --- IdentifyChain and ChainRef ---
+
+// TestIdentifyChain_AssignsNonEmptyID verifies that IdentifyChain sets a
+// non-empty ID on the returned chain.
+func TestIdentifyChain_AssignsNonEmptyID(t *testing.T) {
+	c := graph.IdentifyChain(graph.TranslationChain{StartElement: "x"})
+	if c.ID == "" {
+		t.Error("IdentifyChain: ID is empty; want non-empty UUID")
+	}
+}
+
+// TestIdentifyChain_DoesNotMutateInput verifies immutability: the input chain
+// is not modified by IdentifyChain.
+func TestIdentifyChain_DoesNotMutateInput(t *testing.T) {
+	original := graph.TranslationChain{StartElement: "x"}
+	_ = graph.IdentifyChain(original)
+	if original.ID != "" {
+		t.Error("IdentifyChain mutated the input chain's ID")
+	}
+}
+
+// TestIdentifyChain_IDIsUnique verifies that two calls produce different IDs.
+func TestIdentifyChain_IDIsUnique(t *testing.T) {
+	c1 := graph.IdentifyChain(graph.TranslationChain{StartElement: "x"})
+	c2 := graph.IdentifyChain(graph.TranslationChain{StartElement: "x"})
+	if c1.ID == c2.ID {
+		t.Errorf("IdentifyChain produced duplicate IDs: %q", c1.ID)
+	}
+}
+
+// TestChainRef_FormatsCorrectly verifies that ChainRef returns "meshchain:<uuid>".
+func TestChainRef_FormatsCorrectly(t *testing.T) {
+	c := graph.IdentifyChain(graph.TranslationChain{StartElement: "x"})
+	ref, err := graph.ChainRef(c)
+	if err != nil {
+		t.Fatalf("ChainRef: %v", err)
+	}
+	if !strings.HasPrefix(ref, "meshchain:") {
+		t.Errorf("ChainRef: got %q; want meshchain: prefix", ref)
+	}
+	if ref == "meshchain:" {
+		t.Errorf("ChainRef: ID portion is empty in %q", ref)
+	}
+}
+
+// TestChainRef_EmptyID_ReturnsError verifies that ChainRef returns an error
+// when the chain has not been identified.
+func TestChainRef_EmptyID_ReturnsError(t *testing.T) {
+	c := graph.TranslationChain{StartElement: "x"}
+	_, err := graph.ChainRef(c)
+	if err == nil {
+		t.Error("ChainRef: expected error for unidentified chain, got nil")
+	}
+}
+
+// TestFollowTranslation_IDEmpty_ByDefault verifies that FollowTranslation
+// returns a chain with empty ID — explicit opt-in required.
+func TestFollowTranslation_IDEmpty_ByDefault(t *testing.T) {
+	g := graph.MeshGraph{}
+	c := graph.FollowTranslation(g, "x", graph.FollowOptions{})
+	if c.ID != "" {
+		t.Errorf("FollowTranslation: c.ID = %q; want empty string", c.ID)
+	}
+}

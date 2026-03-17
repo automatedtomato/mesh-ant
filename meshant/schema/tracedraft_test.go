@@ -1,6 +1,7 @@
 package schema_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -218,5 +219,113 @@ func TestTraceDraftChain(t *testing.T) {
 	}
 	if child.DerivedFrom != parent.ID {
 		t.Errorf("DerivedFrom: got %q want %q", child.DerivedFrom, parent.ID)
+	}
+}
+
+// --- IntentionallyBlank ---
+
+// TestTraceDraft_IntentionallyBlank_RoundTrip verifies that IntentionallyBlank
+// is preserved through struct construction and that Validate succeeds regardless
+// of whether the field is set.
+func TestTraceDraft_IntentionallyBlank_RoundTrip(t *testing.T) {
+	d := schema.TraceDraft{
+		SourceSpan:         "Raw span text.",
+		ExtractionStage:    "reviewed",
+		DerivedFrom:        "d0000000-0000-4000-8000-000000000001",
+		IntentionallyBlank: []string{"what_changed", "source", "target", "mediation", "observer", "tags"},
+	}
+
+	if err := d.Validate(); err != nil {
+		t.Fatalf("Validate() with IntentionallyBlank set: unexpected error: %v", err)
+	}
+
+	if len(d.IntentionallyBlank) != 6 {
+		t.Errorf("IntentionallyBlank length: got %d want 6", len(d.IntentionallyBlank))
+	}
+	for _, field := range []string{"what_changed", "source", "target", "mediation", "observer", "tags"} {
+		found := false
+		for _, b := range d.IntentionallyBlank {
+			if b == field {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("IntentionallyBlank missing %q", field)
+		}
+	}
+}
+
+// TestTraceDraft_IntentionallyBlank_ValidateStillRequiresSourceSpan verifies
+// that Validate still requires source_span even when IntentionallyBlank is set —
+// IntentionallyBlank does not relax the minimum invariant.
+func TestTraceDraft_IntentionallyBlank_ValidateStillRequiresSourceSpan(t *testing.T) {
+	d := schema.TraceDraft{
+		IntentionallyBlank: []string{"what_changed", "source"},
+		// SourceSpan deliberately absent.
+	}
+
+	if err := d.Validate(); err == nil {
+		t.Fatal("Validate() with empty SourceSpan: want error, got nil")
+	}
+}
+
+// TestTraceDraft_IntentionallyBlank_EmptyByDefault verifies that a TraceDraft
+// created without IntentionallyBlank has a nil/empty slice — not implicitly
+// populated.
+func TestTraceDraft_IntentionallyBlank_EmptyByDefault(t *testing.T) {
+	d := schema.TraceDraft{SourceSpan: "some span"}
+	if len(d.IntentionallyBlank) != 0 {
+		t.Errorf("IntentionallyBlank: want empty by default, got %v", d.IntentionallyBlank)
+	}
+}
+
+// --- CriterionRef ---
+
+func TestTraceDraft_CriterionRef_EmptyByDefault(t *testing.T) {
+	d := schema.TraceDraft{SourceSpan: "span"}
+	if d.CriterionRef != "" {
+		t.Errorf("CriterionRef: want empty by default, got %q", d.CriterionRef)
+	}
+}
+
+func TestTraceDraft_CriterionRef_ValidateStillRequiresSourceSpan(t *testing.T) {
+	d := schema.TraceDraft{CriterionRef: "my-criterion"}
+	if err := d.Validate(); err == nil {
+		t.Fatal("Validate() with CriterionRef but no SourceSpan: want error, got nil")
+	}
+}
+
+func TestTraceDraft_CriterionRef_DoesNotAffectIsPromotable(t *testing.T) {
+	// A draft with CriterionRef but missing WhatChanged/Observer is not promotable.
+	d := schema.TraceDraft{
+		ID:           "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:   "span",
+		CriterionRef: "my-criterion",
+	}
+	if d.IsPromotable() {
+		t.Error("IsPromotable(): want false (WhatChanged and Observer missing), got true")
+	}
+}
+
+func TestTraceDraft_CriterionRef_OmitEmptyInJSON(t *testing.T) {
+	d := schema.TraceDraft{SourceSpan: "span"}
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if strings.Contains(string(b), "criterion_ref") {
+		t.Errorf("criterion_ref should be omitted when empty; JSON: %s", b)
+	}
+}
+
+func TestTraceDraft_CriterionRef_PresentInJSON(t *testing.T) {
+	d := schema.TraceDraft{SourceSpan: "span", CriterionRef: "actor-stability-v1"}
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"criterion_ref":"actor-stability-v1"`) {
+		t.Errorf("criterion_ref missing from JSON: %s", b)
 	}
 }

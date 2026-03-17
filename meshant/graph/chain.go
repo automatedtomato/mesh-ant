@@ -89,6 +89,13 @@ type TranslationChain struct {
 	// Cut is the articulation parameters of the MeshGraph this chain was
 	// read from. The chain is situated within this cut.
 	Cut Cut
+
+	// ID is the stable identifier assigned by IdentifyChain. Zero value
+	// means the chain has not been identified as an actor — it is an
+	// analytical output, not yet a participant in the mesh. Non-empty means
+	// the chain was explicitly identified and can be referenced in traces
+	// via ChainRef as "meshchain:<uuid>".
+	ID string
 }
 
 // FollowTranslation traverses connected elements through g starting from the
