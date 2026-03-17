@@ -2200,3 +2200,293 @@ func TestCmdLineage_EmptyInput(t *testing.T) {
 		t.Errorf("expected standalone count 0 in output; got:\n%s", out)
 	}
 }
+
+// --- Group N: cmdShadow ---
+
+// TestCmdShadow_HappyPath verifies that cmdShadow produces non-empty output
+// containing shadow-related keywords when given a valid dataset and observer.
+func TestCmdShadow_HappyPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdShadow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdShadow(): unexpected error: %v", err)
+	}
+	out := buf.String()
+	if len(out) == 0 {
+		t.Error("cmdShadow(): expected non-empty output")
+	}
+	if !strings.Contains(out, "Shadow") {
+		t.Errorf("cmdShadow(): output missing 'Shadow'; got:\n%s", out)
+	}
+}
+
+// TestCmdShadow_MissingObserver verifies that cmdShadow returns an error
+// containing "required" when --observer is not provided.
+func TestCmdShadow_MissingObserver(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdShadow(&buf, []string{evacuationDataset})
+	if err == nil {
+		t.Fatal("cmdShadow() with no --observer: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "required") {
+		t.Errorf("error = %q; want it to contain 'required'", err.Error())
+	}
+}
+
+// TestCmdShadow_MissingArg verifies that cmdShadow returns an error when no
+// path is provided.
+func TestCmdShadow_MissingArg(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdShadow(&buf, []string{"--observer", "meteorological-analyst"})
+	if err == nil {
+		t.Fatal("cmdShadow() with no path: want non-nil error, got nil")
+	}
+}
+
+// TestCmdShadow_BadPath verifies that cmdShadow returns an error when the
+// traces file does not exist.
+func TestCmdShadow_BadPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdShadow(&buf, []string{"--observer", "meteorological-analyst", "notafile.json"})
+	if err == nil {
+		t.Fatal("cmdShadow() with bad path: want non-nil error, got nil")
+	}
+}
+
+// TestCmdShadow_BadFromTime verifies that cmdShadow returns an error containing
+// "RFC3339" when --from is not a valid RFC3339 timestamp.
+func TestCmdShadow_BadFromTime(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdShadow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--from", "notadate",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdShadow() with bad --from: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "RFC3339") {
+		t.Errorf("error = %q; want it to contain 'RFC3339'", err.Error())
+	}
+}
+
+// TestCmdShadow_NoShadowMessage verifies that the output contains a "No shadow"
+// or similar no-shadow path when all elements are visible from the chosen observer.
+// (This may not always be triggered on the evacuation dataset, but ensures
+// the no-shadow path is exercised by running with full articulation.)
+func TestCmdShadow_OutputToFile(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "shadow.txt")
+	var buf bytes.Buffer
+	err := cmdShadow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--output", out,
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdShadow() --output: unexpected error: %v", err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("reading output file: %v", err)
+	}
+	if !strings.Contains(string(data), "Shadow") {
+		t.Errorf("output file missing 'Shadow'; got:\n%s", data)
+	}
+}
+
+// TestCmdShadow_RunDispatch verifies that run() correctly routes "shadow"
+// to cmdShadow, producing non-empty output.
+func TestCmdShadow_RunDispatch(t *testing.T) {
+	var buf bytes.Buffer
+	err := run(&buf, []string{
+		"shadow",
+		"--observer", "meteorological-analyst",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("run('shadow'): unexpected error: %v", err)
+	}
+	if len(buf.String()) == 0 {
+		t.Error("run('shadow'): expected non-empty output")
+	}
+}
+
+// TestCmdShadow_TagFilter verifies that --tag is accepted and does not error.
+func TestCmdShadow_TagFilter(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdShadow(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--tag", "nonexistent-tag",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdShadow() --tag: unexpected error: %v", err)
+	}
+}
+
+// --- Group O: cmdGaps ---
+
+// TestCmdGaps_HappyPath verifies that cmdGaps produces output containing
+// "Observer Gap" and both observer labels when given two distinct positions.
+func TestCmdGaps_HappyPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdGaps(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "coastal-resident",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdGaps(): unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Observer Gap") {
+		t.Errorf("cmdGaps(): output missing 'Observer Gap'; got:\n%s", out)
+	}
+	if !strings.Contains(out, "meteorological-analyst") {
+		t.Errorf("cmdGaps(): output missing observer-a label; got:\n%s", out)
+	}
+	if !strings.Contains(out, "coastal-resident") {
+		t.Errorf("cmdGaps(): output missing observer-b label; got:\n%s", out)
+	}
+}
+
+// TestCmdGaps_MissingObserverA verifies that cmdGaps returns an error
+// containing "required" when --observer-a is missing.
+func TestCmdGaps_MissingObserverA(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdGaps(&buf, []string{
+		"--observer-b", "coastal-resident",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdGaps() with no --observer-a: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "required") {
+		t.Errorf("error = %q; want it to contain 'required'", err.Error())
+	}
+}
+
+// TestCmdGaps_MissingObserverB verifies that cmdGaps returns an error
+// containing "required" when --observer-b is missing.
+func TestCmdGaps_MissingObserverB(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdGaps(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdGaps() with no --observer-b: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "required") {
+		t.Errorf("error = %q; want it to contain 'required'", err.Error())
+	}
+}
+
+// TestCmdGaps_MissingArg verifies that cmdGaps returns an error when no
+// path is provided (both observers set, no file).
+func TestCmdGaps_MissingArg(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdGaps(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "coastal-resident",
+	})
+	if err == nil {
+		t.Fatal("cmdGaps() with no path: want non-nil error, got nil")
+	}
+}
+
+// TestCmdGaps_BadPath verifies that cmdGaps returns an error when the
+// traces file does not exist.
+func TestCmdGaps_BadPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdGaps(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "coastal-resident",
+		"notafile.json",
+	})
+	if err == nil {
+		t.Fatal("cmdGaps() with bad path: want non-nil error, got nil")
+	}
+}
+
+// TestCmdGaps_BadFromATime verifies that cmdGaps returns an error containing
+// "RFC3339" when --from-a is not a valid RFC3339 timestamp.
+func TestCmdGaps_BadFromATime(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdGaps(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "coastal-resident",
+		"--from-a", "notadate",
+		evacuationDataset,
+	})
+	if err == nil {
+		t.Fatal("cmdGaps() with bad --from-a: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "RFC3339") {
+		t.Errorf("error = %q; want it to contain 'RFC3339'", err.Error())
+	}
+}
+
+// TestCmdGaps_OutputToFile verifies that --output writes the gap report to a
+// file and that the file contains "Observer Gap".
+func TestCmdGaps_OutputToFile(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "gaps.txt")
+	var buf bytes.Buffer
+	err := cmdGaps(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "coastal-resident",
+		"--output", out,
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdGaps() --output: unexpected error: %v", err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("reading output file: %v", err)
+	}
+	if !strings.Contains(string(data), "Observer Gap") {
+		t.Errorf("output file missing 'Observer Gap'; got:\n%s", data)
+	}
+}
+
+// TestCmdGaps_SameObserver verifies that when observer-a and observer-b are
+// the same, the output contains "No gap" since both positions see identically.
+func TestCmdGaps_SameObserver(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdGaps(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "meteorological-analyst",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdGaps() same observer: unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "No gap") {
+		t.Errorf("same-observer gaps: expected 'No gap' in output; got:\n%s", out)
+	}
+}
+
+// TestCmdGaps_RunDispatch verifies that run() correctly routes "gaps" to
+// cmdGaps, producing non-empty output.
+func TestCmdGaps_RunDispatch(t *testing.T) {
+	var buf bytes.Buffer
+	err := run(&buf, []string{
+		"gaps",
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "coastal-resident",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("run('gaps'): unexpected error: %v", err)
+	}
+	if len(buf.String()) == 0 {
+		t.Error("run('gaps'): expected non-empty output")
+	}
+}
