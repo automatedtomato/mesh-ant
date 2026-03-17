@@ -861,8 +861,10 @@ func cmdPromote(w io.Writer, args []string) error {
 //     not a quality claim — Decision 7 in tracedraft-v1.md)
 //
 // Flags:
-//   - --id <id>      produce skeleton for a single draft by ID (default: all)
-//   - --output <path> write skeleton JSON to file (default: stdout)
+//   - --id <id>             produce skeleton for a single draft by ID (default: all)
+//   - --output <path>       write skeleton JSON to file (default: stdout)
+//   - --criterion-file <path> load an EquivalenceCriterion and set its Name as
+//     CriterionRef on each skeleton, making the critique pass self-situated
 func cmdRearticulate(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("rearticulate", flag.ContinueOnError)
 
@@ -871,6 +873,9 @@ func cmdRearticulate(w io.Writer, args []string) error {
 
 	var outputPath string
 	fs.StringVar(&outputPath, "output", "", "write skeleton JSON to file (default: stdout)")
+
+	var criterionFile string
+	fs.StringVar(&criterionFile, "criterion-file", "", "path to EquivalenceCriterion JSON; sets criterion_ref on each skeleton")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -903,6 +908,16 @@ func cmdRearticulate(w io.Writer, args []string) error {
 		originals = []schema.TraceDraft{*found}
 	}
 
+	// Load criterion if provided. criterionName is empty when no flag was given.
+	var criterionName string
+	if criterionFile != "" {
+		c, err := loadCriterionFile(criterionFile)
+		if err != nil {
+			return fmt.Errorf("rearticulate: %w", err)
+		}
+		criterionName = c.Name
+	}
+
 	// Build skeleton records. Each skeleton:
 	//   - copies SourceSpan verbatim (the invariant, Decision 2)
 	//   - copies SourceDocRef if present (ground truth provenance, not interpretation)
@@ -910,6 +925,7 @@ func cmdRearticulate(w io.Writer, args []string) error {
 	//   - sets ExtractionStage to "reviewed" (pipeline position, not quality)
 	//   - leaves all content fields blank (P3: no pre-filling)
 	//   - leaves ID and ExtractedBy blank (to be assigned by meshant draft)
+	//   - sets CriterionRef when --criterion-file was provided (self-situated skeleton)
 	skeletons := make([]schema.TraceDraft, len(originals))
 	for i, orig := range originals {
 		skeletons[i] = schema.TraceDraft{
@@ -917,6 +933,7 @@ func cmdRearticulate(w io.Writer, args []string) error {
 			SourceDocRef:    orig.SourceDocRef,
 			DerivedFrom:     orig.ID,
 			ExtractionStage: "reviewed",
+			CriterionRef:    criterionName,
 			// IntentionallyBlank declares which content fields were
 			// deliberately left empty by this cut — the critique agent
 			// provides its own interpretation. Blank is correct, not incomplete.

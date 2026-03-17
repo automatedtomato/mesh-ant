@@ -49,6 +49,12 @@ type DraftSummary struct {
 	// meshant rearticulate, where blank content fields are correct choices,
 	// not missing data.
 	WithIntentionallyBlank int
+
+	// WithCriterionRef is the number of drafts that carry a non-empty
+	// CriterionRef — i.e., that declare the EquivalenceCriterion under which
+	// they were produced. A non-zero count means some skeletons are self-situated:
+	// their interpretive frame is named, not implicit.
+	WithCriterionRef int
 }
 
 // LoadDrafts reads a JSON array of TraceDraft records from path.
@@ -170,6 +176,9 @@ func SummariseDrafts(drafts []schema.TraceDraft) DraftSummary {
 		if len(d.IntentionallyBlank) > 0 {
 			s.WithIntentionallyBlank++
 		}
+		if d.CriterionRef != "" {
+			s.WithCriterionRef++
+		}
 	}
 
 	return s
@@ -226,6 +235,7 @@ func PrintDraftSummary(w io.Writer, s DraftSummary) error {
 	lines = append(lines,
 		"",
 		fmt.Sprintf("Critique skeletons (intentionally_blank set): %d", s.WithIntentionallyBlank),
+		fmt.Sprintf("Self-situated skeletons (criterion_ref set):  %d", s.WithCriterionRef),
 		"",
 		"---",
 		"Note: empty fields are honest abstentions, not missing data.",

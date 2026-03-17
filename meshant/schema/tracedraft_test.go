@@ -1,6 +1,7 @@
 package schema_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -276,5 +277,55 @@ func TestTraceDraft_IntentionallyBlank_EmptyByDefault(t *testing.T) {
 	d := schema.TraceDraft{SourceSpan: "some span"}
 	if len(d.IntentionallyBlank) != 0 {
 		t.Errorf("IntentionallyBlank: want empty by default, got %v", d.IntentionallyBlank)
+	}
+}
+
+// --- CriterionRef ---
+
+func TestTraceDraft_CriterionRef_EmptyByDefault(t *testing.T) {
+	d := schema.TraceDraft{SourceSpan: "span"}
+	if d.CriterionRef != "" {
+		t.Errorf("CriterionRef: want empty by default, got %q", d.CriterionRef)
+	}
+}
+
+func TestTraceDraft_CriterionRef_ValidateStillRequiresSourceSpan(t *testing.T) {
+	d := schema.TraceDraft{CriterionRef: "my-criterion"}
+	if err := d.Validate(); err == nil {
+		t.Fatal("Validate() with CriterionRef but no SourceSpan: want error, got nil")
+	}
+}
+
+func TestTraceDraft_CriterionRef_DoesNotAffectIsPromotable(t *testing.T) {
+	// A draft with CriterionRef but missing WhatChanged/Observer is not promotable.
+	d := schema.TraceDraft{
+		ID:           "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:   "span",
+		CriterionRef: "my-criterion",
+	}
+	if d.IsPromotable() {
+		t.Error("IsPromotable(): want false (WhatChanged and Observer missing), got true")
+	}
+}
+
+func TestTraceDraft_CriterionRef_OmitEmptyInJSON(t *testing.T) {
+	d := schema.TraceDraft{SourceSpan: "span"}
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if strings.Contains(string(b), "criterion_ref") {
+		t.Errorf("criterion_ref should be omitted when empty; JSON: %s", b)
+	}
+}
+
+func TestTraceDraft_CriterionRef_PresentInJSON(t *testing.T) {
+	d := schema.TraceDraft{SourceSpan: "span", CriterionRef: "actor-stability-v1"}
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"criterion_ref":"actor-stability-v1"`) {
+		t.Errorf("criterion_ref missing from JSON: %s", b)
 	}
 }
