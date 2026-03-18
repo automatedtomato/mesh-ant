@@ -659,7 +659,7 @@ Parent issue: #86
 - [x] **A.0 (#87) — Fix classifyDraftStep heuristic** — add stage-only mediator case; 5 new tests; PR #94 merged
 - [x] **A.1 (#88) — review package scaffold** — `AmbiguityWarning`, `DetectAmbiguities`, `RenderDraft`, `RenderAmbiguities`; export `loader.NewUUID`; 23 tests, 100% coverage; PR #97 merged
 - [x] **A.2 (#89) — RenderChain** — `RenderChain` renders derivation chain + step classifications in review session; 31 tests, 100% coverage; PR #98 merged
-- [ ] **A.3 (#90) — Session core** — `RunReviewSession`; accept/skip/quit loop; `deriveAccepted` creates new TraceDraft with DerivedFrom link
+- [x] **A.3 (#90) — Session core** — `RunReviewSession`; accept/skip/quit loop; `deriveAccepted` creates new TraceDraft with DerivedFrom link; 47 tests, 98.2% coverage; PR #99 merged
 - [ ] **A.4 (#91) — Edit flow** — `runEditFlow`; `deriveEdited`; in-session field editing
 - [ ] **A.5 (#92) — CLI wiring** — `cmdReview` in `cmd/meshant`; `meshant review <file>` subcommand
 - [ ] **A.6 (#93) — Decision record + codemap**
