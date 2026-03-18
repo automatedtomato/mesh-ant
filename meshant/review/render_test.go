@@ -135,15 +135,17 @@ func TestRenderAmbiguities_ContainsWarningMessage(t *testing.T) {
 	}
 }
 
-// TestRenderChain_EmptyChain verifies that a nil chain returns a non-empty
-// string containing a "no derivation chain" notice rather than panicking.
+// TestRenderChain_EmptyChain verifies that both nil and empty-non-nil chains
+// return a non-empty string containing a "no derivation chain" notice.
 func TestRenderChain_EmptyChain(t *testing.T) {
-	out := review.RenderChain(nil, nil)
-	if out == "" {
-		t.Fatal("expected non-empty output for nil chain, got empty string")
-	}
-	if !strings.Contains(strings.ToLower(out), "no derivation chain") {
-		t.Errorf("expected 'no derivation chain' notice, got:\n%s", out)
+	for _, chain := range [][]schema.TraceDraft{nil, {}} {
+		out := review.RenderChain(chain, nil)
+		if out == "" {
+			t.Fatal("expected non-empty output for empty chain, got empty string")
+		}
+		if !strings.Contains(strings.ToLower(out), "no derivation chain") {
+			t.Errorf("expected 'no derivation chain' notice, got:\n%s", out)
+		}
 	}
 }
 
@@ -223,16 +225,20 @@ func TestRenderChain_MultiStep(t *testing.T) {
 }
 
 // TestRenderChain_TruncatesWhatChanged verifies that a what_changed value
-// longer than the truncation limit is shortened and marked with "...".
+// longer than the truncation limit (60 runes) is cut at exactly 60 runes
+// and marked with "...".
 func TestRenderChain_TruncatesWhatChanged(t *testing.T) {
 	long := strings.Repeat("x", 80)
 	chain := []schema.TraceDraft{
 		{ID: "e0000000-0000-0000-0000-000000000000", WhatChanged: long},
 	}
 	out := review.RenderChain(chain, nil)
-	if !strings.Contains(out, "...") {
-		t.Errorf("expected truncation marker '...' in output, got:\n%s", out)
+	// The output must contain exactly the first 60 chars followed by "...".
+	want := strings.Repeat("x", 60) + "..."
+	if !strings.Contains(out, want) {
+		t.Errorf("expected truncated value %q in output, got:\n%s", want, out)
 	}
+	// The full 80-char value must not appear.
 	if strings.Contains(out, long) {
 		t.Errorf("expected full 80-char string to be absent (truncated), but found it in output:\n%s", out)
 	}
@@ -282,13 +288,27 @@ func TestRenderChain_PartialClassifications(t *testing.T) {
 		{StepIndex: 2, Kind: loader.DraftTranslation, Reason: "stage advanced"},
 	}
 	out := review.RenderChain(chain, classifications)
-	// Step 2 classification must appear.
+	lower := strings.ToLower(out)
+
+	// Step 2 classification must appear exactly once.
 	if !strings.Contains(out, "stage advanced") {
 		t.Errorf("expected 'stage advanced' from StepIndex 2, got:\n%s", out)
 	}
+	// "translation" must appear exactly once (only for step 2, not for the absent step 1).
+	if count := strings.Count(lower, "translation"); count != 1 {
+		t.Errorf("expected 'translation' to appear exactly once, got %d times in output:\n%s", count, out)
+	}
+	// No spurious classification for the absent step: neither "intermediary" nor "mediator" should appear.
+	for _, kind := range []string{"intermediary", "mediator"} {
+		if strings.Contains(lower, kind) {
+			t.Errorf("expected no %q classification for absent step 1, but found it in output:\n%s", kind, out)
+		}
+	}
 	// All three drafts must render.
-	if !strings.Contains(out, "g0000000") || !strings.Contains(out, "g1111111") || !strings.Contains(out, "g2222222") {
-		t.Errorf("expected all three draft IDs in output, got:\n%s", out)
+	for _, id := range []string{"g0000000", "g1111111", "g2222222"} {
+		if !strings.Contains(out, id) {
+			t.Errorf("expected draft ID %q in output, got:\n%s", id, out)
+		}
 	}
 }
 
