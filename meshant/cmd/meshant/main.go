@@ -237,7 +237,7 @@ Commands:
   promote     promote TraceDraft records to canonical Traces (flags: --output)
   shadow      summarise shadowed elements from an observer-situated articulation (flags: --observer, --tag, --from, --to, --output)
   gaps        compare element visibility between two observer positions (flags: --observer-a, --observer-b, --tag-a, --tag-b, --from-a, --to-a, --from-b, --to-b, --output)
-  bottleneck  identify provisionally central elements from an articulation
+  bottleneck  identify provisionally central elements from an articulation (flags: --observer, --tag, --from, --to, --output)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }

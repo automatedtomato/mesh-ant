@@ -116,7 +116,7 @@ func IdentifyBottlenecks(g MeshGraph, _ BottleneckOptions) []BottleneckNote {
 	// Sort: MediationCount desc → AppearanceCount desc → name asc.
 	// Stable deterministic ordering avoids implying significance in position
 	// beyond what the three measures express.
-	sort.Slice(notes, func(i, j int) bool {
+	sort.SliceStable(notes, func(i, j int) bool {
 		if notes[i].MediationCount != notes[j].MediationCount {
 			return notes[i].MediationCount > notes[j].MediationCount
 		}
@@ -172,7 +172,7 @@ func buildBottleneckReason(ac, mc, sc int) string {
 //
 // Returns the first write error encountered, if any.
 func PrintBottleneckNotes(w io.Writer, g MeshGraph, notes []BottleneckNote) error {
-	// writeLineB is a local helper that wraps one fmt.Fprintln call and
+	// writeLine is a local helper that wraps one fmt.Fprintln call and
 	// returns early on error. Using a closure avoids repeating the error
 	// wrap pattern on every line.
 	var writeErr error

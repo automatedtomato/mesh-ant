@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-17 (M13 Shadow Analysis + Observer Gap + Ingestion Deepening)
+**Last Updated:** 2026-03-18 (B.1 Bottleneck Note + M13 Shadow Analysis + Observer Gap + Ingestion Deepening)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -11,10 +11,10 @@
 |---------|---------|
 | `schema` | Core trace types, graph-reference predicates, and validators. |
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
-| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, export to JSON/DOT/Mermaid. |
+| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, bottleneck analysis, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps` subcommands. |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck` subcommands. |
 
 ## Package: schema
 
@@ -97,6 +97,7 @@
 | `export.go` | Export functions: `PrintGraphJSON`, `PrintDiffJSON`, `PrintGraphDOT`, `PrintGraphMermaid`, `PrintDiffDOT`, `PrintDiffMermaid`. Internal helpers for DOT/Mermaid formatting. `stripNewlines()` security helper prevents injection from crafted trace values. |
 | `shadow.go` | Shadow analysis: `SummariseShadow`, `PrintShadowSummary`; `ShadowSummary` type (M13). |
 | `gaps.go` | Observer-gap analysis: `AnalyseGaps`, `PrintObserverGap`; `ObserverGap` type (M13). |
+| `bottleneck.go` | Bottleneck analysis: `IdentifyBottlenecks`, `PrintBottleneckNotes`; `BottleneckOptions`, `BottleneckNote` types (B.1). |
 
 ### Types
 
@@ -127,6 +128,8 @@
 | `ClassifyOptions` | `Criterion` (EquivalenceCriterion) | Parameters for chain classification. Zero value = v1 heuristics (backwards-compatible). Criterion is carried into ClassifiedChain as provenance; does not alter step logic yet. |
 | `ShadowSummary` | `TotalShadowed` (int), `ByReason` (map[string]int), `Elements` ([]ShadowElement), `SeenFromCounts` (map[string]int), `Cut` (Cut) | Summary of shadowed elements in an articulated graph. ByReason counts by ShadowReason; SeenFromCounts maps excluded observer position to the count of elements seen from it; Elements sorted by name (M13). |
 | `ObserverGap` | `OnlyInA` ([]string), `OnlyInB` ([]string), `InBoth` ([]string), `CutA` (Cut), `CutB` (Cut) | Visibility asymmetry between two articulations. All three element lists sorted alphabetically. Both cuts retained for self-situated reporting (M13). |
+| `BottleneckOptions` | (empty struct) | Configuration for `IdentifyBottlenecks`. Reserved as extension point for future thresholds or heuristic toggles (v1: intentionally empty, B.1). |
+| `BottleneckNote` | `Element` (string), `AppearanceCount` (int), `MediationCount` (int), `ShadowCount` (int), `Reason` (string) | Provisional centrality reading for one element from a cut. Three independent measures (not combined). Reason hedges with "from this cut" to signal provisionality (B.1). |
 
 ### Functions
 
@@ -162,6 +165,8 @@
 | `PrintShadowSummary` | `func PrintShadowSummary(w io.Writer, s ShadowSummary) error` | Write shadow report to io.Writer. Observer position, shadow count by reason, SeenFrom counts descending, element list. Includes "No shadow" path when no elements shadowed (M13). |
 | `AnalyseGaps` | `func AnalyseGaps(g1, g2 MeshGraph) ObserverGap` | Compare node sets of two pre-articulated graphs; partition names into OnlyInA, OnlyInB, InBoth; retain both Cuts. Does not re-articulate (M13). |
 | `PrintObserverGap` | `func PrintObserverGap(w io.Writer, gap ObserverGap) error` | Write observer-gap report to io.Writer. Names both positions, three-way partition with element lists, "No gap" message when identical; neither position treated as authoritative (M13). |
+| `IdentifyBottlenecks` | `func IdentifyBottlenecks(g MeshGraph, _ BottleneckOptions) []BottleneckNote` | Apply v1 centrality heuristic: include if MediationCount > 0 OR AppearanceCount ≥ 2 OR ShadowCount > 0. Sort by MediationCount desc → AppearanceCount desc → name asc. Always returns non-nil slice (empty when no nodes qualify). Elements appearing only as mediators (not in Nodes) are excluded intentionally (B.1). |
+| `PrintBottleneckNotes` | `func PrintBottleneckNotes(w io.Writer, g MeshGraph, notes []BottleneckNote) error` | Write bottleneck analysis report to io.Writer. Header, cut context (observer position + trace counts), per-note lines (element, counts, reason), footer caveat naming provisionality. Follows PrintShadowSummary convention. Returns first write error encountered (B.1). |
 
 ## Package: persist
 
@@ -205,7 +210,7 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13) handlers. |
+| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13), `cmdBottleneck` (B.1) handlers. |
 | `main_test.go` | Tests: all subcommands, flag parsing, file output, error handling, criterion file loading, draft/promote pipeline (M11). |
 
 ### Types
@@ -235,6 +240,7 @@ None (persist carries no domain types; wraps graph types).
 | `cmdLineage` | `func cmdLineage(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, walk DerivedFrom links, render positional reading sequences as indented trees. Anchors (drafts with no DerivedFrom) are sequence roots. Cycle detection required (DFS grey-set). Flags: `--id <id>` (single chain), `--format text\|json` (M12). |
 | `cmdShadow` | `func cmdShadow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, print shadow summary via `graph.SummariseShadow()` + `PrintShadowSummary()`. Flags: `--observer` (repeatable, required), `--tag` (repeatable), `--from`, `--to` (RFC3339), `--output <file>` (M13). |
 | `cmdGaps` | `func cmdGaps(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts from the same file, compare node sets via `graph.AnalyseGaps()`, print observer-gap report via `PrintObserverGap()`. Flags: `--observer-a`, `--observer-b` (repeatable, both required), per-side `--tag-a/b`, `--from-a/b`, `--to-a/b` (RFC3339), `--output <file>` (M13). |
+| `cmdBottleneck` | `func cmdBottleneck(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, identify bottlenecks via `graph.IdentifyBottlenecks()`, print bottleneck notes via `PrintBottleneckNotes()`. Flags: `--observer` (repeatable, required), `--tag` (repeatable), `--from`, `--to` (RFC3339), `--output <file>` (B.1). |
 | `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
 | `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
@@ -367,8 +373,11 @@ cmd/demo/
 | Print shadow summary | `graph/shadow.go` → `PrintShadowSummary()` |
 | Compare two graph node sets | `graph/gaps.go` → `AnalyseGaps()` |
 | Print observer-gap report | `graph/gaps.go` → `PrintObserverGap()` |
+| Identify bottleneck elements | `graph/bottleneck.go` → `IdentifyBottlenecks()` |
+| Print bottleneck analysis | `graph/bottleneck.go` → `PrintBottleneckNotes()` |
 | Shadow summary via CLI | `cmd/meshant/main.go` → `cmdShadow()` |
 | Observer-gap report via CLI | `cmd/meshant/main.go` → `cmdGaps()` |
+| Bottleneck analysis via CLI | `cmd/meshant/main.go` → `cmdBottleneck()` |
 | Read critique prompt contract | `data/prompts/critique_pass.md` |
 | Run minimal demo | `cmd/demo/main.go` → `run()` |
 
