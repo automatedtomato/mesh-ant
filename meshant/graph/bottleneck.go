@@ -209,5 +209,8 @@ func PrintBottleneckNotes(w io.Writer, g MeshGraph, notes []BottleneckNote) erro
 	writeLine("---")
 	writeLine("Note: these readings are from one cut. A different position would produce different notes.")
 
-	return writeErr
+	if writeErr != nil {
+		return fmt.Errorf("graph: PrintBottleneckNotes: %w", writeErr)
+	}
+	return nil
 }
