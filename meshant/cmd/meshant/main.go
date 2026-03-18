@@ -230,7 +230,7 @@ Usage:
 Commands:
   summarize   load traces and print mesh summary
   validate    validate all traces and report errors
-  articulate  articulate an observer-situated graph (flags: --observer, --tag, --from, --to, --format, --output)
+  articulate  articulate an observer-situated graph (flags: --observer, --tag, --from, --to, --format, --output, --narrative)
   diff        diff two articulations (flags: --observer-a, --observer-b, --tag-a, --tag-b, --from-a, --to-a, --from-b, --to-b, --format, --output)
   follow      follow a translation chain through an articulation (flags: --observer, --tag, --from, --to, --element, --direction, --depth, --format, --criterion-file, --output)
   draft       ingest extraction JSON and produce TraceDraft records (flags: --source-doc, --extracted-by, --stage, --output)
@@ -296,12 +296,13 @@ func cmdValidate(w io.Writer, args []string) error {
 // cmdArticulate implements the "articulate" subcommand.
 //
 // It accepts the following flags:
-//   - --observer (repeatable, required) — one or more observer positions to include
-//   - --tag      (repeatable, optional) — tag filter (any-match / OR semantics)
-//   - --from     (optional, RFC3339)    — start of time window
-//   - --to       (optional, RFC3339)    — end of time window
-//   - --format   (optional, default "text") — output format: text|json|dot|mermaid
-//   - --output   (optional)             — write output to file instead of stdout
+//   - --observer  (repeatable, required) — one or more observer positions to include
+//   - --tag       (repeatable, optional) — tag filter (any-match / OR semantics)
+//   - --from      (optional, RFC3339)    — start of time window
+//   - --to        (optional, RFC3339)    — end of time window
+//   - --format    (optional, default "text") — output format: text|json|dot|mermaid
+//   - --output    (optional)             — write output to file instead of stdout
+//   - --narrative (optional, bool)       — append a NarrativeDraft section (text only)
 //
 // The positional argument (after all flags) must be the path to a traces JSON file.
 //
@@ -331,6 +332,12 @@ func cmdArticulate(w io.Writer, args []string) error {
 	// --output writes output to a file instead of stdout.
 	var outputPath string
 	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. graph.dot)")
+
+	// --narrative appends a NarrativeDraft section after the articulation output.
+	// Silently skipped for non-text formats (json, dot, mermaid) because
+	// narrative prose is not meaningful inside structured machine-readable output.
+	var narrative bool
+	fs.BoolVar(&narrative, "narrative", false, "append a provisional narrative draft (text format only)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -397,6 +404,19 @@ func cmdArticulate(w io.Writer, args []string) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	// --narrative emits a NarrativeDraft section after the articulation output.
+	// Silently skipped for non-text formats: narrative prose has no place inside
+	// JSON, DOT, or Mermaid output — those formats have their own consumers.
+	if narrative && format == "text" {
+		n := graph.DraftNarrative(g)
+		if _, err := fmt.Fprintln(dest, ""); err != nil {
+			return err
+		}
+		if err := graph.PrintNarrativeDraft(dest, n); err != nil {
+			return err
+		}
 	}
 
 	// If writing to file, print confirmation to stdout.
