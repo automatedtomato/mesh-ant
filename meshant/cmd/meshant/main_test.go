@@ -2490,3 +2490,68 @@ func TestCmdGaps_RunDispatch(t *testing.T) {
 		t.Error("run('gaps'): expected non-empty output")
 	}
 }
+
+// --- Group: cmdBottleneck ---
+
+// TestCmdBottleneck_HappyPath verifies that cmdBottleneck produces non-empty
+// output containing "provisional" and the observer position when given a
+// valid dataset and an explicit observer.
+func TestCmdBottleneck_HappyPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdBottleneck(&buf, []string{
+		"--observer", "meteorological-analyst",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdBottleneck(): unexpected error: %v", err)
+	}
+	out := buf.String()
+	if len(out) == 0 {
+		t.Error("cmdBottleneck(): expected non-empty output")
+	}
+	for _, want := range []string{"provisional", "meteorological-analyst"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("cmdBottleneck(): output missing %q;\noutput:\n%s", want, out)
+		}
+	}
+}
+
+// TestCmdBottleneck_ObserverOptional verifies that --observer is optional:
+// running without it (full cut) must not return an error.
+func TestCmdBottleneck_ObserverOptional(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdBottleneck(&buf, []string{evacuationDataset})
+	if err != nil {
+		t.Fatalf("cmdBottleneck() with no --observer: unexpected error: %v", err)
+	}
+	if len(buf.String()) == 0 {
+		t.Error("cmdBottleneck() with no --observer: expected non-empty output")
+	}
+}
+
+// TestCmdBottleneck_MissingPath verifies that cmdBottleneck returns an error
+// when no traces file path is supplied.
+func TestCmdBottleneck_MissingPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdBottleneck(&buf, []string{})
+	if err == nil {
+		t.Fatal("cmdBottleneck() with no path: want non-nil error, got nil")
+	}
+}
+
+// TestCmdBottleneck_RunDispatch verifies that run() correctly routes
+// "bottleneck" to cmdBottleneck, producing non-empty output.
+func TestCmdBottleneck_RunDispatch(t *testing.T) {
+	var buf bytes.Buffer
+	err := run(&buf, []string{
+		"bottleneck",
+		"--observer", "meteorological-analyst",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("run('bottleneck'): unexpected error: %v", err)
+	}
+	if len(buf.String()) == 0 {
+		t.Error("run('bottleneck'): expected non-empty output")
+	}
+}
