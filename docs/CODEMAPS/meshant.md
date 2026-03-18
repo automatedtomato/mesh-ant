@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-18 (Thread A.1: review package scaffold — AmbiguityWarning, DetectAmbiguities, RenderDraft; loader.NewUUID exported)
+**Last Updated:** 2026-03-18 (Thread A.2: RenderChain — derivation chain + step classification rendering)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -220,6 +220,7 @@ None (persist carries no domain types; wraps graph types).
 | `DetectAmbiguities` | `func DetectAmbiguities(d schema.TraceDraft) []AmbiguityWarning` | Check 6 candidate content fields (what_changed, source, target, mediation, observer, tags) for blank values, subject to `IntentionallyBlank` suppression. Also checks for criterion_ref mismatch (UncertaintyNote set but CriterionRef absent). Returns nil if no ambiguities detected (Thread A.1). |
 | `RenderDraft` | `func RenderDraft(d schema.TraceDraft, index, total int) string` | Format a TraceDraft for terminal display in the review session. Shows all candidate and provenance fields; blank values rendered as "(empty)". `index` is 1-based queue position (Thread A.1). |
 | `RenderAmbiguities` | `func RenderAmbiguities(warnings []AmbiguityWarning) string` | Format `[]AmbiguityWarning` for display below a rendered draft. Returns "(none)" when warnings is nil or empty (Thread A.1). |
+| `RenderChain` | `func RenderChain(chain []schema.TraceDraft, classifications []loader.DraftStepClassification) string` | Format a derivation chain for display in the review session. Shows each draft with truncated ID (8 chars), extraction_stage, extracted_by, and truncated what_changed (60 chars). Interleaves DraftStepClassification lines (Kind + Reason) between drafts. Last draft marked `<-- current`. Returns "(no derivation chain)" for empty input (Thread A.2). |
 
 ## Package: cmd/demo
 
