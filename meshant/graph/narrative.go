@@ -154,7 +154,7 @@ func buildBody(g MeshGraph) string {
 
 	return fmt.Sprintf(
 		"From this position, %d traces are included. The elements appearing most frequently are %s.%s",
-		len(g.Edges),
+		g.Cut.TracesIncluded,
 		strings.Join(elemPhrases, ", "),
 		mediationClause,
 	)
@@ -209,7 +209,7 @@ func buildCaveats(c Cut) []string {
 
 	// Shadow ratio caveat: shadow > 50% of TracesTotal.
 	shadowCount := len(c.ShadowElements)
-	if shadowCount > 0 && c.TracesTotal > 0 && shadowCount > c.TracesTotal/2 {
+	if shadowCount > 0 && c.TracesTotal > 0 && 2*shadowCount > c.TracesTotal {
 		caveats = append(caveats,
 			"A large portion of the dataset is in shadow from this position. The reading is shaped by what this cut excludes.",
 		)
