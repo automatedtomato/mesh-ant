@@ -137,8 +137,9 @@ func FollowDraftChain(drafts []schema.TraceDraft, from string) []schema.TraceDra
 //
 // v1 heuristics (provisional):
 //   - DraftTranslation: content fields changed AND extraction_stage changed
-//   - DraftMediator: content fields changed, extraction_stage unchanged
-//   - DraftIntermediary: no content fields changed
+//   - DraftMediator (content): content fields changed, extraction_stage unchanged
+//   - DraftMediator (endorsement): extraction_stage advanced, no content fields changed
+//   - DraftIntermediary: no content fields changed and extraction_stage unchanged
 //
 // Content fields are: what_changed, source, target, mediation, observer, tags.
 // Provenance fields (uncertainty_note, extracted_by, intentionally_blank) are
@@ -174,6 +175,9 @@ func classifyDraftStep(prev, curr schema.TraceDraft) (DraftStepKind, string) {
 	case content:
 		return DraftMediator,
 			"content fields reformulated — interpretation transformed in derivation"
+	case stage:
+		return DraftMediator,
+			"extraction_stage advanced without content change — endorsement transformed standing, not content"
 	default:
 		return DraftIntermediary,
 			"no content fields changed — draft relayed without recorded transformation"

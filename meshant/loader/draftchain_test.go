@@ -232,6 +232,159 @@ func TestClassifyDraftChain_ReasonNonEmpty(t *testing.T) {
 	}
 }
 
+func TestClassifyDraftChain_MediatorStageOnly(t *testing.T) {
+	// Child advances ExtractionStage without changing any content fields.
+	// This is the "endorsement" case: a reviewer accepts a draft as-is,
+	// promoting it from weak-draft to reviewed. The stage advance is a
+	// mediating act — it transforms the draft's epistemic standing even
+	// though no content was reformulated.
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "weak-draft",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing", // content unchanged
+		ExtractionStage: "reviewed",         // stage advanced
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftMediator)
+	}
+	if classifications[0].Reason == "" {
+		t.Error("Reason must be non-empty")
+	}
+}
+
+func TestClassifyDraftChain_MediatorStageOnly_NonZeroContentUnchanged(t *testing.T) {
+	// Like MediatorStageOnly but with non-zero, identical content fields on
+	// both drafts — confirms draftContentChanged returns false when all six
+	// content fields are populated but equal.
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		Source:          []string{"actor-a"},
+		Target:          []string{"actor-b"},
+		Mediation:       "rule-engine",
+		Observer:        "analyst",
+		Tags:            []string{"translation"},
+		ExtractionStage: "weak-draft",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing", // all content fields identical
+		Source:          []string{"actor-a"},
+		Target:          []string{"actor-b"},
+		Mediation:       "rule-engine",
+		Observer:        "analyst",
+		Tags:            []string{"translation"},
+		ExtractionStage: "reviewed", // stage advanced
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftMediator)
+	}
+}
+
+func TestClassifyDraftChain_EmptyCurrStageNotCountedAsChange(t *testing.T) {
+	// draftStageChanged contract: an empty curr.ExtractionStage is NOT counted
+	// as a stage change, even when the parent has a non-empty stage. A child
+	// with an unpopulated stage field should not trigger the endorsement path.
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "reviewed",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing", // content unchanged
+		ExtractionStage: "",                 // unset — not a stage change
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftIntermediary {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftIntermediary)
+	}
+}
+
+func TestClassifyDraftChain_SameNonEmptyStageBothSides(t *testing.T) {
+	// draftStageChanged contract: equal non-empty stages on both sides are not
+	// counted as a stage change. No advancement = not a mediating act on the
+	// stage axis. With no content change either, the step is DraftIntermediary.
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "reviewed",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing", // content unchanged
+		ExtractionStage: "reviewed",         // same stage — no advancement
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftIntermediary {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftIntermediary)
+	}
+}
+
+func TestClassifyDraftChain_MultiStepWithEndorsement(t *testing.T) {
+	// Three drafts: A→B (mediator, content change), B→C (mediator, stage-only endorsement).
+	// Confirms the endorsement case works correctly alongside content-based mediation.
+	a := schema.TraceDraft{
+		ID: "a0000000-0000-4000-8000-000000000001", SourceSpan: "span",
+		WhatChanged: "original", ExtractionStage: "weak-draft",
+	}
+	b := schema.TraceDraft{
+		ID: "b0000000-0000-4000-8000-000000000002", SourceSpan: "span",
+		WhatChanged: "reformulated", ExtractionStage: "weak-draft", // content changed
+		DerivedFrom: a.ID,
+	}
+	c := schema.TraceDraft{
+		ID: "c0000000-0000-4000-8000-000000000003", SourceSpan: "span",
+		WhatChanged: "reformulated", ExtractionStage: "reviewed", // stage advanced, content unchanged
+		DerivedFrom: b.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{a, b, c})
+	if len(classifications) != 2 {
+		t.Fatalf("multi-step: got %d classifications; want 2", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("step 0 (content change): got %q; want %q", classifications[0].Kind, loader.DraftMediator)
+	}
+	if classifications[1].Kind != loader.DraftMediator {
+		t.Errorf("step 1 (stage-only endorsement): got %q; want %q", classifications[1].Kind, loader.DraftMediator)
+	}
+}
+
 // TestFollowDraftChain_Fork verifies that when a parent has two children,
 // FollowDraftChain follows exactly one branch (the first child by input order)
 // and returns a linear chain — not both branches. This documents the
