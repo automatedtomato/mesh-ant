@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-18 (B.1–B.3: Bottleneck Note, Re-articulation Suggestions, Narrative Draft + M13 Shadow Analysis + Observer Gap + Ingestion Deepening)
+**Last Updated:** 2026-03-18 (Thread A.1: review package scaffold — AmbiguityWarning, DetectAmbiguities, RenderDraft; loader.NewUUID exported)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -13,6 +13,7 @@
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
 | `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, bottleneck analysis, re-articulation suggestions, narrative drafts, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
+| `review` | Ambiguity detection and terminal rendering for the interactive review session (Thread A). |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
 | `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. |
 
@@ -53,7 +54,7 @@
 | File | Contains |
 |------|----------|
 | `loader.go` | `Load`, `Summarise`, `PrintSummary`; `MeshSummary`, `FlaggedTrace` types. |
-| `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; UUID generation (M11). `WithIntentionallyBlank` and `WithCriterionRef` counts added (M12.5, M13). |
+| `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; `NewUUID` (exported, Thread A.1). `WithIntentionallyBlank` and `WithCriterionRef` counts added (M12.5, M13). |
 | `draftchain.go` | `FollowDraftChain`, `ClassifyDraftChain`; `DraftStepKind`, `DraftStepClassification` types (M13). |
 
 ### Types
@@ -196,6 +197,29 @@ None (persist carries no domain types; wraps graph types).
 | `WriteJSON` | `func WriteJSON(path string, v any) error` | Marshal value to JSON and write to file with 0644 permissions. |
 | `ReadGraphJSON` | `func ReadGraphJSON(path string) (graph.MeshGraph, error)` | Read and unmarshal JSON file as `MeshGraph`. |
 | `ReadDiffJSON` | `func ReadDiffJSON(path string) (graph.GraphDiff, error)` | Read and unmarshal JSON file as `GraphDiff`. |
+
+## Package: review
+
+### Files
+
+| File | Contains |
+|------|----------|
+| `ambiguity.go` | `AmbiguityWarning` struct; `DetectAmbiguities` function. |
+| `render.go` | `RenderDraft`, `RenderAmbiguities`; helpers `valueOrEmpty`, `sliceOrEmpty`. |
+
+### Types
+
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `AmbiguityWarning` | `Field` (string), `Message` (string) | Positioned observation that a draft field is unregistered or in shadow from this position. Language is ANT-disciplined: no "missing", "error", or "incomplete". Invitations to inspect, not demands to correct (Thread A). |
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `DetectAmbiguities` | `func DetectAmbiguities(d schema.TraceDraft) []AmbiguityWarning` | Check 6 candidate content fields (what_changed, source, target, mediation, observer, tags) for blank values, subject to `IntentionallyBlank` suppression. Also checks for criterion_ref mismatch (UncertaintyNote set but CriterionRef absent). Returns nil if no ambiguities detected (Thread A.1). |
+| `RenderDraft` | `func RenderDraft(d schema.TraceDraft, index, total int) string` | Format a TraceDraft for terminal display in the review session. Shows all candidate and provenance fields; blank values rendered as "(empty)". `index` is 1-based queue position (Thread A.1). |
+| `RenderAmbiguities` | `func RenderAmbiguities(warnings []AmbiguityWarning) string` | Format `[]AmbiguityWarning` for display below a rendered draft. Returns "(none)" when warnings is nil or empty (Thread A.1). |
 
 ## Package: cmd/demo
 

@@ -91,7 +91,7 @@ func LoadDrafts(path string) ([]schema.TraceDraft, error) {
 		// Assign a UUID when the record has no ID — the ingestion contract
 		// does not require IDs in extraction JSON; the loader assigns them.
 		if drafts[i].ID == "" {
-			id, err := newUUID()
+			id, err := NewUUID()
 			if err != nil {
 				return nil, fmt.Errorf("loader: draft %d: generate UUID: %w", i, err)
 			}
@@ -261,9 +261,11 @@ func sortedKeys(m map[string]int) []string {
 	return keys
 }
 
-// newUUID generates a random UUID v4 formatted as a lowercase hyphenated string.
+// NewUUID generates a random UUID v4 formatted as a lowercase hyphenated string.
 // It uses crypto/rand for randomness — the same source as production UUID libraries.
-func newUUID() (string, error) {
+// Exported so that other packages (e.g. review) can assign draft IDs
+// without importing an external UUID library.
+func NewUUID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", fmt.Errorf("read random bytes: %w", err)

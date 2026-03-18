@@ -654,10 +654,15 @@ Detailed per-milestone plans to be written before implementation begins.
 
 ### Thread A — Interactive Review CLI (v1.x → v2.0.0 prereq)
 
-- [ ] **A.1 — Draft review session** — `meshant review`; accept/edit/skip; each acceptance is a new derived draft
-- [ ] **A.2 — Provenance chain display** — inline lineage + ClassifyDraftChain in the review session
-- [ ] **A.3 — Ambiguity surfacing** — empty fields, UncertaintyNote, CriterionRef mismatch warnings
-- [ ] **A.4 — Decision record + docs**
+Parent issue: #86
+
+- [x] **A.0 (#87) — Fix classifyDraftStep heuristic** — add stage-only mediator case; 5 new tests; PR #94 merged
+- [x] **A.1 (#88) — review package scaffold** — `AmbiguityWarning`, `DetectAmbiguities`, `RenderDraft`, `RenderAmbiguities`; export `loader.NewUUID`; 23 tests, 100% coverage; PR #97 merged
+- [ ] **A.2 (#89) — RenderChain** — `RenderChain` rendering derivation chain + step classifications in review session
+- [ ] **A.3 (#90) — Session core** — `RunReviewSession`; accept/skip/quit loop; `deriveAccepted` creates new TraceDraft with DerivedFrom link
+- [ ] **A.4 (#91) — Edit flow** — `runEditFlow`; `deriveEdited`; in-session field editing
+- [ ] **A.5 (#92) — CLI wiring** — `cmdReview` in `cmd/meshant`; `meshant review <file>` subcommand
+- [ ] **A.6 (#93) — Decision record + codemap**
 
 ### Thread C — Multi-Analyst Ingestion Comparison
 
