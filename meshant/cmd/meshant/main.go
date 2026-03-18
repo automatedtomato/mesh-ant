@@ -236,7 +236,7 @@ Commands:
   draft       ingest extraction JSON and produce TraceDraft records (flags: --source-doc, --extracted-by, --stage, --output)
   promote     promote TraceDraft records to canonical Traces (flags: --output)
   shadow      summarise shadowed elements from an observer-situated articulation (flags: --observer, --tag, --from, --to, --output)
-  gaps        compare element visibility between two observer positions (flags: --observer-a, --observer-b, --tag-a, --tag-b, --from-a, --to-a, --from-b, --to-b, --output)
+  gaps        compare element visibility between two observer positions (flags: --observer-a, --observer-b, --tag-a, --tag-b, --from-a, --to-a, --from-b, --to-b, --suggest, --output)
   bottleneck  identify provisionally central elements from an articulation (flags: --observer, --tag, --from, --to, --output)
 
 Run 'meshant <command> --help' for command-specific flags.`
@@ -1420,7 +1420,8 @@ func cmdShadow(w io.Writer, args []string) error {
 // It articulates two observer-situated graphs from the same traces file and
 // prints an observer-gap report — what each position can see that the other
 // cannot. Neither position is treated as authoritative; the report names both
-// and the asymmetry between them.
+// and the asymmetry between them. When --suggest is set, heuristic
+// re-articulation suggestions are printed after the gap report.
 //
 // It accepts the following flags:
 //   - --observer-a (repeatable, required) — observer positions for graph A
@@ -1452,6 +1453,10 @@ func cmdGaps(w io.Writer, args []string) error {
 
 	var outputPath string
 	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. gaps.txt)")
+
+	// --suggest enables heuristic re-articulation suggestions after the gap report.
+	var suggest bool
+	fs.BoolVar(&suggest, "suggest", false, "print re-articulation suggestions after the gap report")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -1509,6 +1514,16 @@ func cmdGaps(w io.Writer, args []string) error {
 	if err := graph.PrintObserverGap(dest, gap); err != nil {
 		return err
 	}
+
+	// When --suggest is set, append heuristic re-articulation suggestions
+	// immediately after the gap report.
+	if suggest {
+		suggestions := graph.SuggestRearticulations(gap)
+		if err := graph.PrintRearticSuggestions(dest, gap, suggestions); err != nil {
+			return err
+		}
+	}
+
 	return confirmOutput(w, outputPath)
 }
 
