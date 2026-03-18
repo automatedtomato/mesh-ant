@@ -184,6 +184,73 @@ func TestSuggestRearticulations_TagRelaxation(t *testing.T) {
 	}
 }
 
+// TestSuggestRearticulations_TimeWindowExpansionSideA verifies the symmetric
+// case: when cut A has a time window and cut B does not, and cut B has
+// exclusive elements, a time-window-expansion suggestion for Side="A" fires.
+func TestSuggestRearticulations_TimeWindowExpansionSideA(t *testing.T) {
+	now := time.Now()
+
+	// Cut A has a time window; cut B does not. Only B has exclusive elements.
+	// Heuristic: aHasWindow && !bHasWindow && len(OnlyInB) > 0 → Side="A"
+	gap := graph.ObserverGap{
+		OnlyInA: []string{},
+		OnlyInB: []string{"elem-b1"},
+		InBoth:  []string{},
+		CutA: graph.Cut{
+			TimeWindow: graph.TimeWindow{
+				Start: now.Add(-24 * time.Hour),
+				End:   now,
+			},
+		},
+		CutB: graph.Cut{},
+	}
+
+	suggestions := graph.SuggestRearticulations(gap)
+	if suggestions == nil {
+		t.Fatal("SuggestRearticulations: got nil, want non-nil")
+	}
+
+	found := false
+	for _, s := range suggestions {
+		if s.Kind == graph.SuggestionTimeExpansion && s.Side == "A" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected time-window-expansion Side=A; got: %v", suggestions)
+	}
+}
+
+// TestSuggestRearticulations_TagRelaxationSideB verifies the symmetric case:
+// when cut B has tags and cut A does not, and cut A has exclusive elements,
+// a tag-relaxation suggestion for Side="B" fires.
+func TestSuggestRearticulations_TagRelaxationSideB(t *testing.T) {
+	gap := graph.ObserverGap{
+		OnlyInA: []string{"elem-a1"},
+		OnlyInB: []string{},
+		InBoth:  []string{},
+		CutA:    graph.Cut{},
+		CutB:    graph.Cut{Tags: []string{"critical"}},
+	}
+
+	suggestions := graph.SuggestRearticulations(gap)
+	if suggestions == nil {
+		t.Fatal("SuggestRearticulations: got nil, want non-nil")
+	}
+
+	found := false
+	for _, s := range suggestions {
+		if s.Kind == graph.SuggestionTagRelaxation && s.Side == "B" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected tag-relaxation Side=B; got: %v", suggestions)
+	}
+}
+
 // TestSuggestRearticulations_EmptySliceWhenGapButNoHeuristic verifies that
 // when a gap exists but no heuristic condition is met, the result is a
 // non-nil empty slice — not nil. This distinguishes "gap with no suggestion"

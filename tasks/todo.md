@@ -648,7 +648,7 @@ Detailed per-milestone plans to be written before implementation begins.
 ### Thread B — Remaining Interpretive Outputs (v1.x, next)
 
 - [x] **B.1 — Bottleneck note** — `IdentifyBottlenecks`, `BottleneckNote`, `meshant bottleneck`
-- [ ] **B.2 — Re-articulation suggestion** — `SuggestRearticulations`, `RearticSuggestion`, `--suggest` on `meshant gaps`
+- [x] **B.2 — Re-articulation suggestion** — `SuggestRearticulations`, `RearticSuggestion`, `--suggest` on `meshant gaps`
 - [ ] **B.3 — Incident narrative draft** — `DraftNarrative`, `NarrativeDraft`, `meshant narrative`
 - [ ] **B.4 — Decision record + codemap**
 

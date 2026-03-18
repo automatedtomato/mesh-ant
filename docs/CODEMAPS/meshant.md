@@ -98,6 +98,7 @@
 | `shadow.go` | Shadow analysis: `SummariseShadow`, `PrintShadowSummary`; `ShadowSummary` type (M13). |
 | `gaps.go` | Observer-gap analysis: `AnalyseGaps`, `PrintObserverGap`; `ObserverGap` type (M13). |
 | `bottleneck.go` | Bottleneck analysis: `IdentifyBottlenecks`, `PrintBottleneckNotes`; `BottleneckOptions`, `BottleneckNote` types (B.1). |
+| `suggest.go` | Re-articulation suggestion: `SuggestRearticulations`, `PrintRearticSuggestions`; `SuggestionKind`, `RearticSuggestion` types (B.2). |
 
 ### Types
 
@@ -130,6 +131,8 @@
 | `ObserverGap` | `OnlyInA` ([]string), `OnlyInB` ([]string), `InBoth` ([]string), `CutA` (Cut), `CutB` (Cut) | Visibility asymmetry between two articulations. All three element lists sorted alphabetically. Both cuts retained for self-situated reporting (M13). |
 | `BottleneckOptions` | (empty struct) | Configuration for `IdentifyBottlenecks`. Reserved as extension point for future thresholds or heuristic toggles (v1: intentionally empty, B.1). |
 | `BottleneckNote` | `Element` (string), `AppearanceCount` (int), `MediationCount` (int), `ShadowCount` (int), `Reason` (string) | Provisional centrality reading for one element from a cut. Three independent measures (not combined). Reason hedges with "from this cut" to signal provisionality (B.1). |
+| `SuggestionKind` | (string constant: `SuggestionObserverExpansion`, `SuggestionTimeExpansion`, `SuggestionTagRelaxation`) | Category of re-articulation change being suggested (B.2). |
+| `RearticSuggestion` | `Kind` (SuggestionKind), `Side` (string: "A" or "B"), `Rationale` (string), `SuggestedParams` (string) | Heuristic provocation for narrowing a gap. Rationale always names what the suggestion cannot know. SuggestedParams is plain-language description of suggested change (B.2). |
 
 ### Functions
 
@@ -165,8 +168,10 @@
 | `PrintShadowSummary` | `func PrintShadowSummary(w io.Writer, s ShadowSummary) error` | Write shadow report to io.Writer. Observer position, shadow count by reason, SeenFrom counts descending, element list. Includes "No shadow" path when no elements shadowed (M13). |
 | `AnalyseGaps` | `func AnalyseGaps(g1, g2 MeshGraph) ObserverGap` | Compare node sets of two pre-articulated graphs; partition names into OnlyInA, OnlyInB, InBoth; retain both Cuts. Does not re-articulate (M13). |
 | `PrintObserverGap` | `func PrintObserverGap(w io.Writer, gap ObserverGap) error` | Write observer-gap report to io.Writer. Names both positions, three-way partition with element lists, "No gap" message when identical; neither position treated as authoritative (M13). |
-| `IdentifyBottlenecks` | `func IdentifyBottlenecks(g MeshGraph, _ BottleneckOptions) []BottleneckNote` | Apply v1 centrality heuristic: include if MediationCount > 0 OR AppearanceCount ≥ 2 OR ShadowCount > 0. Sort by MediationCount desc → AppearanceCount desc → name asc. Always returns non-nil slice (empty when no nodes qualify). Elements appearing only as mediators (not in Nodes) are excluded intentionally (B.1). |
-| `PrintBottleneckNotes` | `func PrintBottleneckNotes(w io.Writer, g MeshGraph, notes []BottleneckNote) error` | Write bottleneck analysis report to io.Writer. Header, cut context (observer position + trace counts), per-note lines (element, counts, reason), footer caveat naming provisionality. Follows PrintShadowSummary convention. Returns first write error encountered (B.1). |
+| `IdentifyBottlenecks` | `func IdentifyBottlenecks(g MeshGraph, _ BottleneckOptions) []BottleneckNote` | Apply v1 centrality heuristic: include if MediationCount > 0 OR AppearanceCount ≥ 2 OR ShadowCount > 0. Sort by MediationCount desc → AppearanceCount desc → name asc. Always returns non-nil slice (empty when no nodes qualify) (B.1). |
+| `PrintBottleneckNotes` | `func PrintBottleneckNotes(w io.Writer, g MeshGraph, notes []BottleneckNote) error` | Write bottleneck analysis report to io.Writer. Header, cut context, per-note lines (element, counts, reason), footer caveat (B.1). |
+| `SuggestRearticulations` | `func SuggestRearticulations(gap ObserverGap) []RearticSuggestion` | Generate heuristic re-articulation suggestions from an ObserverGap. Returns nil when no gap (both OnlyInA and OnlyInB empty); returns non-nil empty slice when gap exists but no heuristic fires (B.2). |
+| `PrintRearticSuggestions` | `func PrintRearticSuggestions(w io.Writer, gap ObserverGap, suggestions []RearticSuggestion) error` | Write re-articulation suggestions to io.Writer. Returns nil immediately for nil input. Header, gap summary, per-suggestion blocks, footer caveat naming suggestion engine's own shadow (B.2). |
 
 ## Package: persist
 
@@ -239,8 +244,8 @@ None (persist carries no domain types; wraps graph types).
 | `cmdRearticulate` | `func cmdRearticulate(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, produce skeleton JSON array — for each draft: `source_span` copied verbatim, `derived_from` set to original ID, all content fields blank, `extraction_stage:"reviewed"`. Flags: `--id <id>` (single draft only), `--output <file>` (M12). |
 | `cmdLineage` | `func cmdLineage(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, walk DerivedFrom links, render positional reading sequences as indented trees. Anchors (drafts with no DerivedFrom) are sequence roots. Cycle detection required (DFS grey-set). Flags: `--id <id>` (single chain), `--format text\|json` (M12). |
 | `cmdShadow` | `func cmdShadow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, print shadow summary via `graph.SummariseShadow()` + `PrintShadowSummary()`. Flags: `--observer` (repeatable, required), `--tag` (repeatable), `--from`, `--to` (RFC3339), `--output <file>` (M13). |
-| `cmdGaps` | `func cmdGaps(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts from the same file, compare node sets via `graph.AnalyseGaps()`, print observer-gap report via `PrintObserverGap()`. Flags: `--observer-a`, `--observer-b` (repeatable, both required), per-side `--tag-a/b`, `--from-a/b`, `--to-a/b` (RFC3339), `--output <file>` (M13). |
-| `cmdBottleneck` | `func cmdBottleneck(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, identify bottlenecks via `graph.IdentifyBottlenecks()`, print bottleneck notes via `PrintBottleneckNotes()`. Flags: `--observer` (repeatable, required), `--tag` (repeatable), `--from`, `--to` (RFC3339), `--output <file>` (B.1). |
+| `cmdGaps` | `func cmdGaps(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts, compare node sets via `graph.AnalyseGaps()`, print gap report. Optionally appends re-articulation suggestions via `--suggest`. Flags: `--observer-a`, `--observer-b` (required), per-side `--tag-a/b`, `--from-a/b`, `--to-a/b`, `--suggest` (bool), `--output` (M13, B.2). |
+| `cmdBottleneck` | `func cmdBottleneck(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, identify bottlenecks via `graph.IdentifyBottlenecks()`, print notes via `PrintBottleneckNotes()`. Flags: `--observer` (optional), `--tag`, `--from`, `--to`, `--output` (B.1). |
 | `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
 | `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
@@ -257,6 +262,7 @@ None (persist carries no domain types; wraps graph types).
 - **Ingestion pipeline** (M11): `draft` command ingests LLM extraction JSON and produces TraceDraft records; `promote` command converts promotable TraceDraft records to canonical Traces (tagged with `draft` provenance signal)
 - **Re-articulation pipeline** (M12): `rearticulate` command produces critique skeletons (SourceSpan + DerivedFrom set, all content fields blank); `lineage` command walks DerivedFrom links and renders positional reading sequences as CLI output
 - **Shadow analysis** (M13): `shadow` subcommand summarises shadowed elements from a cut; `gaps` subcommand compares element visibility between two observer positions; neither position is authoritative
+- **Re-articulation suggestions** (B.2): optional `--suggest` flag on `gaps` subcommand proposes cut adjustments (observer expansion, time-window expansion, tag relaxation) to narrow an observed gap
 - **Binary installation**: `go install ./cmd/meshant` produces `meshant` binary at $GOPATH/bin; used in Dockerfile at `/usr/local/bin/meshant`
 
 ## Cross-Package Relationships
@@ -378,6 +384,9 @@ cmd/demo/
 | Shadow summary via CLI | `cmd/meshant/main.go` → `cmdShadow()` |
 | Observer-gap report via CLI | `cmd/meshant/main.go` → `cmdGaps()` |
 | Bottleneck analysis via CLI | `cmd/meshant/main.go` → `cmdBottleneck()` |
+| Suggest re-articulations from gap | `graph/suggest.go` → `SuggestRearticulations()` |
+| Print re-articulation suggestions | `graph/suggest.go` → `PrintRearticSuggestions()` |
+| Re-articulation suggestions via CLI | `cmd/meshant/main.go` → `cmdGaps()` with `--suggest` flag |
 | Read critique prompt contract | `data/prompts/critique_pass.md` |
 | Run minimal demo | `cmd/demo/main.go` → `run()` |
 

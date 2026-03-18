@@ -238,8 +238,10 @@ func PrintRearticSuggestions(w io.Writer, gap ObserverGap, suggestions []Reartic
 	lines = append(lines,
 		"",
 		"---",
-		"Note: a suggestion is a provocation, not a prescription. "+
-			"It does not know what a re-articulation would reveal.",
+		"Note: a suggestion is a provocation, not a prescription. " +
+			"It does not know what a re-articulation would reveal. " +
+			"It can only suggest changes to observer, time, and tag parameters — " +
+			"not to element boundaries, equivalence criteria, or the trace dataset itself.",
 	)
 
 	// Own Fprintln loop — not writeLines from shadow.go (wrong error prefix).
