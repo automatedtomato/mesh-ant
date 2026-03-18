@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-18 (B.1 Bottleneck Note + M13 Shadow Analysis + Observer Gap + Ingestion Deepening)
+**Last Updated:** 2026-03-18 (B.1–B.3: Bottleneck Note, Re-articulation Suggestions, Narrative Draft + M13 Shadow Analysis + Observer Gap + Ingestion Deepening)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -11,10 +11,10 @@
 |---------|---------|
 | `schema` | Core trace types, graph-reference predicates, and validators. |
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
-| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, bottleneck analysis, export to JSON/DOT/Mermaid. |
+| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, bottleneck analysis, re-articulation suggestions, narrative drafts, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck` subcommands. |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. |
 
 ## Package: schema
 
@@ -99,6 +99,7 @@
 | `gaps.go` | Observer-gap analysis: `AnalyseGaps`, `PrintObserverGap`; `ObserverGap` type (M13). |
 | `bottleneck.go` | Bottleneck analysis: `IdentifyBottlenecks`, `PrintBottleneckNotes`; `BottleneckOptions`, `BottleneckNote` types (B.1). |
 | `suggest.go` | Re-articulation suggestion: `SuggestRearticulations`, `PrintRearticSuggestions`; `SuggestionKind`, `RearticSuggestion` types (B.2). |
+| `narrative.go` | Narrative drafts: `DraftNarrative`, `PrintNarrativeDraft`; `NarrativeDraft` type (B.3). Positioned reading of a graph; names cut position, top elements by frequency, observed mediations, shadow count, and methodological caveats. |
 
 ### Types
 
@@ -133,6 +134,7 @@
 | `BottleneckNote` | `Element` (string), `AppearanceCount` (int), `MediationCount` (int), `ShadowCount` (int), `Reason` (string) | Provisional centrality reading for one element from a cut. Three independent measures (not combined). Reason hedges with "from this cut" to signal provisionality (B.1). |
 | `SuggestionKind` | (string constant: `SuggestionObserverExpansion`, `SuggestionTimeExpansion`, `SuggestionTagRelaxation`) | Category of re-articulation change being suggested (B.2). |
 | `RearticSuggestion` | `Kind` (SuggestionKind), `Side` (string: "A" or "B"), `Rationale` (string), `SuggestedParams` (string) | Heuristic provocation for narrowing a gap. Rationale always names what the suggestion cannot know. SuggestedParams is plain-language description of suggested change (B.2). |
+| `NarrativeDraft` | `PositionStatement` (string), `Body` (string), `ShadowStatement` (string), `Caveats` ([]string) | Provisional, positioned narrative reading of a graph from one observer cut. Immutable once returned. Zero-value for empty graphs (no edges); all four fields populated for non-empty graphs. Names cut position, trace count, top-3 elements by frequency, observed mediations (up to 5 + count of remainder), shadow count with exclusion reasons, and methodological caveats (B.3). |
 
 ### Functions
 
@@ -172,6 +174,8 @@
 | `PrintBottleneckNotes` | `func PrintBottleneckNotes(w io.Writer, g MeshGraph, notes []BottleneckNote) error` | Write bottleneck analysis report to io.Writer. Header, cut context, per-note lines (element, counts, reason), footer caveat (B.1). |
 | `SuggestRearticulations` | `func SuggestRearticulations(gap ObserverGap) []RearticSuggestion` | Generate heuristic re-articulation suggestions from an ObserverGap. Returns nil when no gap (both OnlyInA and OnlyInB empty); returns non-nil empty slice when gap exists but no heuristic fires (B.2). |
 | `PrintRearticSuggestions` | `func PrintRearticSuggestions(w io.Writer, gap ObserverGap, suggestions []RearticSuggestion) error` | Write re-articulation suggestions to io.Writer. Returns nil immediately for nil input. Header, gap summary, per-suggestion blocks, footer caveat naming suggestion engine's own shadow (B.2). |
+| `DraftNarrative` | `func DraftNarrative(g MeshGraph) NarrativeDraft` | Produce a provisional narrative reading of graph g. Returns zero-value for empty graphs. For non-empty graphs: positions the cut, counts included traces, names top-3 elements by appearance frequency, lists up to 5 observed mediations, counts shadow elements with reasons, and generates methodological caveats based on shadow ratio, time window, and tag filters (B.3). |
+| `PrintNarrativeDraft` | `func PrintNarrativeDraft(w io.Writer, n NarrativeDraft) error` | Write formatted narrative draft to io.Writer. Renders header, position statement, body (reading from cut), shadow statement (what is in shadow from this position), caveats (methodological qualifications), and footer note. Language is provisional throughout; "missing" never used (B.3). |
 
 ## Package: persist
 
@@ -236,7 +240,7 @@ None (persist carries no domain types; wraps graph types).
 | `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, or `cmdGaps()`. |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
-| `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. |
+| `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. Optional `--narrative` flag appends a positioned narrative draft (text format only, skipped for JSON/DOT/Mermaid). |
 | `cmdDiff` | `func cmdDiff(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts (`--observer-a/b`, `--tag-a/b`, per-side time windows), compute diff via `graph.Diff()`. `--format text\|json\|dot\|mermaid`, `--output <file>`. |
 | `cmdFollow` | `func cmdFollow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, follow translation chain from --element with `--direction forward\|backward`, `--depth N`, `--observer`, `--tag`, `--from`, `--to`. Optional `--criterion-file <path>` loads an EquivalenceCriterion before trace I/O. Classify and print via `PrintChain()`. `--format text\|json`, `--output <file>`. |
 | `cmdDraft` | `func cmdDraft(w io.Writer, args []string) error` | Subcommand: Load extraction JSON, assign UUIDs/timestamps, apply optional `--source-doc`, `--extracted-by`, `--stage` overrides, write TraceDraft JSON via `loader.LoadDrafts()`, print provenance summary via `PrintDraftSummary()`. `--output <file>` (M11). |
@@ -387,6 +391,9 @@ cmd/demo/
 | Suggest re-articulations from gap | `graph/suggest.go` → `SuggestRearticulations()` |
 | Print re-articulation suggestions | `graph/suggest.go` → `PrintRearticSuggestions()` |
 | Re-articulation suggestions via CLI | `cmd/meshant/main.go` → `cmdGaps()` with `--suggest` flag |
+| Draft narrative reading of a graph | `graph/narrative.go` → `DraftNarrative()` |
+| Print narrative draft | `graph/narrative.go` → `PrintNarrativeDraft()` |
+| Add narrative draft to articulation output | `cmd/meshant/main.go` → `cmdArticulate()` with `--narrative` flag |
 | Read critique prompt contract | `data/prompts/critique_pass.md` |
 | Run minimal demo | `cmd/demo/main.go` → `run()` |
 
@@ -468,6 +475,16 @@ cmd/demo/
 - **FollowDraftChain mirrors FollowTranslation**: same first-match, cycle-detection, and empty-if-not-found semantics
 - **CriterionRef is string-only**: stores criterion `Name` (not the struct) to prevent `schema`→`graph` import cycle
 - **DraftStepKind is v1 provisional**: mirrors StepKind; will be revisited when criteria govern draft chains
+
+### Narrative Drafts (B.3)
+- **Positioned reading, not conclusion**: DraftNarrative produces a provisional narrative from one observer cut; it organizes what the graph already contains (trace counts, mediations, shadow elements) into readable form
+- **Top elements by frequency**: Selects top-3 nodes by AppearanceCount (descending), then alphabetically; lists fewer when graph is smaller
+- **Mediation enumeration**: Collects up to 5 distinct non-empty Edge.Mediation strings in encounter order; appends "and N more" if more exist
+- **Shadow language discipline**: Never uses "missing" (absence implies non-existence); always uses "in shadow from this position" (names what is invisible from one vantage point)
+- **Mandatory caveats**: Always includes standard positioned-reading caveat; adds shadow-ratio, time-window, and tag-filter caveats based on cut parameters
+- **Immutability**: NarrativeDraft fields are populated once; callers should not mutate Caveats slice
+- **Empty graphs**: Returns zero-value NarrativeDraft when graph has no edges (no data to narrate)
+- **CLI integration**: `--narrative` flag on `cmdArticulate` (text format only; skipped for JSON/DOT/Mermaid)
 
 ### Ingestion Pipeline (M11)
 - **TraceDraft** is a first-class analytical object, not a halfway house to Trace
@@ -560,6 +577,7 @@ cmd/demo/
 - `cmd/demo/main_test.go` — E2E test
 - `graph/shadow_test.go` — 10 tests for SummariseShadow and PrintShadowSummary (M13)
 - `graph/gaps_test.go` — 9 tests for AnalyseGaps and PrintObserverGap (M13)
+- `graph/narrative_test.go` — 11 tests for DraftNarrative and PrintNarrativeDraft (B.3); covers empty graphs, element sorting, mediation enumeration, shadow statements, caveat triggering (shadow ratio, time window, tag filters)
 - `loader/draftchain_test.go` — 11 tests for FollowDraftChain and ClassifyDraftChain (M13)
 - `schema/tracedraft_test.go` — includes tests for CriterionRef (M13) and IntentionallyBlank (M12.5)
-- `cmd/meshant/main_test.go` — tests covering all CLI subcommands including follow, draft, promote (M11), rearticulate, lineage (M12), shadow, gaps (M13), flag parsing, file output, error handling
+- `cmd/meshant/main_test.go` — tests covering all CLI subcommands including follow, draft, promote (M11), rearticulate, lineage (M12), shadow, gaps (M13), narrative flag on articulate (B.3), flag parsing, file output, error handling

@@ -649,7 +649,7 @@ Detailed per-milestone plans to be written before implementation begins.
 
 - [x] **B.1 — Bottleneck note** — `IdentifyBottlenecks`, `BottleneckNote`, `meshant bottleneck`
 - [x] **B.2 — Re-articulation suggestion** — `SuggestRearticulations`, `RearticSuggestion`, `--suggest` on `meshant gaps`
-- [ ] **B.3 — Incident narrative draft** — `DraftNarrative`, `NarrativeDraft`, `meshant narrative`
+- [x] **B.3 — Incident narrative draft** — `DraftNarrative`, `NarrativeDraft`, `meshant narrative` (complete; `--narrative` flag on `meshant articulate`)
 - [ ] **B.4 — Decision record + codemap**
 
 ### Thread A — Interactive Review CLI (v1.x → v2.0.0 prereq)

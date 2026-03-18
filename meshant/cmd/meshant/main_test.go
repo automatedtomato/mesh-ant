@@ -2589,3 +2589,58 @@ func TestCmdGaps_SuggestFlag(t *testing.T) {
 		t.Errorf("cmdGaps() --suggest: output missing 'provocation' in footer; got:\n%s", out)
 	}
 }
+
+// --- Group B.3: --narrative flag on articulate ---
+
+// TestCmdArticulate_NarrativeFlag verifies that --narrative appends a
+// NarrativeDraft section to the text-format articulation output.
+// The output must contain the "Narrative Draft" header and the "Position:"
+// section label from PrintNarrativeDraft.
+//
+// Only emitted for --format text (the default). The test uses the
+// meteorological-analyst observer from the evacuation dataset — a non-empty
+// articulation with a well-known shadow.
+func TestCmdArticulate_NarrativeFlag(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--narrative",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --narrative returned unexpected error: %v", err)
+	}
+	out := buf.String()
+
+	// The narrative section header must be present.
+	if !strings.Contains(out, "Narrative Draft") {
+		t.Errorf("--narrative: output does not contain 'Narrative Draft'; got:\n%s", out)
+	}
+	// The Position section label from PrintNarrativeDraft must be present.
+	if !strings.Contains(out, "Position:") {
+		t.Errorf("--narrative: output does not contain 'Position:'; got:\n%s", out)
+	}
+}
+
+// TestCmdArticulate_NarrativeFlagSkippedForJSON verifies that --narrative is
+// silently skipped when --format json is used. The output must not contain
+// "Narrative Draft" and must be valid JSON (starts with '{').
+func TestCmdArticulate_NarrativeFlagSkippedForJSON(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--format", "json",
+		"--narrative",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --format json --narrative returned unexpected error: %v", err)
+	}
+	out := strings.TrimSpace(buf.String())
+	if strings.Contains(out, "Narrative Draft") {
+		t.Errorf("--narrative with --format json: narrative section must be skipped, but output contains 'Narrative Draft'")
+	}
+	if !strings.HasPrefix(out, "{") {
+		t.Errorf("--narrative with --format json: output does not start with '{'; got: %q", out[:min(len(out), 40)])
+	}
+}
