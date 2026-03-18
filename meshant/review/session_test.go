@@ -186,20 +186,25 @@ func TestRunReviewSession_AllAlreadyReviewed(t *testing.T) {
 }
 
 // TestRunReviewSession_ContentFieldsCopied accepts a fully-populated draft and
-// asserts that the derived result carries exact copies of all content fields.
+// asserts that the derived result carries exact copies of all candidate content
+// fields copied by deriveAccepted.
 func TestRunReviewSession_ContentFieldsCopied(t *testing.T) {
 	parent := schema.TraceDraft{
-		ID:              "id-full",
-		SourceSpan:      "original span",
-		WhatChanged:     "change description",
-		Source:          []string{"actor-x", "actor-y"},
-		Target:          []string{"actor-z"},
-		Mediation:       "some mediation",
-		Observer:        "analyst-1",
-		Tags:            []string{"tag1"},
-		ExtractionStage: "weak-draft",
-		ExtractedBy:     "llm-v1",
-		Timestamp:       time.Now(),
+		ID:                 "id-full",
+		SourceSpan:         "original span",
+		SourceDocRef:       "doc-ref-1",
+		WhatChanged:        "change description",
+		Source:             []string{"actor-x", "actor-y"},
+		Target:             []string{"actor-z"},
+		Mediation:          "some mediation",
+		Observer:           "analyst-1",
+		Tags:               []string{"tag1", "tag2"},
+		UncertaintyNote:    "somewhat uncertain",
+		CriterionRef:       "c-001",
+		IntentionallyBlank: []string{"observer"},
+		ExtractionStage:    "weak-draft",
+		ExtractedBy:        "llm-v1",
+		Timestamp:          time.Now(),
 	}
 	drafts := []schema.TraceDraft{parent}
 
@@ -220,25 +225,45 @@ func TestRunReviewSession_ContentFieldsCopied(t *testing.T) {
 	if len(r.Source) != len(parent.Source) || r.Source[0] != parent.Source[0] {
 		t.Errorf("Source: want %v, got %v", parent.Source, r.Source)
 	}
+	if len(r.Target) != len(parent.Target) || r.Target[0] != parent.Target[0] {
+		t.Errorf("Target: want %v, got %v", parent.Target, r.Target)
+	}
 	if r.Mediation != parent.Mediation {
 		t.Errorf("Mediation: want %q, got %q", parent.Mediation, r.Mediation)
 	}
 	if r.Observer != parent.Observer {
 		t.Errorf("Observer: want %q, got %q", parent.Observer, r.Observer)
 	}
+	if len(r.Tags) != len(parent.Tags) || r.Tags[0] != parent.Tags[0] {
+		t.Errorf("Tags: want %v, got %v", parent.Tags, r.Tags)
+	}
 	if r.SourceSpan != parent.SourceSpan {
 		t.Errorf("SourceSpan: want %q, got %q", parent.SourceSpan, r.SourceSpan)
+	}
+	if r.SourceDocRef != parent.SourceDocRef {
+		t.Errorf("SourceDocRef: want %q, got %q", parent.SourceDocRef, r.SourceDocRef)
+	}
+	if r.UncertaintyNote != parent.UncertaintyNote {
+		t.Errorf("UncertaintyNote: want %q, got %q", parent.UncertaintyNote, r.UncertaintyNote)
+	}
+	if r.CriterionRef != parent.CriterionRef {
+		t.Errorf("CriterionRef: want %q, got %q", parent.CriterionRef, r.CriterionRef)
+	}
+	if len(r.IntentionallyBlank) != len(parent.IntentionallyBlank) || r.IntentionallyBlank[0] != parent.IntentionallyBlank[0] {
+		t.Errorf("IntentionallyBlank: want %v, got %v", parent.IntentionallyBlank, r.IntentionallyBlank)
 	}
 }
 
 // TestRunReviewSession_OriginalUnmodified verifies that mutating the result's
-// Source slice does not affect the parent draft's Source slice — confirming
-// deep-copy semantics.
+// slice fields (Source, Target, Tags) does not affect the parent draft —
+// confirming deep-copy semantics for all cloned slice fields.
 func TestRunReviewSession_OriginalUnmodified(t *testing.T) {
 	parent := schema.TraceDraft{
 		ID:              "id-orig",
 		SourceSpan:      "span",
 		Source:          []string{"actor-a"},
+		Target:          []string{"actor-b"},
+		Tags:            []string{"tag-orig"},
 		ExtractionStage: "weak-draft",
 		ExtractedBy:     "llm-v1",
 	}
@@ -254,10 +279,18 @@ func TestRunReviewSession_OriginalUnmodified(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 
-	// Mutate the result's Source and confirm the original draft is unchanged.
-	results[0].Source[0] = "mutated"
+	// Mutate each slice field on the result and verify the parent is unchanged.
+	results[0].Source[0] = "mutated-source"
 	if parent.Source[0] != "actor-a" {
-		t.Errorf("parent.Source[0] should remain %q after mutating result, got %q", "actor-a", parent.Source[0])
+		t.Errorf("parent.Source[0] should remain %q, got %q", "actor-a", parent.Source[0])
+	}
+	results[0].Target[0] = "mutated-target"
+	if parent.Target[0] != "actor-b" {
+		t.Errorf("parent.Target[0] should remain %q, got %q", "actor-b", parent.Target[0])
+	}
+	results[0].Tags[0] = "mutated-tag"
+	if parent.Tags[0] != "tag-orig" {
+		t.Errorf("parent.Tags[0] should remain %q, got %q", "tag-orig", parent.Tags[0])
 	}
 }
 
@@ -285,8 +318,8 @@ func TestRunReviewSession_OutputContainsChain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(out.String(), "current") {
-		t.Errorf("output should contain %q for chain rendering; got:\n%s", "current", out.String())
+	if !strings.Contains(out.String(), "<-- current") {
+		t.Errorf("output should contain %q (RenderChain marker); got:\n%s", "<-- current", out.String())
 	}
 }
 
@@ -311,6 +344,61 @@ func TestRunReviewSession_OutputContainsAmbiguities(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "what_changed") {
 		t.Errorf("output should contain %q for ambiguity warning; got:\n%s", "what_changed", out.String())
+	}
+}
+
+// TestRunReviewSession_NoStageFallback verifies that when no draft has any
+// ExtractionStage set, all drafts are presented (legacy dataset fallback).
+// Accepting the only draft should yield 1 result derived from it.
+func TestRunReviewSession_NoStageFallback(t *testing.T) {
+	// No ExtractionStage set on any draft — filterReviewable should fall back
+	// to presenting all drafts.
+	d := schema.TraceDraft{
+		ID:          "id-nostage",
+		SourceSpan:  "span-nostage",
+		WhatChanged: "no-stage change",
+		// ExtractionStage intentionally omitted
+	}
+	drafts := []schema.TraceDraft{d}
+
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("a\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result (fallback presented all drafts), got %d", len(results))
+	}
+	if results[0].DerivedFrom != d.ID {
+		t.Errorf("expected DerivedFrom %q, got %q", d.ID, results[0].DerivedFrom)
+	}
+}
+
+// TestRunReviewSession_SelfDerivedNoPanic verifies that a draft whose DerivedFrom
+// points to its own ID (a cycle of length 1) does not cause RunReviewSession to
+// loop or panic. FollowDraftChain handles cycle detection; the session must not
+// block.
+func TestRunReviewSession_SelfDerivedNoPanic(t *testing.T) {
+	d := schema.TraceDraft{
+		ID:              "id-self",
+		SourceSpan:      "span-self",
+		WhatChanged:     "self-referential change",
+		ExtractionStage: "weak-draft",
+		ExtractedBy:     "llm-v1",
+		DerivedFrom:     "id-self", // points to itself
+	}
+	drafts := []schema.TraceDraft{d}
+
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("s\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error on self-derived draft: %v", err)
+	}
+	// Skipping should yield 0 results — just confirm no panic occurred.
+	if len(results) != 0 {
+		t.Errorf("expected 0 results (skipped), got %d", len(results))
 	}
 }
 
