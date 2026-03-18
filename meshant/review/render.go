@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/automatedtomato/mesh-ant/meshant/loader"
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
@@ -55,6 +56,77 @@ func RenderAmbiguities(warnings []AmbiguityWarning) string {
 	var b strings.Builder
 	for _, w := range warnings {
 		fmt.Fprintf(&b, "[%s] %s\n", w.Field, w.Message)
+	}
+	return b.String()
+}
+
+// chainIDLen is the maximum number of runes shown for a draft ID in RenderChain.
+// Eight characters are enough to distinguish siblings within a typical chain.
+const chainIDLen = 8
+
+// chainWhatChangedLen is the maximum number of runes shown for what_changed
+// in RenderChain. Longer values are truncated with "..." to keep each line
+// readable at a standard terminal width.
+const chainWhatChangedLen = 60
+
+// truncateString returns s unchanged when its rune length is <= maxLen.
+// Otherwise it returns the first maxLen runes followed by "...".
+// Rune slicing is used instead of byte slicing so that multi-byte UTF-8
+// codepoints are never split.
+func truncateString(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen]) + "..."
+}
+
+// RenderChain formats a derivation chain for display in the review session.
+//
+// Each draft is shown with its 1-based index, truncated ID (first 8 chars),
+// extraction_stage, extracted_by, and truncated what_changed (first 60 chars).
+// The last draft in the chain is marked as the current draft under review.
+// Between consecutive drafts the matching DraftStepClassification is shown
+// with its Kind and Reason.
+//
+// Returns "(no derivation chain)\n" if chain is empty or nil.
+// Classifications may be nil or shorter than len(chain)-1 — missing steps
+// are silently omitted.
+func RenderChain(chain []schema.TraceDraft, classifications []loader.DraftStepClassification) string {
+	if len(chain) == 0 {
+		return "(no derivation chain)\n"
+	}
+
+	// Index classifications by StepIndex for O(1) lookup.
+	// StepIndex is 1-based: StepIndex=1 means chain[0]→chain[1].
+	byStep := make(map[int]loader.DraftStepClassification, len(classifications))
+	for _, c := range classifications {
+		byStep[c.StepIndex] = c
+	}
+
+	var b strings.Builder
+	for i, d := range chain {
+		// Mark the final draft so the reviewer knows it is the one under review.
+		current := ""
+		if i == len(chain)-1 {
+			current = "  <-- current"
+		}
+		fmt.Fprintf(&b, "  [%d] id:%-8s  stage:%-12s  by:%s%s\n",
+			i+1,
+			truncateString(d.ID, chainIDLen),
+			valueOrEmpty(d.ExtractionStage),
+			valueOrEmpty(d.ExtractedBy),
+			current,
+		)
+		fmt.Fprintf(&b, "      what_changed: %s\n", truncateString(valueOrEmpty(d.WhatChanged), chainWhatChangedLen))
+
+		// If there is a next draft, show the classification for this step.
+		// byStep key i+1 = StepIndex for the transition from chain[i] to chain[i+1].
+		if i < len(chain)-1 {
+			if c, ok := byStep[i+1]; ok {
+				fmt.Fprintf(&b, "    | %s: %s\n", string(c.Kind), c.Reason)
+			}
+		}
 	}
 	return b.String()
 }

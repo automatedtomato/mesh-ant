@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/automatedtomato/mesh-ant/meshant/loader"
 	"github.com/automatedtomato/mesh-ant/meshant/review"
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
@@ -131,5 +132,177 @@ func TestRenderAmbiguities_ContainsWarningMessage(t *testing.T) {
 	out := review.RenderAmbiguities(warnings)
 	if !strings.Contains(out, "what_changed is unregistered from this position") {
 		t.Errorf("expected warning message in output, got:\n%s", out)
+	}
+}
+
+// TestRenderChain_EmptyChain verifies that a nil chain returns a non-empty
+// string containing a "no derivation chain" notice rather than panicking.
+func TestRenderChain_EmptyChain(t *testing.T) {
+	out := review.RenderChain(nil, nil)
+	if out == "" {
+		t.Fatal("expected non-empty output for nil chain, got empty string")
+	}
+	if !strings.Contains(strings.ToLower(out), "no derivation chain") {
+		t.Errorf("expected 'no derivation chain' notice, got:\n%s", out)
+	}
+}
+
+// TestRenderChain_SingleDraft verifies that a one-element chain renders the
+// truncated ID and marks the draft as "current". No classification lines
+// should appear because there are no derivation steps between drafts.
+func TestRenderChain_SingleDraft(t *testing.T) {
+	chain := []schema.TraceDraft{
+		{ID: "abc12345-0000-0000-0000-000000000000", WhatChanged: "policy shifted"},
+	}
+	out := review.RenderChain(chain, nil)
+	if !strings.Contains(out, "abc12345") {
+		t.Errorf("expected truncated ID 'abc12345' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "current") {
+		t.Errorf("expected 'current' marker for single draft, got:\n%s", out)
+	}
+	lower := strings.ToLower(out)
+	for _, word := range []string{"intermediary", "mediator", "translation"} {
+		if strings.Contains(lower, word) {
+			t.Errorf("expected no classification lines for single draft, but found %q in output:\n%s", word, out)
+		}
+	}
+}
+
+// TestRenderChain_TwoDrafts verifies that a two-element chain with one
+// mediator classification renders the kind and reason text, and marks the
+// last draft as "current".
+func TestRenderChain_TwoDrafts(t *testing.T) {
+	chain := []schema.TraceDraft{
+		{ID: "aaaa0000-0000-0000-0000-000000000000", WhatChanged: "initial"},
+		{ID: "bbbb1111-0000-0000-0000-000000000000", WhatChanged: "reformulated"},
+	}
+	classifications := []loader.DraftStepClassification{
+		{StepIndex: 1, Kind: loader.DraftMediator, Reason: "content fields reformulated"},
+	}
+	out := review.RenderChain(chain, classifications)
+	lower := strings.ToLower(out)
+	if !strings.Contains(lower, "mediator") {
+		t.Errorf("expected 'mediator' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "content fields reformulated") {
+		t.Errorf("expected reason 'content fields reformulated' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "current") {
+		t.Errorf("expected 'current' marker on last draft, got:\n%s", out)
+	}
+}
+
+// TestRenderChain_MultiStep verifies that a four-element chain with three
+// classifications renders all three kind strings and places the "current"
+// marker exactly once on the final draft.
+func TestRenderChain_MultiStep(t *testing.T) {
+	chain := []schema.TraceDraft{
+		{ID: "d0000000-0000-0000-0000-000000000000"},
+		{ID: "d1111111-0000-0000-0000-000000000000"},
+		{ID: "d2222222-0000-0000-0000-000000000000"},
+		{ID: "d3333333-0000-0000-0000-000000000000"},
+	}
+	classifications := []loader.DraftStepClassification{
+		{StepIndex: 1, Kind: loader.DraftIntermediary, Reason: "no content fields changed"},
+		{StepIndex: 2, Kind: loader.DraftMediator, Reason: "content fields reformulated"},
+		{StepIndex: 3, Kind: loader.DraftTranslation, Reason: "content and stage changed"},
+	}
+	out := review.RenderChain(chain, classifications)
+	lower := strings.ToLower(out)
+	for _, kind := range []string{"intermediary", "mediator", "translation"} {
+		if !strings.Contains(lower, kind) {
+			t.Errorf("expected kind %q in output, got:\n%s", kind, out)
+		}
+	}
+	// "current" must appear exactly once (on the last draft only).
+	count := strings.Count(out, "current")
+	if count != 1 {
+		t.Errorf("expected exactly 1 'current' marker, got %d in output:\n%s", count, out)
+	}
+}
+
+// TestRenderChain_TruncatesWhatChanged verifies that a what_changed value
+// longer than the truncation limit is shortened and marked with "...".
+func TestRenderChain_TruncatesWhatChanged(t *testing.T) {
+	long := strings.Repeat("x", 80)
+	chain := []schema.TraceDraft{
+		{ID: "e0000000-0000-0000-0000-000000000000", WhatChanged: long},
+	}
+	out := review.RenderChain(chain, nil)
+	if !strings.Contains(out, "...") {
+		t.Errorf("expected truncation marker '...' in output, got:\n%s", out)
+	}
+	if strings.Contains(out, long) {
+		t.Errorf("expected full 80-char string to be absent (truncated), but found it in output:\n%s", out)
+	}
+}
+
+// TestRenderChain_OutOfRangeStepIndex verifies that a classification with a
+// StepIndex that does not correspond to any chain position (e.g. 0 or 99) is
+// silently omitted. The output must not panic and must still render all drafts.
+func TestRenderChain_OutOfRangeStepIndex(t *testing.T) {
+	chain := []schema.TraceDraft{
+		{ID: "f0000000-0000-0000-0000-000000000000", WhatChanged: "initial"},
+		{ID: "f1111111-0000-0000-0000-000000000000", WhatChanged: "derived"},
+	}
+	// StepIndex 0 and 99 are both out of range for this 2-element chain.
+	// The valid step is StepIndex 1; both invalid entries must be silently dropped.
+	classifications := []loader.DraftStepClassification{
+		{StepIndex: 0, Kind: loader.DraftMediator, Reason: "should not appear (StepIndex 0)"},
+		{StepIndex: 99, Kind: loader.DraftTranslation, Reason: "should not appear (StepIndex 99)"},
+	}
+	out := review.RenderChain(chain, classifications)
+	if strings.Contains(out, "should not appear") {
+		t.Errorf("expected out-of-range classification to be silently omitted, but found it in output:\n%s", out)
+	}
+	// Both drafts must still render.
+	if !strings.Contains(out, "f0000000") {
+		t.Errorf("expected first draft 'f0000000' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "f1111111") {
+		t.Errorf("expected second draft 'f1111111' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "current") {
+		t.Errorf("expected 'current' marker on last draft, got:\n%s", out)
+	}
+}
+
+// TestRenderChain_PartialClassifications verifies that when a non-nil
+// classifications slice omits a middle step, the present steps still render
+// and the absent step produces no classification line.
+func TestRenderChain_PartialClassifications(t *testing.T) {
+	chain := []schema.TraceDraft{
+		{ID: "g0000000-0000-0000-0000-000000000000"},
+		{ID: "g1111111-0000-0000-0000-000000000000"},
+		{ID: "g2222222-0000-0000-0000-000000000000"},
+	}
+	// Only StepIndex 2 is provided; StepIndex 1 (chain[0]→chain[1]) is absent.
+	classifications := []loader.DraftStepClassification{
+		{StepIndex: 2, Kind: loader.DraftTranslation, Reason: "stage advanced"},
+	}
+	out := review.RenderChain(chain, classifications)
+	// Step 2 classification must appear.
+	if !strings.Contains(out, "stage advanced") {
+		t.Errorf("expected 'stage advanced' from StepIndex 2, got:\n%s", out)
+	}
+	// All three drafts must render.
+	if !strings.Contains(out, "g0000000") || !strings.Contains(out, "g1111111") || !strings.Contains(out, "g2222222") {
+		t.Errorf("expected all three draft IDs in output, got:\n%s", out)
+	}
+}
+
+// TestRenderChain_TruncatesID verifies that only the first 8 characters of an
+// ID appear in the output — not a longer prefix.
+func TestRenderChain_TruncatesID(t *testing.T) {
+	chain := []schema.TraceDraft{
+		{ID: "abcdefgh-1234-5678-9012-345678901234"},
+	}
+	out := review.RenderChain(chain, nil)
+	if !strings.Contains(out, "abcdefgh") {
+		t.Errorf("expected first 8 chars 'abcdefgh' in output, got:\n%s", out)
+	}
+	if strings.Contains(out, "abcdefgh-1234") {
+		t.Errorf("expected ID to be truncated to 8 chars, but found longer prefix 'abcdefgh-1234' in output:\n%s", out)
 	}
 }
