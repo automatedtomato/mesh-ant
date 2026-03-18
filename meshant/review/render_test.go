@@ -73,6 +73,42 @@ func TestRenderDraft_EmptyFieldsRendered(t *testing.T) {
 	}
 }
 
+// TestRenderDraft_SliceFieldsPopulated verifies that non-empty slice fields
+// (Source, Tags) are rendered as comma-joined values in the output.
+// This exercises the non-empty branch of sliceOrEmpty.
+func TestRenderDraft_SliceFieldsPopulated(t *testing.T) {
+	d := schema.TraceDraft{
+		Source: []string{"actor-a", "actor-b"},
+		Tags:   []string{"policy", "consent"},
+	}
+	out := review.RenderDraft(d, 1, 1)
+	if !strings.Contains(out, "actor-a, actor-b") {
+		t.Errorf("expected comma-joined source 'actor-a, actor-b' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "policy, consent") {
+		t.Errorf("expected comma-joined tags 'policy, consent' in output, got:\n%s", out)
+	}
+}
+
+// TestRenderDraft_EmptyPlaceholder verifies that blank fields render as
+// "(empty)" rather than being omitted from the output.
+func TestRenderDraft_EmptyPlaceholder(t *testing.T) {
+	d := schema.TraceDraft{}
+	out := review.RenderDraft(d, 1, 1)
+	if !strings.Contains(out, "(empty)") {
+		t.Errorf("expected '(empty)' placeholder for blank fields, got:\n%s", out)
+	}
+}
+
+// TestRenderAmbiguities_EmptySlice verifies that a non-nil empty slice also
+// renders "(none)" — same contract as nil.
+func TestRenderAmbiguities_EmptySlice(t *testing.T) {
+	out := review.RenderAmbiguities([]review.AmbiguityWarning{})
+	if !strings.Contains(strings.ToLower(out), "none") {
+		t.Errorf("expected '(none)' for empty non-nil slice, got: %q", out)
+	}
+}
+
 // TestRenderAmbiguities_NoWarnings verifies that an empty warnings slice
 // renders a clear "(none)" (or similar) indicator rather than blank output.
 func TestRenderAmbiguities_NoWarnings(t *testing.T) {

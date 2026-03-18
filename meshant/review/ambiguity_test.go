@@ -164,6 +164,140 @@ func TestDetectAmbiguities_LanguageDiscipline(t *testing.T) {
 	}
 }
 
+// TestDetectAmbiguities_TargetEmpty verifies that when Target is nil and
+// IntentionallyBlank does not include "target", a warning is returned.
+func TestDetectAmbiguities_TargetEmpty(t *testing.T) {
+	d := schema.TraceDraft{
+		WhatChanged: "something shifted",
+		Source:      []string{"actor-a"},
+		Mediation:   "some mediator",
+		Observer:    "analyst",
+		Tags:        []string{"tag1"},
+	}
+	warnings := review.DetectAmbiguities(d)
+	found := false
+	for _, w := range warnings {
+		if w.Field == "target" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning for field 'target', got: %v", warnings)
+	}
+}
+
+// TestDetectAmbiguities_MediationEmpty verifies that when Mediation is empty
+// and IntentionallyBlank does not include "mediation", a warning is returned.
+func TestDetectAmbiguities_MediationEmpty(t *testing.T) {
+	d := schema.TraceDraft{
+		WhatChanged: "something shifted",
+		Source:      []string{"actor-a"},
+		Target:      []string{"actor-b"},
+		Observer:    "analyst",
+		Tags:        []string{"tag1"},
+	}
+	warnings := review.DetectAmbiguities(d)
+	found := false
+	for _, w := range warnings {
+		if w.Field == "mediation" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning for field 'mediation', got: %v", warnings)
+	}
+}
+
+// TestDetectAmbiguities_ObserverEmpty verifies that when Observer is empty
+// and IntentionallyBlank does not include "observer", a warning is returned.
+func TestDetectAmbiguities_ObserverEmpty(t *testing.T) {
+	d := schema.TraceDraft{
+		WhatChanged: "something shifted",
+		Source:      []string{"actor-a"},
+		Target:      []string{"actor-b"},
+		Mediation:   "some mediator",
+		Tags:        []string{"tag1"},
+	}
+	warnings := review.DetectAmbiguities(d)
+	found := false
+	for _, w := range warnings {
+		if w.Field == "observer" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning for field 'observer', got: %v", warnings)
+	}
+}
+
+// TestDetectAmbiguities_TagsEmpty verifies that when Tags is nil and
+// IntentionallyBlank does not include "tags", a warning is returned.
+func TestDetectAmbiguities_TagsEmpty(t *testing.T) {
+	d := schema.TraceDraft{
+		WhatChanged: "something shifted",
+		Source:      []string{"actor-a"},
+		Target:      []string{"actor-b"},
+		Mediation:   "some mediator",
+		Observer:    "analyst",
+	}
+	warnings := review.DetectAmbiguities(d)
+	found := false
+	for _, w := range warnings {
+		if w.Field == "tags" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning for field 'tags', got: %v", warnings)
+	}
+}
+
+// TestDetectAmbiguities_PartialIntentionallyBlank verifies that IntentionallyBlank
+// suppresses exactly the listed field and does not suppress adjacent fields.
+// Suppressing "source" only should still produce warnings for the remaining 5 fields.
+func TestDetectAmbiguities_PartialIntentionallyBlank(t *testing.T) {
+	// All 6 candidate fields are blank; only "source" is intentionally blank.
+	// Expected: 5 warnings (all fields except "source").
+	d := schema.TraceDraft{
+		IntentionallyBlank: []string{"source"},
+	}
+	warnings := review.DetectAmbiguities(d)
+	for _, w := range warnings {
+		if w.Field == "source" {
+			t.Errorf("field 'source' is in IntentionallyBlank but produced a warning: %v", w)
+		}
+	}
+	if len(warnings) != 5 {
+		t.Errorf("expected 5 warnings (all except 'source'), got %d: %v", len(warnings), warnings)
+	}
+}
+
+// TestDetectAmbiguities_CriterionRefPresent verifies that when both
+// UncertaintyNote and CriterionRef are set, no criterion_ref mismatch warning
+// is returned.
+func TestDetectAmbiguities_CriterionRefPresent(t *testing.T) {
+	d := schema.TraceDraft{
+		WhatChanged:     "alignment unclear",
+		Source:          []string{"actor-a"},
+		Target:          []string{"actor-b"},
+		Mediation:       "some mediator",
+		Observer:        "analyst",
+		Tags:            []string{"tag1"},
+		UncertaintyNote: "the direction of mediation is unclear",
+		CriterionRef:    "c-001", // present — no mismatch
+	}
+	warnings := review.DetectAmbiguities(d)
+	for _, w := range warnings {
+		if w.Field == "criterion_ref mismatch" {
+			t.Errorf("expected no criterion_ref mismatch warning when CriterionRef is set, got: %v", w)
+		}
+	}
+}
+
 // TestDetectAmbiguities_MultipleAmbiguities verifies that a draft with both
 // WhatChanged=="" and Source==nil returns at least 2 warnings.
 func TestDetectAmbiguities_MultipleAmbiguities(t *testing.T) {
