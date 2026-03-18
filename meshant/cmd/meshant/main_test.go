@@ -2555,3 +2555,37 @@ func TestCmdBottleneck_RunDispatch(t *testing.T) {
 		t.Error("run('bottleneck'): expected non-empty output")
 	}
 }
+
+// TestCmdGaps_SuggestFlag verifies that cmdGaps with --suggest produces output
+// containing the re-articulation suggestions section header when the two
+// observer positions produce a gap (distinct observers from the evacuation
+// dataset see different elements). The suggestions section must appear after
+// the gap report.
+func TestCmdGaps_SuggestFlag(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdGaps(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "coastal-resident",
+		"--suggest",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdGaps() --suggest: unexpected error: %v", err)
+	}
+	out := buf.String()
+
+	// The gap report section must still be present.
+	if !strings.Contains(out, "Observer Gap") {
+		t.Errorf("cmdGaps() --suggest: output missing 'Observer Gap'; got:\n%s", out)
+	}
+
+	// The suggestions section header must appear after the gap report.
+	if !strings.Contains(out, "Re-articulation Suggestions") {
+		t.Errorf("cmdGaps() --suggest: output missing 'Re-articulation Suggestions'; got:\n%s", out)
+	}
+
+	// The footer note encoding the epistemic constraint must be present.
+	if !strings.Contains(out, "provocation") {
+		t.Errorf("cmdGaps() --suggest: output missing 'provocation' in footer; got:\n%s", out)
+	}
+}
