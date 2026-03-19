@@ -83,8 +83,19 @@ type TraceDraft struct {
 	// Known values: "span-harvest", "weak-draft", "reviewed".
 	ExtractionStage string `json:"extraction_stage,omitempty"`
 
-	// ExtractedBy identifies who or what produced this draft.
-	// Examples: "human", "llm-pass1", "llm-pass2", "reviewer".
+	// ExtractedBy is the analyst-position cut axis for the ingestion layer,
+	// parallel to Observer for the graph layer. It names an analytical
+	// position — not a person or system identity. "human", "llm-pass1",
+	// "llm-pass2", and "reviewer" are positions, not identifiers.
+	//
+	// Two drafts with different ExtractedBy values for the same SourceSpan
+	// represent two analyst positions on the same material. Their disagreement
+	// is data, not error — it is the raw material of comparative analysis and
+	// should be preserved rather than resolved away.
+	//
+	// Drafts with an empty ExtractedBy represent an undeclared position.
+	// They remain valid drafts; use loader.GroupByAnalyst to partition a
+	// draft set by this field.
 	ExtractedBy string `json:"extracted_by,omitempty"`
 
 	// DerivedFrom is the ID of the parent draft, linking revision records

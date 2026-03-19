@@ -10,6 +10,10 @@
 //   - promote:    promote TraceDraft records to canonical Traces
 //   - rearticulate:  produce a blank critique skeleton for each draft (M12)
 //   - lineage:       walk DerivedFrom links and print chains (M12)
+//   - bottleneck:      identify provisionally central elements from an articulation (B.1)
+//   - review:          interactively accept/edit/skip weak-draft records (A.5)
+//   - extraction-gap:  compare extraction positions across a shared draft set (C.2)
+//   - chain-diff:      compare derivation-chain classifications across two analyst positions (C.3)
 //
 // The testable logic lives in run() and each cmd* function. main() itself is
 // a thin wrapper that wires os.Stdout and os.Args, then exits non-zero on
@@ -28,11 +32,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/automatedtomato/mesh-ant/meshant/graph"
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
+	"github.com/automatedtomato/mesh-ant/meshant/review"
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
@@ -210,6 +216,17 @@ func run(w io.Writer, args []string) error {
 		return cmdShadow(w, args[1:])
 	case "gaps":
 		return cmdGaps(w, args[1:])
+	case "bottleneck":
+		return cmdBottleneck(w, args[1:])
+	case "extraction-gap":
+		return cmdExtractionGap(w, args[1:])
+	case "chain-diff":
+		return cmdChainDiff(w, args[1:])
+	case "review":
+		// cmdReview receives os.Stdin so the interactive prompts can read from
+		// the terminal. The extra in parameter keeps the session testable
+		// without a real terminal — tests pass a strings.Reader instead.
+		return cmdReview(w, os.Stdin, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
@@ -227,13 +244,17 @@ Usage:
 Commands:
   summarize   load traces and print mesh summary
   validate    validate all traces and report errors
-  articulate  articulate an observer-situated graph (flags: --observer, --tag, --from, --to, --format, --output)
+  articulate  articulate an observer-situated graph (flags: --observer, --tag, --from, --to, --format, --output, --narrative)
   diff        diff two articulations (flags: --observer-a, --observer-b, --tag-a, --tag-b, --from-a, --to-a, --from-b, --to-b, --format, --output)
   follow      follow a translation chain through an articulation (flags: --observer, --tag, --from, --to, --element, --direction, --depth, --format, --criterion-file, --output)
   draft       ingest extraction JSON and produce TraceDraft records (flags: --source-doc, --extracted-by, --stage, --output)
   promote     promote TraceDraft records to canonical Traces (flags: --output)
   shadow      summarise shadowed elements from an observer-situated articulation (flags: --observer, --tag, --from, --to, --output)
-  gaps        compare element visibility between two observer positions (flags: --observer-a, --observer-b, --tag-a, --tag-b, --from-a, --to-a, --from-b, --to-b, --output)
+  gaps        compare element visibility between two observer positions (flags: --observer-a, --observer-b, --tag-a, --tag-b, --from-a, --to-a, --from-b, --to-b, --suggest, --output)
+  bottleneck      identify provisionally central elements from an articulation (flags: --observer, --tag, --from, --to, --output)
+  review          interactively accept/edit/skip weak-draft records (flags: --output)
+  extraction-gap  compare extraction positions across a shared draft set (flags: --analyst-a, --analyst-b, --output)
+  chain-diff      compare derivation-chain classifications across two analyst positions (flags: --analyst-a, --analyst-b, --span, --output)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }
@@ -292,12 +313,13 @@ func cmdValidate(w io.Writer, args []string) error {
 // cmdArticulate implements the "articulate" subcommand.
 //
 // It accepts the following flags:
-//   - --observer (repeatable, required) — one or more observer positions to include
-//   - --tag      (repeatable, optional) — tag filter (any-match / OR semantics)
-//   - --from     (optional, RFC3339)    — start of time window
-//   - --to       (optional, RFC3339)    — end of time window
-//   - --format   (optional, default "text") — output format: text|json|dot|mermaid
-//   - --output   (optional)             — write output to file instead of stdout
+//   - --observer  (repeatable, required) — one or more observer positions to include
+//   - --tag       (repeatable, optional) — tag filter (any-match / OR semantics)
+//   - --from      (optional, RFC3339)    — start of time window
+//   - --to        (optional, RFC3339)    — end of time window
+//   - --format    (optional, default "text") — output format: text|json|dot|mermaid
+//   - --output    (optional)             — write output to file instead of stdout
+//   - --narrative (optional, bool)       — append a NarrativeDraft section (text only)
 //
 // The positional argument (after all flags) must be the path to a traces JSON file.
 //
@@ -327,6 +349,12 @@ func cmdArticulate(w io.Writer, args []string) error {
 	// --output writes output to a file instead of stdout.
 	var outputPath string
 	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. graph.dot)")
+
+	// --narrative appends a NarrativeDraft section after the articulation output.
+	// Silently skipped for non-text formats (json, dot, mermaid) because
+	// narrative prose is not meaningful inside structured machine-readable output.
+	var narrative bool
+	fs.BoolVar(&narrative, "narrative", false, "append a provisional narrative draft (text format only)")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -393,6 +421,19 @@ func cmdArticulate(w io.Writer, args []string) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	// --narrative emits a NarrativeDraft section after the articulation output.
+	// Silently skipped for non-text formats: narrative prose has no place inside
+	// JSON, DOT, or Mermaid output — those formats have their own consumers.
+	if narrative && format == "text" {
+		n := graph.DraftNarrative(g)
+		if _, err := fmt.Fprintln(dest, ""); err != nil {
+			return err
+		}
+		if err := graph.PrintNarrativeDraft(dest, n); err != nil {
+			return err
+		}
 	}
 
 	// If writing to file, print confirmation to stdout.
@@ -1416,7 +1457,8 @@ func cmdShadow(w io.Writer, args []string) error {
 // It articulates two observer-situated graphs from the same traces file and
 // prints an observer-gap report — what each position can see that the other
 // cannot. Neither position is treated as authoritative; the report names both
-// and the asymmetry between them.
+// and the asymmetry between them. When --suggest is set, heuristic
+// re-articulation suggestions are printed after the gap report.
 //
 // It accepts the following flags:
 //   - --observer-a (repeatable, required) — observer positions for graph A
@@ -1448,6 +1490,10 @@ func cmdGaps(w io.Writer, args []string) error {
 
 	var outputPath string
 	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. gaps.txt)")
+
+	// --suggest enables heuristic re-articulation suggestions after the gap report.
+	var suggest bool
+	fs.BoolVar(&suggest, "suggest", false, "print re-articulation suggestions after the gap report")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -1505,5 +1551,453 @@ func cmdGaps(w io.Writer, args []string) error {
 	if err := graph.PrintObserverGap(dest, gap); err != nil {
 		return err
 	}
+
+	// When --suggest is set, append heuristic re-articulation suggestions
+	// immediately after the gap report.
+	if suggest {
+		suggestions := graph.SuggestRearticulations(gap)
+		if err := graph.PrintRearticSuggestions(dest, gap, suggestions); err != nil {
+			return err
+		}
+	}
+
+	return confirmOutput(w, outputPath)
+}
+
+// cmdBottleneck implements the "bottleneck" subcommand.
+//
+// It articulates an observer-situated graph from the traces file, calls
+// IdentifyBottlenecks to surface provisionally central elements, and prints
+// the notes via PrintBottleneckNotes.
+//
+// Unlike cmdShadow, --observer is optional here. Omitting it means a full
+// cut (all traces included, no observer filter), which is a deliberate
+// analytical choice — not an error.
+//
+// It accepts the following flags:
+//   - --observer (repeatable, optional) — observer position(s) for articulation
+//   - --tag      (repeatable, optional) — tag filter (any-match / OR semantics)
+//   - --from, --to (optional, RFC3339) — time window
+//   - --output (optional)             — write output to file instead of stdout
+//
+// Returns an error if a time flag is not RFC3339, the path is missing or
+// unloadable, or writing fails.
+func cmdBottleneck(w io.Writer, args []string) error {
+	fs := flag.NewFlagSet("bottleneck", flag.ContinueOnError)
+
+	var observers stringSliceFlag
+	fs.Var(&observers, "observer", "observer position to include (repeatable, optional)")
+
+	var tags stringSliceFlag
+	fs.Var(&tags, "tag", "tag filter (repeatable, any-match / OR semantics)")
+
+	var fromStr, toStr string
+	fs.StringVar(&fromStr, "from", "", "start of time window (RFC3339)")
+	fs.StringVar(&toStr, "to", "", "end of time window (RFC3339)")
+
+	var outputPath string
+	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. bottleneck.txt)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	tw, err := parseTimeWindow("from", fromStr, "to", toStr)
+	if err != nil {
+		return fmt.Errorf("bottleneck: %w", err)
+	}
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		return fmt.Errorf("bottleneck: path to traces.json required\n\nUsage: meshant bottleneck [--observer <pos>] [--tag <tag>] [--from RFC3339] [--to RFC3339] [--output <file>] <traces.json>")
+	}
+	path := remaining[0]
+
+	traces, err := loader.Load(path)
+	if err != nil {
+		return fmt.Errorf("bottleneck: %w", err)
+	}
+
+	opts := graph.ArticulationOptions{
+		ObserverPositions: []string(observers),
+		TimeWindow:        tw,
+		Tags:              []string(tags),
+	}
+	g := graph.Articulate(traces, opts)
+	notes := graph.IdentifyBottlenecks(g, graph.BottleneckOptions{})
+
+	dest, err := outputWriter(w, outputPath)
+	if err != nil {
+		return fmt.Errorf("bottleneck: %w", err)
+	}
+	if f, ok := dest.(*os.File); ok {
+		defer f.Close()
+	}
+
+	if err := graph.PrintBottleneckNotes(dest, g, notes); err != nil {
+		return err
+	}
+	return confirmOutput(w, outputPath)
+}
+
+// cmdReview implements the "review" subcommand.
+//
+// It loads a TraceDraft JSON file, passes the drafts to review.RunReviewSession
+// for interactive accept/edit/skip/quit decisions, and writes the resulting
+// reviewed drafts as a JSON array to --output (or w). A summary line is always
+// written to w regardless of --output.
+//
+// Interactive prompts go to os.Stderr (not w) so that when output is stdout,
+// the prompt lines are not mixed into the JSON stream. This keeps w clean for
+// machine-readable output — piping `meshant review <file>` to `jq` works
+// correctly.
+//
+// The session treats EOF and "q" identically: results collected so far are
+// returned without error. A nil result slice is normalised to an empty slice
+// so the JSON output is always "[]" rather than "null".
+//
+// Flags:
+//   - --output <file>  write reviewed drafts JSON to file (default: w/stdout)
+func cmdReview(w io.Writer, in io.Reader, args []string) error {
+	fs := flag.NewFlagSet("review", flag.ContinueOnError)
+
+	var outputPath string
+	fs.StringVar(&outputPath, "output", "", "write reviewed drafts JSON to file (default: stdout)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		return fmt.Errorf("review: path to draft file required\n\nUsage: meshant review [--output <file>] <drafts.json>")
+	}
+	path := remaining[0]
+
+	// Load and validate the draft file. LoadDrafts assigns missing UUIDs and
+	// validates SourceSpan. An empty file is valid (returns []).
+	drafts, err := loader.LoadDrafts(path)
+	if err != nil {
+		return fmt.Errorf("review: %w", err)
+	}
+
+	// Run the interactive session. Interactive prompts go to os.Stderr so
+	// that stdout (w) carries only the JSON output — callers can safely pipe
+	// the command output to jq or other tools without prompt contamination.
+	results, err := review.RunReviewSession(drafts, in, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("review: %w", err)
+	}
+
+	// Normalise nil to empty slice: JSON encodes nil slice as "null",
+	// which is confusing for callers expecting an array. Always emit "[]".
+	output := results
+	if output == nil {
+		output = []schema.TraceDraft{}
+	}
+
+	// Determine output destination: file or w (stdout).
+	dest, err := outputWriter(w, outputPath)
+	if err != nil {
+		return fmt.Errorf("review: %w", err)
+	}
+
+	// Write the reviewed drafts as indented JSON.
+	enc := json.NewEncoder(dest)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(output); err != nil {
+		return fmt.Errorf("review: encode output: %w", err)
+	}
+
+	// If dest is a file, close it explicitly so write errors are not silently
+	// discarded (a deferred close would swallow errors on NFS or low-disk).
+	if f, ok := dest.(*os.File); ok {
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("review: close output: %w", err)
+		}
+	}
+
+	// Summary always goes to w. When --output is a file, the JSON has already
+	// been written there; the summary here is the only thing on w. When
+	// --output is not set, the JSON preceded the summary on w.
+	// len(output) is used (not len(results)) so the count always matches
+	// what was actually encoded.
+	fmt.Fprintf(w, "\nReview complete: %d accepted/edited out of %d loaded\n",
+		len(output), len(drafts))
+
+	return confirmOutput(w, outputPath)
+}
+
+// cmdExtractionGap implements the "extraction-gap" subcommand.
+//
+// It loads a drafts JSON file, groups drafts by analyst (ExtractedBy), looks
+// up the two requested analyst positions, compares their extraction sets, and
+// writes an ExtractionGap report to w (or an optional output file).
+//
+// Required flags:
+//   - --analyst-a: label for the first analyst position
+//   - --analyst-b: label for the second analyst position
+//
+// Optional flags:
+//   - --output: write report to file instead of stdout
+//
+// Required positional argument: path to a drafts JSON file.
+//
+// Returns an error if required flags are missing, the file cannot be loaded,
+// either analyst label is not found in the data, or writing fails.
+func cmdExtractionGap(w io.Writer, args []string) error {
+	fs := flag.NewFlagSet("extraction-gap", flag.ContinueOnError)
+
+	var analystA, analystB, outputPath string
+	fs.StringVar(&analystA, "analyst-a", "", "label for analyst position A (required)")
+	fs.StringVar(&analystB, "analyst-b", "", "label for analyst position B (required)")
+	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. gap.txt)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	// Validate required flags.
+	if analystA == "" {
+		return fmt.Errorf("extraction-gap: --analyst-a is required")
+	}
+	if analystB == "" {
+		return fmt.Errorf("extraction-gap: --analyst-b is required")
+	}
+	if analystA == analystB {
+		return fmt.Errorf("extraction-gap: --analyst-a and --analyst-b must be different labels (got %q for both)", analystA)
+	}
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		return fmt.Errorf("extraction-gap: path to drafts.json required\n\nUsage: meshant extraction-gap --analyst-a <label> --analyst-b <label> [--output file] <drafts.json>")
+	}
+	path := remaining[0]
+
+	// Load and validate all draft records.
+	drafts, err := loader.LoadDrafts(path)
+	if err != nil {
+		return fmt.Errorf("extraction-gap: %w", err)
+	}
+
+	// Partition drafts by analyst position (ExtractedBy field).
+	byAnalyst := loader.GroupByAnalyst(drafts)
+
+	// Look up each analyst label; report all available labels on failure
+	// so the user can correct the invocation without re-running to discover.
+	lookupSet := func(label string) ([]schema.TraceDraft, error) {
+		set, ok := byAnalyst[label]
+		if !ok {
+			// Build a sorted list of available labels for a helpful error.
+			available := make([]string, 0, len(byAnalyst))
+			for k := range byAnalyst {
+				available = append(available, k)
+			}
+			sort.Strings(available)
+			return nil, fmt.Errorf("extraction-gap: analyst %q not found; available: %s",
+				label, strings.Join(available, ", "))
+		}
+		return set, nil
+	}
+
+	setA, err := lookupSet(analystA)
+	if err != nil {
+		return err
+	}
+	setB, err := lookupSet(analystB)
+	if err != nil {
+		return err
+	}
+
+	// Compare the two extraction positions.
+	gap := loader.CompareExtractions(analystA, setA, analystB, setB)
+
+	// Write report to output destination (file or stdout).
+	dest, err := outputWriter(w, outputPath)
+	if err != nil {
+		return fmt.Errorf("extraction-gap: %w", err)
+	}
+	if f, ok := dest.(*os.File); ok {
+		defer f.Close()
+	}
+
+	if err := loader.PrintExtractionGap(dest, gap); err != nil {
+		return err
+	}
+
+	return confirmOutput(w, outputPath)
+}
+
+// cmdChainDiff implements the "chain-diff" subcommand.
+//
+// It loads a drafts JSON file, groups drafts by analyst (ExtractedBy), builds
+// a derivation chain for each analyst position for the requested SourceSpan,
+// classifies each chain with ClassifyDraftChain, and compares the resulting
+// classifications with CompareChainClassifications.
+//
+// The comparison surfaces steps where the two positions assigned different
+// DraftStepKind values. Length asymmetry is reported when the chains have
+// different numbers of steps — steps beyond the shorter chain are not visible.
+//
+// Required flags:
+//   - --analyst-a: label for the first analyst position
+//   - --analyst-b: label for the second analyst position
+//   - --span: SourceSpan to compare classification chains for
+//
+// Optional flags:
+//   - --output: write report to file instead of stdout
+//
+// Required positional argument: path to a drafts JSON file.
+//
+// Note: the span string is treated as a shared key to align the two analyst
+// positions. Identical span strings do not guarantee that both positions
+// worked from identical source material — the comparison assumes they did.
+//
+// Returns an error if required flags are missing, the file cannot be loaded,
+// either analyst label is not found, or the span is absent from one position.
+func cmdChainDiff(w io.Writer, args []string) error {
+	fs := flag.NewFlagSet("chain-diff", flag.ContinueOnError)
+
+	var analystA, analystB, span, outputPath string
+	fs.StringVar(&analystA, "analyst-a", "", "label for analyst position A (required)")
+	fs.StringVar(&analystB, "analyst-b", "", "label for analyst position B (required)")
+	fs.StringVar(&span, "span", "", "source span to compare classification chains for (required)")
+	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. diff.txt)")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	// Validate required flags.
+	if analystA == "" {
+		return fmt.Errorf("chain-diff: --analyst-a is required")
+	}
+	if analystB == "" {
+		return fmt.Errorf("chain-diff: --analyst-b is required")
+	}
+	if analystA == analystB {
+		return fmt.Errorf("chain-diff: --analyst-a and --analyst-b must be different labels (got %q for both)", analystA)
+	}
+	if span == "" {
+		return fmt.Errorf("chain-diff: --span is required")
+	}
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		return fmt.Errorf("chain-diff: path to drafts.json required\n\nUsage: meshant chain-diff --analyst-a <label> --analyst-b <label> --span <source_span> [--output file] <drafts.json>")
+	}
+	path := remaining[0]
+
+	// Load and validate all draft records.
+	drafts, err := loader.LoadDrafts(path)
+	if err != nil {
+		return fmt.Errorf("chain-diff: %w", err)
+	}
+
+	// Partition drafts by analyst position (ExtractedBy field).
+	byAnalyst := loader.GroupByAnalyst(drafts)
+
+	// Look up each analyst label; report all available labels on failure.
+	lookupAnalyst := func(label string) ([]schema.TraceDraft, error) {
+		set, ok := byAnalyst[label]
+		if !ok {
+			available := make([]string, 0, len(byAnalyst))
+			for k := range byAnalyst {
+				available = append(available, k)
+			}
+			sort.Strings(available)
+			return nil, fmt.Errorf("chain-diff: analyst %q not found; available: %s",
+				label, strings.Join(available, ", "))
+		}
+		return set, nil
+	}
+
+	setA, err := lookupAnalyst(analystA)
+	if err != nil {
+		return err
+	}
+	setB, err := lookupAnalyst(analystB)
+	if err != nil {
+		return err
+	}
+
+	// buildChain finds the root draft for the given span in analystDrafts,
+	// follows the derivation chain, and returns the classification of each step.
+	// The root is the span draft whose DerivedFrom is absent from this span's
+	// draft IDs — that is, the analyst's earliest draft for this span.
+	//
+	// Scope note: root-finding uses the span-scoped ID set (spanIDs), not the
+	// full analyst set. This prevents a cross-span DerivedFrom link from being
+	// mistaken for an in-span parent, which would cause the root to be placed
+	// at a mid-chain node. FollowDraftChain similarly receives only spanDrafts
+	// so the traversal cannot follow links outside this span.
+	buildChain := func(analystLabel string, analystDrafts []schema.TraceDraft) ([]loader.DraftStepClassification, error) {
+		// Filter to drafts for the requested span.
+		var spanDrafts []schema.TraceDraft
+		for _, d := range analystDrafts {
+			if d.SourceSpan == span {
+				spanDrafts = append(spanDrafts, d)
+			}
+		}
+		if len(spanDrafts) == 0 {
+			return nil, fmt.Errorf("chain-diff: span %q not found for analyst %q", span, analystLabel)
+		}
+
+		// Build a span-scoped ID set. Root candidates are span drafts whose
+		// DerivedFrom is absent from this set — their parent (if any) is outside
+		// the span, making them the starting point of this analyst's chain.
+		spanIDs := make(map[string]bool, len(spanDrafts))
+		for _, d := range spanDrafts {
+			spanIDs[d.ID] = true
+		}
+
+		var roots []string
+		for _, d := range spanDrafts {
+			if d.DerivedFrom == "" || !spanIDs[d.DerivedFrom] {
+				roots = append(roots, d.ID)
+			}
+		}
+		if len(roots) == 0 {
+			// Every span draft has a parent within the span — possible cycle.
+			return nil, fmt.Errorf("chain-diff: no chain root found for span %q under analyst %q (possible cycle in derivation links)", span, analystLabel)
+		}
+		if len(roots) > 1 {
+			// Multiple independent roots mean the chain is ambiguous — refuse
+			// to pick one silently, as the comparison would vary by JSON order.
+			return nil, fmt.Errorf("chain-diff: ambiguous chain root for span %q under analyst %q: multiple root candidates %v", span, analystLabel, roots)
+		}
+		rootID := roots[0]
+
+		// Follow the derivation chain from the root within the span-scoped set.
+		// Passing spanDrafts (not analystDrafts) ensures the traversal cannot
+		// cross into a draft that belongs to a different SourceSpan.
+		chain := loader.FollowDraftChain(spanDrafts, rootID)
+		return loader.ClassifyDraftChain(chain), nil
+	}
+
+	chainA, err := buildChain(analystA, setA)
+	if err != nil {
+		return err
+	}
+	chainB, err := buildChain(analystB, setB)
+	if err != nil {
+		return err
+	}
+
+	// Compare the two classification chains and render the report.
+	diffs := loader.CompareChainClassifications(chainA, chainB)
+
+	dest, err := outputWriter(w, outputPath)
+	if err != nil {
+		return fmt.Errorf("chain-diff: %w", err)
+	}
+	if f, ok := dest.(*os.File); ok {
+		defer f.Close()
+	}
+
+	if err := loader.PrintClassificationDiffs(dest, analystA, analystB, len(chainA), len(chainB), diffs); err != nil {
+		return err
+	}
+
 	return confirmOutput(w, outputPath)
 }

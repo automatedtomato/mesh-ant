@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-17 (M13 Shadow Analysis + Observer Gap + Ingestion Deepening)
+**Last Updated:** 2026-03-20 (C.4: Multi-analyst example dataset — 10 TraceDraft records across two analyst positions with documented divergences)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -11,10 +11,11 @@
 |---------|---------|
 | `schema` | Core trace types, graph-reference predicates, and validators. |
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
-| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, export to JSON/DOT/Mermaid. |
+| `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, bottleneck analysis, re-articulation suggestions, narrative drafts, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
+| `review` | Ambiguity detection, terminal rendering, and interactive accept/edit/skip/quit session for TraceDraft records (Thread A). |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps` subcommands. |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. `review` is the only interactive subcommand (reads from stdin). |
 
 ## Package: schema
 
@@ -53,8 +54,11 @@
 | File | Contains |
 |------|----------|
 | `loader.go` | `Load`, `Summarise`, `PrintSummary`; `MeshSummary`, `FlaggedTrace` types. |
-| `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; UUID generation (M11). `WithIntentionallyBlank` and `WithCriterionRef` counts added (M12.5, M13). |
+| `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; `NewUUID` (exported, Thread A.1). `WithIntentionallyBlank` and `WithCriterionRef` counts added (M12.5, M13). |
 | `draftchain.go` | `FollowDraftChain`, `ClassifyDraftChain`; `DraftStepKind`, `DraftStepClassification` types (M13). |
+| `analyst.go` | `GroupByAnalyst`; analyst-position partitioning for multi-analyst comparison (C.1). |
+| `extractiongap.go` | `CompareExtractions`, `PrintExtractionGap`; `ExtractionGap`, `FieldDisagreement` types (C.2). |
+| `classdiff.go` | `CompareChainClassifications`, `PrintClassificationDiffs`; `ClassificationDiff` type (C.3). Classification-diff analysis: compare how two analyst positions classified the same derivation chain. |
 
 ### Types
 
@@ -65,6 +69,9 @@
 | `DraftSummary` | `Total` (int), `Promotable` (int), `ByStage` (map[string]int), `ByExtractedBy` (map[string]int), `FieldFillRate` (map[string]int), `WithIntentionallyBlank` (int, M12.5), `WithCriterionRef` (int, M13) | Provenance-aware reading of a TraceDraft dataset. Reveals ingestion pipeline breakdown and field fill rates (M11). Counts critique skeletons and self-situated skeletons. |
 | `DraftStepKind` | (string constant: `DraftIntermediary`, `DraftMediator`, `DraftTranslation`) | Classification of a draft chain step; mirrors `StepKind` from graph package. Heuristics are v1 and provisional (M13). |
 | `DraftStepClassification` | `StepIndex` (int), `Kind` (DraftStepKind), `Reason` (string) | Classification and justification for a single draft chain step (M13). |
+| `ExtractionGap` | `AnalystA` (string), `AnalystB` (string), `OnlyInA` ([]string), `OnlyInB` ([]string), `InBoth` ([]string), `Disagreements` ([]FieldDisagreement) | Comparison of two named extraction positions: partitions drafts by SourceSpan into three visibility groups; records field-level disagreements across 9 content fields (C.2). |
+| `FieldDisagreement` | `SourceSpan` (string), `Field` (string), `ValueA` (string), `ValueB` (string) | Mismatch in a single field for a draft visible from both extraction positions; field name and both values recorded (C.2). |
+| `ClassificationDiff` | `StepIndex` (int), `KindA` (DraftStepKind), `KindB` (DraftStepKind), `ReasonA` (string), `ReasonB` (string) | Classification disagreement at a single step position between two analyst positions; neither value is authoritative (C.3). |
 
 ### Functions
 
@@ -78,6 +85,11 @@
 | `PrintDraftSummary` | `func PrintDraftSummary(w io.Writer, s DraftSummary) error` | Write provenance summary to io.Writer. Shows total/promotable, breakdown by extraction stage and extracted_by, per-field fill rates, critique skeleton counts (M11, M12.5, M13). |
 | `FollowDraftChain` | `func FollowDraftChain(drafts []schema.TraceDraft, from string) []schema.TraceDraft` | Traverse DerivedFrom links from draft with id `from`; return chain in derivation order. Empty slice if `from` not found. Cycle detection via visited set (M13). |
 | `ClassifyDraftChain` | `func ClassifyDraftChain(chain []schema.TraceDraft) []DraftStepClassification` | Apply v1 heuristic classification to consecutive draft pairs. Returns `len(chain)-1` classifications (M13). |
+| `GroupByAnalyst` | `func GroupByAnalyst(drafts []schema.TraceDraft) map[string][]schema.TraceDraft` | Partition drafts by ExtractedBy field (analyst-position cut axis). Preserves encounter order within each group; drafts with empty ExtractedBy grouped under key ""; result map never nil; no aliasing (C.1). |
+| `CompareExtractions` | `func CompareExtractions(analystA string, setA []schema.TraceDraft, analystB string, setB []schema.TraceDraft) ExtractionGap` | Partition two named draft sets by SourceSpan into OnlyInA/OnlyInB/InBoth; compare 9 content fields (WhatChanged, Source, Target, Mediation, Observer, Tags, UncertaintyNote, IntentionallyBlank, SourceDocRef) for drafts visible in both positions; use set-based slice comparison; mark drafts from same SourceSpan but different sets with multiple-drafts sentinel (C.2). |
+| `PrintExtractionGap` | `func PrintExtractionGap(w io.Writer, gap ExtractionGap) error` | Write human-readable extraction gap report to io.Writer. Names both analyst positions, three-way partition with SourceSpan lists, field disagreement block, shadow note (neither position is authoritative), non-authoritative disclaimer (C.2). |
+| `CompareChainClassifications` | `func CompareChainClassifications(chainA, chainB []DraftStepClassification) []ClassificationDiff` | Compare two classified chains by position (0-indexed step index). Returns classifications differing by Kind or Reason, up to min(len(chainA), lenB) steps. Returns non-nil empty slice when chains are identical (C.3). |
+| `PrintClassificationDiffs` | `func PrintClassificationDiffs(w io.Writer, analystA, analystB string, lenA, lenB int, diffs []ClassificationDiff) error` | Write human-readable classification diff report to io.Writer. Names both analyst positions, overall chain length context (lenA/lenB steps), per-diff lines (step position, Kind/Reason for each analyst, position note), footer caveat (neither position is authoritative, data-dependent heuristics) (C.3). |
 
 ## Package: graph
 
@@ -97,6 +109,9 @@
 | `export.go` | Export functions: `PrintGraphJSON`, `PrintDiffJSON`, `PrintGraphDOT`, `PrintGraphMermaid`, `PrintDiffDOT`, `PrintDiffMermaid`. Internal helpers for DOT/Mermaid formatting. `stripNewlines()` security helper prevents injection from crafted trace values. |
 | `shadow.go` | Shadow analysis: `SummariseShadow`, `PrintShadowSummary`; `ShadowSummary` type (M13). |
 | `gaps.go` | Observer-gap analysis: `AnalyseGaps`, `PrintObserverGap`; `ObserverGap` type (M13). |
+| `bottleneck.go` | Bottleneck analysis: `IdentifyBottlenecks`, `PrintBottleneckNotes`; `BottleneckOptions`, `BottleneckNote` types (B.1). |
+| `suggest.go` | Re-articulation suggestion: `SuggestRearticulations`, `PrintRearticSuggestions`; `SuggestionKind`, `RearticSuggestion` types (B.2). |
+| `narrative.go` | Narrative drafts: `DraftNarrative`, `PrintNarrativeDraft`; `NarrativeDraft` type (B.3). Positioned reading of a graph; names cut position, top elements by frequency, observed mediations, shadow count, and methodological caveats. |
 
 ### Types
 
@@ -127,6 +142,11 @@
 | `ClassifyOptions` | `Criterion` (EquivalenceCriterion) | Parameters for chain classification. Zero value = v1 heuristics (backwards-compatible). Criterion is carried into ClassifiedChain as provenance; does not alter step logic yet. |
 | `ShadowSummary` | `TotalShadowed` (int), `ByReason` (map[string]int), `Elements` ([]ShadowElement), `SeenFromCounts` (map[string]int), `Cut` (Cut) | Summary of shadowed elements in an articulated graph. ByReason counts by ShadowReason; SeenFromCounts maps excluded observer position to the count of elements seen from it; Elements sorted by name (M13). |
 | `ObserverGap` | `OnlyInA` ([]string), `OnlyInB` ([]string), `InBoth` ([]string), `CutA` (Cut), `CutB` (Cut) | Visibility asymmetry between two articulations. All three element lists sorted alphabetically. Both cuts retained for self-situated reporting (M13). |
+| `BottleneckOptions` | (empty struct) | Configuration for `IdentifyBottlenecks`. Reserved as extension point for future thresholds or heuristic toggles (v1: intentionally empty, B.1). |
+| `BottleneckNote` | `Element` (string), `AppearanceCount` (int), `MediationCount` (int), `ShadowCount` (int), `Reason` (string) | Provisional centrality reading for one element from a cut. Three independent measures (not combined). Reason hedges with "from this cut" to signal provisionality (B.1). |
+| `SuggestionKind` | (string constant: `SuggestionObserverExpansion`, `SuggestionTimeExpansion`, `SuggestionTagRelaxation`) | Category of re-articulation change being suggested (B.2). |
+| `RearticSuggestion` | `Kind` (SuggestionKind), `Side` (string: "A" or "B"), `Rationale` (string), `SuggestedParams` (string) | Heuristic provocation for narrowing a gap. Rationale always names what the suggestion cannot know. SuggestedParams is plain-language description of suggested change (B.2). |
+| `NarrativeDraft` | `PositionStatement` (string), `Body` (string), `ShadowStatement` (string), `Caveats` ([]string) | Provisional, positioned narrative reading of a graph from one observer cut. Immutable once returned. Zero-value for empty graphs (no edges); all four fields populated for non-empty graphs. Names cut position, trace count, top-3 elements by frequency, observed mediations (up to 5 + count of remainder), shadow count with exclusion reasons, and methodological caveats (B.3). |
 
 ### Functions
 
@@ -162,6 +182,12 @@
 | `PrintShadowSummary` | `func PrintShadowSummary(w io.Writer, s ShadowSummary) error` | Write shadow report to io.Writer. Observer position, shadow count by reason, SeenFrom counts descending, element list. Includes "No shadow" path when no elements shadowed (M13). |
 | `AnalyseGaps` | `func AnalyseGaps(g1, g2 MeshGraph) ObserverGap` | Compare node sets of two pre-articulated graphs; partition names into OnlyInA, OnlyInB, InBoth; retain both Cuts. Does not re-articulate (M13). |
 | `PrintObserverGap` | `func PrintObserverGap(w io.Writer, gap ObserverGap) error` | Write observer-gap report to io.Writer. Names both positions, three-way partition with element lists, "No gap" message when identical; neither position treated as authoritative (M13). |
+| `IdentifyBottlenecks` | `func IdentifyBottlenecks(g MeshGraph, _ BottleneckOptions) []BottleneckNote` | Apply v1 centrality heuristic: include if MediationCount > 0 OR AppearanceCount ≥ 2 OR ShadowCount > 0. Sort by MediationCount desc → AppearanceCount desc → name asc. Always returns non-nil slice (empty when no nodes qualify) (B.1). |
+| `PrintBottleneckNotes` | `func PrintBottleneckNotes(w io.Writer, g MeshGraph, notes []BottleneckNote) error` | Write bottleneck analysis report to io.Writer. Header, cut context, per-note lines (element, counts, reason), footer caveat (B.1). |
+| `SuggestRearticulations` | `func SuggestRearticulations(gap ObserverGap) []RearticSuggestion` | Generate heuristic re-articulation suggestions from an ObserverGap. Returns nil when no gap (both OnlyInA and OnlyInB empty); returns non-nil empty slice when gap exists but no heuristic fires (B.2). |
+| `PrintRearticSuggestions` | `func PrintRearticSuggestions(w io.Writer, gap ObserverGap, suggestions []RearticSuggestion) error` | Write re-articulation suggestions to io.Writer. Returns nil immediately for nil input. Header, gap summary, per-suggestion blocks, footer caveat naming suggestion engine's own shadow (B.2). |
+| `DraftNarrative` | `func DraftNarrative(g MeshGraph) NarrativeDraft` | Produce a provisional narrative reading of graph g. Returns zero-value for empty graphs. For non-empty graphs: positions the cut, counts included traces, names top-3 elements by appearance frequency, lists up to 5 observed mediations, counts shadow elements with reasons, and generates methodological caveats based on shadow ratio, time window, and tag filters (B.3). |
+| `PrintNarrativeDraft` | `func PrintNarrativeDraft(w io.Writer, n NarrativeDraft) error` | Write formatted narrative draft to io.Writer. Renders header, position statement, body (reading from cut), shadow statement (what is in shadow from this position), caveats (methodological qualifications), and footer note. Language is provisional throughout; "missing" never used (B.3). |
 
 ## Package: persist
 
@@ -182,6 +208,36 @@ None (persist carries no domain types; wraps graph types).
 | `WriteJSON` | `func WriteJSON(path string, v any) error` | Marshal value to JSON and write to file with 0644 permissions. |
 | `ReadGraphJSON` | `func ReadGraphJSON(path string) (graph.MeshGraph, error)` | Read and unmarshal JSON file as `MeshGraph`. |
 | `ReadDiffJSON` | `func ReadDiffJSON(path string) (graph.GraphDiff, error)` | Read and unmarshal JSON file as `GraphDiff`. |
+
+## Package: review
+
+### Files
+
+| File | Contains |
+|------|----------|
+| `ambiguity.go` | `AmbiguityWarning` struct; `DetectAmbiguities` function. |
+| `render.go` | `RenderDraft`, `RenderAmbiguities`, `RenderChain`; helpers `valueOrEmpty`, `sliceOrEmpty`, `truncateString`. |
+| `session.go` | `RunReviewSession`, `deriveAccepted`, `deriveEdited`, `runEditFlow`, `parseCommaSeparated`, `filterReviewable`, `cloneStrings`; interactive session loop and derivation logic (Thread A.3/A.4). |
+
+### Types
+
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `AmbiguityWarning` | `Field` (string), `Message` (string) | Positioned observation that a draft field is unregistered or in shadow from this position. Language is ANT-disciplined: no "missing", "error", or "incomplete". Invitations to inspect, not demands to correct (Thread A). |
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `DetectAmbiguities` | `func DetectAmbiguities(d schema.TraceDraft) []AmbiguityWarning` | Check 6 candidate content fields (what_changed, source, target, mediation, observer, tags) for blank values, subject to `IntentionallyBlank` suppression. Also checks for criterion_ref mismatch (UncertaintyNote set but CriterionRef absent). Returns nil if no ambiguities detected (Thread A.1). |
+| `RenderDraft` | `func RenderDraft(d schema.TraceDraft, index, total int) string` | Format a TraceDraft for terminal display in the review session. Shows all candidate and provenance fields; blank values rendered as "(empty)". `index` is 1-based queue position (Thread A.1). |
+| `RenderAmbiguities` | `func RenderAmbiguities(warnings []AmbiguityWarning) string` | Format `[]AmbiguityWarning` for display below a rendered draft. Returns "(none)" when warnings is nil or empty (Thread A.1). |
+| `RenderChain` | `func RenderChain(chain []schema.TraceDraft, classifications []loader.DraftStepClassification) string` | Format a derivation chain for display in the review session. Shows each draft with truncated ID (8 chars), extraction_stage, extracted_by, and truncated what_changed (60 chars). Interleaves DraftStepClassification lines (Kind + Reason) between drafts. Last draft marked `<-- current`. Returns "(no derivation chain)" for empty input (Thread A.2). |
+| `RunReviewSession` | `func RunReviewSession(drafts []schema.TraceDraft, in io.Reader, out io.Writer) ([]schema.TraceDraft, error)` | Interactive accept/edit/skip/quit loop over weak-draft records. Renders chain, draft, and ambiguities per draft; returns all newly derived (accepted or edited) drafts. Filters to ExtractionStage "weak-draft"; falls back to all drafts when no stage metadata present. EOF treated as quit (Thread A.3/A.4). |
+| `deriveAccepted` | `func deriveAccepted(parent schema.TraceDraft) (schema.TraceDraft, error)` | Creates a new TraceDraft derived from parent: copies all candidate fields (deep-copies slices), sets DerivedFrom=parent.ID, ExtractionStage="reviewed", ExtractedBy="meshant-review", new UUID and Timestamp (Thread A.3). |
+| `runEditFlow` | `func runEditFlow(d schema.TraceDraft, scanner *bufio.Scanner, out io.Writer) (schema.TraceDraft, bool, error)` | Field-by-field editing loop over 8 editable content fields (what_changed, source, target, mediation, observer, tags, uncertainty_note, criterion_ref). Empty input keeps current value; slice fields accept comma-separated input. Returns (editedDraft, completedOK, error). EOF mid-flow returns (partial, false, nil) — caller must not append. Provenance fields are not editable (Thread A.4). |
+| `deriveEdited` | `func deriveEdited(parent schema.TraceDraft, edited schema.TraceDraft) (schema.TraceDraft, error)` | Creates a new TraceDraft derived from parent using content fields from edited. Content (WhatChanged, Source, Target, Mediation, Observer, Tags, UncertaintyNote, CriterionRef) from edited; provenance (SourceSpan, SourceDocRef, IntentionallyBlank) from parent. DerivedFrom=parent.ID, ExtractionStage="reviewed", ExtractedBy="meshant-review", new UUID and Timestamp. Edit = one derivation step, not two (Thread A.4). |
+| `parseCommaSeparated` | `func parseCommaSeparated(s string) []string` | Splits s on commas, trims whitespace per element, drops empty strings. Returns nil when no non-empty elements remain (Thread A.4). |
 
 ## Package: cmd/demo
 
@@ -205,7 +261,7 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13) handlers. |
+| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13), `cmdBottleneck` (B.1), `cmdExtractionGap` (C.2), `cmdChainDiff` (C.3), `cmdReview` (A.5) handlers. (~2010 lines — pre-existing size debt, tracked for future per-command file split.) |
 | `main_test.go` | Tests: all subcommands, flag parsing, file output, error handling, criterion file loading, draft/promote pipeline (M11). |
 
 ### Types
@@ -223,10 +279,10 @@ None (persist carries no domain types; wraps graph types).
 | `parseTimeFlag` | `func parseTimeFlag(name, value string) (time.Time, error)` | Parse RFC3339 string to time.Time with contextual error message naming the flag. |
 | `parseTimeWindow` | `func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error)` | Parse two RFC3339 strings (one or both may be empty) into a TimeWindow. Validates only when both bounds are set. |
 | `main` | `func main()` | Entry point. Calls `run(os.Stdout, os.Args[1:])` and exits non-zero on error. |
-| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, or `cmdGaps()`. |
+| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, `cmdExtractionGap()`, `cmdChainDiff()`, or `cmdReview()`. For the `review` case, passes `os.Stdin` as the reader to `cmdReview`. |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
-| `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. |
+| `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. Optional `--narrative` flag appends a positioned narrative draft (text format only, skipped for JSON/DOT/Mermaid). |
 | `cmdDiff` | `func cmdDiff(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts (`--observer-a/b`, `--tag-a/b`, per-side time windows), compute diff via `graph.Diff()`. `--format text\|json\|dot\|mermaid`, `--output <file>`. |
 | `cmdFollow` | `func cmdFollow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, follow translation chain from --element with `--direction forward\|backward`, `--depth N`, `--observer`, `--tag`, `--from`, `--to`. Optional `--criterion-file <path>` loads an EquivalenceCriterion before trace I/O. Classify and print via `PrintChain()`. `--format text\|json`, `--output <file>`. |
 | `cmdDraft` | `func cmdDraft(w io.Writer, args []string) error` | Subcommand: Load extraction JSON, assign UUIDs/timestamps, apply optional `--source-doc`, `--extracted-by`, `--stage` overrides, write TraceDraft JSON via `loader.LoadDrafts()`, print provenance summary via `PrintDraftSummary()`. `--output <file>` (M11). |
@@ -234,7 +290,11 @@ None (persist carries no domain types; wraps graph types).
 | `cmdRearticulate` | `func cmdRearticulate(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, produce skeleton JSON array — for each draft: `source_span` copied verbatim, `derived_from` set to original ID, all content fields blank, `extraction_stage:"reviewed"`. Flags: `--id <id>` (single draft only), `--output <file>` (M12). |
 | `cmdLineage` | `func cmdLineage(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, walk DerivedFrom links, render positional reading sequences as indented trees. Anchors (drafts with no DerivedFrom) are sequence roots. Cycle detection required (DFS grey-set). Flags: `--id <id>` (single chain), `--format text\|json` (M12). |
 | `cmdShadow` | `func cmdShadow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, print shadow summary via `graph.SummariseShadow()` + `PrintShadowSummary()`. Flags: `--observer` (repeatable, required), `--tag` (repeatable), `--from`, `--to` (RFC3339), `--output <file>` (M13). |
-| `cmdGaps` | `func cmdGaps(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts from the same file, compare node sets via `graph.AnalyseGaps()`, print observer-gap report via `PrintObserverGap()`. Flags: `--observer-a`, `--observer-b` (repeatable, both required), per-side `--tag-a/b`, `--from-a/b`, `--to-a/b` (RFC3339), `--output <file>` (M13). |
+| `cmdGaps` | `func cmdGaps(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts, compare node sets via `graph.AnalyseGaps()`, print gap report. Optionally appends re-articulation suggestions via `--suggest`. Flags: `--observer-a`, `--observer-b` (required), per-side `--tag-a/b`, `--from-a/b`, `--to-a/b`, `--suggest` (bool), `--output` (M13, B.2). |
+| `cmdBottleneck` | `func cmdBottleneck(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, identify bottlenecks via `graph.IdentifyBottlenecks()`, print notes via `PrintBottleneckNotes()`. Flags: `--observer` (optional), `--tag`, `--from`, `--to`, `--output` (B.1). |
+| `cmdExtractionGap` | `func cmdExtractionGap(w io.Writer, args []string) error` | Subcommand: Load two TraceDraft JSON files, compare extractions from named positions via `loader.CompareExtractions()`, print gap report via `PrintExtractionGap()`. Flags: `--analyst-a <label>`, `--analyst-b <label>` (both required, names of analyst positions), `--output <file>` (C.2). |
+| `cmdChainDiff` | `func cmdChainDiff(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, build span-scoped derivation chains for two named analyst positions via `loader.FollowDraftChain()` + `loader.ClassifyDraftChain()`, compare classifications via `loader.CompareChainClassifications()`, print diff report via `PrintClassificationDiffs()`. Flags: `--analyst-a <label>`, `--analyst-b <label>` (both required), `--span <source_span>` (required), `--output <file>` (C.3). |
+| `cmdReview` | `func cmdReview(w io.Writer, in io.Reader, args []string) error` | Subcommand: Load TraceDraft JSON, run interactive accept/edit/skip/quit session via `review.RunReviewSession()`. Only interactive subcommand — signature diverges from all other `cmd*` functions by accepting `in io.Reader` for stdin injection (testability). Interactive prompts go to `os.Stderr`; JSON output and summary go to `w`. Flags: `--output <file>` (A.5). |
 | `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
 | `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
@@ -247,10 +307,13 @@ None (persist carries no domain types; wraps graph types).
 - **Flag parsing**: Uses stdlib `flag.FlagSet` for subcommand isolation; `stringSliceFlag` enables repeatable `--observer` flags without comma-separation
 - **Time handling**: RFC3339 timestamps throughout; `parseTimeFlag()` and `parseTimeWindow()` provide clear error messages with formatting hints
 - **Format options**: `articulate` and `diff` both support text/json/dot/mermaid; `follow` supports text/json
-- **File output**: `--output <file>` writes to file instead of stdout (with deferred close for safety)
+- **File output**: `--output <file>` writes to file instead of stdout; `cmdReview` uses explicit `f.Close()` (not deferred) to surface write errors
+- **Interactive subcommand**: `cmdReview` is the only `cmd*` function that accepts `in io.Reader` — all other subcommands are non-interactive. `run()` passes `os.Stdin` for the review case only. If a second interactive subcommand is added, migrate to a `cmdContext` struct rather than adding more signature exceptions.
+- **Stderr/stdout separation**: `cmdReview` writes interactive prompts to `os.Stderr` and JSON output to `w` (stdout), enabling `meshant review file.json | jq .` and `--output` file routing without prompt contamination.
 - **Ingestion pipeline** (M11): `draft` command ingests LLM extraction JSON and produces TraceDraft records; `promote` command converts promotable TraceDraft records to canonical Traces (tagged with `draft` provenance signal)
 - **Re-articulation pipeline** (M12): `rearticulate` command produces critique skeletons (SourceSpan + DerivedFrom set, all content fields blank); `lineage` command walks DerivedFrom links and renders positional reading sequences as CLI output
 - **Shadow analysis** (M13): `shadow` subcommand summarises shadowed elements from a cut; `gaps` subcommand compares element visibility between two observer positions; neither position is authoritative
+- **Re-articulation suggestions** (B.2): optional `--suggest` flag on `gaps` subcommand proposes cut adjustments (observer expansion, time-window expansion, tag relaxation) to narrow an observed gap
 - **Binary installation**: `go install ./cmd/meshant` produces `meshant` binary at $GOPATH/bin; used in Dockerfile at `/usr/local/bin/meshant`
 
 ## Cross-Package Relationships
@@ -367,8 +430,20 @@ cmd/demo/
 | Print shadow summary | `graph/shadow.go` → `PrintShadowSummary()` |
 | Compare two graph node sets | `graph/gaps.go` → `AnalyseGaps()` |
 | Print observer-gap report | `graph/gaps.go` → `PrintObserverGap()` |
+| Identify bottleneck elements | `graph/bottleneck.go` → `IdentifyBottlenecks()` |
+| Print bottleneck analysis | `graph/bottleneck.go` → `PrintBottleneckNotes()` |
 | Shadow summary via CLI | `cmd/meshant/main.go` → `cmdShadow()` |
 | Observer-gap report via CLI | `cmd/meshant/main.go` → `cmdGaps()` |
+| Bottleneck analysis via CLI | `cmd/meshant/main.go` → `cmdBottleneck()` |
+| Suggest re-articulations from gap | `graph/suggest.go` → `SuggestRearticulations()` |
+| Print re-articulation suggestions | `graph/suggest.go` → `PrintRearticSuggestions()` |
+| Re-articulation suggestions via CLI | `cmd/meshant/main.go` → `cmdGaps()` with `--suggest` flag |
+| Draft narrative reading of a graph | `graph/narrative.go` → `DraftNarrative()` |
+| Print narrative draft | `graph/narrative.go` → `PrintNarrativeDraft()` |
+| Add narrative draft to articulation output | `cmd/meshant/main.go` → `cmdArticulate()` with `--narrative` flag |
+| Compare chain classifications from two analysts | `loader/classdiff.go` → `CompareChainClassifications()` |
+| Print classification diff report | `loader/classdiff.go` → `PrintClassificationDiffs()` |
+| Classification diff via CLI | `cmd/meshant/main.go` → `cmdChainDiff()` |
 | Read critique prompt contract | `data/prompts/critique_pass.md` |
 | Run minimal demo | `cmd/demo/main.go` → `run()` |
 
@@ -451,6 +526,16 @@ cmd/demo/
 - **CriterionRef is string-only**: stores criterion `Name` (not the struct) to prevent `schema`→`graph` import cycle
 - **DraftStepKind is v1 provisional**: mirrors StepKind; will be revisited when criteria govern draft chains
 
+### Narrative Drafts (B.3)
+- **Positioned reading, not conclusion**: DraftNarrative produces a provisional narrative from one observer cut; it organizes what the graph already contains (trace counts, mediations, shadow elements) into readable form
+- **Top elements by frequency**: Selects top-3 nodes by AppearanceCount (descending), then alphabetically; lists fewer when graph is smaller
+- **Mediation enumeration**: Collects up to 5 distinct non-empty Edge.Mediation strings in encounter order; appends "and N more" if more exist
+- **Shadow language discipline**: Never uses "missing" (absence implies non-existence); always uses "in shadow from this position" (names what is invisible from one vantage point)
+- **Mandatory caveats**: Always includes standard positioned-reading caveat; adds shadow-ratio, time-window, and tag-filter caveats based on cut parameters
+- **Immutability**: NarrativeDraft fields are populated once; callers should not mutate Caveats slice
+- **Empty graphs**: Returns zero-value NarrativeDraft when graph has no edges (no data to narrate)
+- **CLI integration**: `--narrative` flag on `cmdArticulate` (text format only; skipped for JSON/DOT/Mermaid)
+
 ### Ingestion Pipeline (M11)
 - **TraceDraft** is a first-class analytical object, not a halfway house to Trace
 - **SourceSpan** is the only required field; minimal record carrying verbatim source text without forcing resolution
@@ -488,6 +573,13 @@ cmd/demo/
 | CVE Critique Skeleton | `data/examples/cve_critique_skeleton.json` | Scaffold | Skeleton output from `meshant rearticulate`: SourceSpan + DerivedFrom set, content fields blank, one record per CVE draft |
 | CVE Critique Drafts | `data/examples/cve_critique_drafts.json` | Reviewed | Filled critique drafts for E3 (resists "attacker" as stable actor) and E14 (reframes CVE as document, not agent); methodological demonstration material |
 
+### Multi-Analyst Ingestion Datasets (C.4)
+
+| Dataset | Location | Stage | Purpose |
+|---------|----------|-------|---------|
+| Multi-Analyst Drafts | `data/examples/multi_analyst_drafts.json` | Output | 10 TraceDraft records from two analyst positions (`analyst-a`, `analyst-b`) over a shared incident scenario; exercises `extraction-gap` and `chain-diff` operations |
+| Multi-Analyst README | `data/examples/multi_analyst_drafts_README.md` | Documentation | Companion guide: scenario description, deliberate divergences between analyst positions, CLI commands to reproduce analysis output |
+
 ### Extraction Prompt Templates
 
 | File | Purpose |
@@ -516,6 +608,7 @@ cmd/demo/
 - `docs/decisions/tracedraft-v2.md` — TraceDraft design, ingestion pipeline as analytical object, source span as ground truth, promotion criterion, provenance chain (M11)
 - `docs/decisions/rearticulation-v1.md` — Re-articulation as cut not correction, SourceSpan invariant, blank scaffold as correct output, DerivedFrom positional vocabulary, cmdLineage as first-class CLI output, E3/E14 as demonstration material (M12)
 - `docs/decisions/shadow-analysis-v1.md` — Shadow as cut decision, ObserverGap composability, FollowDraftChain design, CriterionRef as citation metadata, DraftStepKind v1 heuristics, shadow/gaps CLI-first design (M13)
+- `docs/decisions/interactive-review-v1.md` — Interactive review CLI design: session as cut, render-as-string, ExtractedBy sameness, provenance/content partition, stdin/stderr separation, main.go size debt (Thread A)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 
@@ -542,6 +635,7 @@ cmd/demo/
 - `cmd/demo/main_test.go` — E2E test
 - `graph/shadow_test.go` — 10 tests for SummariseShadow and PrintShadowSummary (M13)
 - `graph/gaps_test.go` — 9 tests for AnalyseGaps and PrintObserverGap (M13)
+- `graph/narrative_test.go` — 11 tests for DraftNarrative and PrintNarrativeDraft (B.3); covers empty graphs, element sorting, mediation enumeration, shadow statements, caveat triggering (shadow ratio, time window, tag filters)
 - `loader/draftchain_test.go` — 11 tests for FollowDraftChain and ClassifyDraftChain (M13)
 - `schema/tracedraft_test.go` — includes tests for CriterionRef (M13) and IntentionallyBlank (M12.5)
-- `cmd/meshant/main_test.go` — tests covering all CLI subcommands including follow, draft, promote (M11), rearticulate, lineage (M12), shadow, gaps (M13), flag parsing, file output, error handling
+- `cmd/meshant/main_test.go` — tests covering all CLI subcommands including follow, draft, promote (M11), rearticulate, lineage (M12), shadow, gaps (M13), narrative flag on articulate (B.3), flag parsing, file output, error handling

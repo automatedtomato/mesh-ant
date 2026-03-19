@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
+	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
 // --- Group 1: cmdSummarize ---
@@ -2488,5 +2489,1075 @@ func TestCmdGaps_RunDispatch(t *testing.T) {
 	}
 	if len(buf.String()) == 0 {
 		t.Error("run('gaps'): expected non-empty output")
+	}
+}
+
+// --- Group: cmdBottleneck ---
+
+// TestCmdBottleneck_HappyPath verifies that cmdBottleneck produces non-empty
+// output containing "provisional" and the observer position when given a
+// valid dataset and an explicit observer.
+func TestCmdBottleneck_HappyPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdBottleneck(&buf, []string{
+		"--observer", "meteorological-analyst",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdBottleneck(): unexpected error: %v", err)
+	}
+	out := buf.String()
+	if len(out) == 0 {
+		t.Error("cmdBottleneck(): expected non-empty output")
+	}
+	for _, want := range []string{"provisional", "meteorological-analyst"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("cmdBottleneck(): output missing %q;\noutput:\n%s", want, out)
+		}
+	}
+}
+
+// TestCmdBottleneck_ObserverOptional verifies that --observer is optional:
+// running without it (full cut) must not return an error.
+func TestCmdBottleneck_ObserverOptional(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdBottleneck(&buf, []string{evacuationDataset})
+	if err != nil {
+		t.Fatalf("cmdBottleneck() with no --observer: unexpected error: %v", err)
+	}
+	if len(buf.String()) == 0 {
+		t.Error("cmdBottleneck() with no --observer: expected non-empty output")
+	}
+}
+
+// TestCmdBottleneck_MissingPath verifies that cmdBottleneck returns an error
+// when no traces file path is supplied.
+func TestCmdBottleneck_MissingPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdBottleneck(&buf, []string{})
+	if err == nil {
+		t.Fatal("cmdBottleneck() with no path: want non-nil error, got nil")
+	}
+}
+
+// TestCmdBottleneck_RunDispatch verifies that run() correctly routes
+// "bottleneck" to cmdBottleneck, producing non-empty output.
+func TestCmdBottleneck_RunDispatch(t *testing.T) {
+	var buf bytes.Buffer
+	err := run(&buf, []string{
+		"bottleneck",
+		"--observer", "meteorological-analyst",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("run('bottleneck'): unexpected error: %v", err)
+	}
+	if len(buf.String()) == 0 {
+		t.Error("run('bottleneck'): expected non-empty output")
+	}
+}
+
+// TestCmdGaps_SuggestFlag verifies that cmdGaps with --suggest produces output
+// containing the re-articulation suggestions section header when the two
+// observer positions produce a gap (distinct observers from the evacuation
+// dataset see different elements). The suggestions section must appear after
+// the gap report.
+func TestCmdGaps_SuggestFlag(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdGaps(&buf, []string{
+		"--observer-a", "meteorological-analyst",
+		"--observer-b", "coastal-resident",
+		"--suggest",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdGaps() --suggest: unexpected error: %v", err)
+	}
+	out := buf.String()
+
+	// The gap report section must still be present.
+	if !strings.Contains(out, "Observer Gap") {
+		t.Errorf("cmdGaps() --suggest: output missing 'Observer Gap'; got:\n%s", out)
+	}
+
+	// The suggestions section header must appear after the gap report.
+	if !strings.Contains(out, "Re-articulation Suggestions") {
+		t.Errorf("cmdGaps() --suggest: output missing 'Re-articulation Suggestions'; got:\n%s", out)
+	}
+
+	// The footer note encoding the epistemic constraint must be present.
+	if !strings.Contains(out, "provocation") {
+		t.Errorf("cmdGaps() --suggest: output missing 'provocation' in footer; got:\n%s", out)
+	}
+}
+
+// --- Group B.3: --narrative flag on articulate ---
+
+// TestCmdArticulate_NarrativeFlag verifies that --narrative appends a
+// NarrativeDraft section to the text-format articulation output.
+// The output must contain the "Narrative Draft" header and the "Position:"
+// section label from PrintNarrativeDraft.
+//
+// Only emitted for --format text (the default). The test uses the
+// meteorological-analyst observer from the evacuation dataset — a non-empty
+// articulation with a well-known shadow.
+func TestCmdArticulate_NarrativeFlag(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--narrative",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --narrative returned unexpected error: %v", err)
+	}
+	out := buf.String()
+
+	// The narrative section header must be present.
+	if !strings.Contains(out, "Narrative Draft") {
+		t.Errorf("--narrative: output does not contain 'Narrative Draft'; got:\n%s", out)
+	}
+	// The Position section label from PrintNarrativeDraft must be present.
+	if !strings.Contains(out, "Position:") {
+		t.Errorf("--narrative: output does not contain 'Position:'; got:\n%s", out)
+	}
+}
+
+// TestCmdArticulate_NarrativeFlagSkippedForJSON verifies that --narrative is
+// silently skipped when --format json is used. The output must not contain
+// "Narrative Draft" and must be valid JSON (starts with '{').
+func TestCmdArticulate_NarrativeFlagSkippedForJSON(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdArticulate(&buf, []string{
+		"--observer", "meteorological-analyst",
+		"--format", "json",
+		"--narrative",
+		evacuationDataset,
+	})
+	if err != nil {
+		t.Fatalf("cmdArticulate() --format json --narrative returned unexpected error: %v", err)
+	}
+	out := strings.TrimSpace(buf.String())
+	if strings.Contains(out, "Narrative Draft") {
+		t.Errorf("--narrative with --format json: narrative section must be skipped, but output contains 'Narrative Draft'")
+	}
+	if !strings.HasPrefix(out, "{") {
+		t.Errorf("--narrative with --format json: output does not start with '{'; got: %q", out[:min(len(out), 40)])
+	}
+}
+
+// --- Group A.5: cmdReview ---
+
+// weakDraftFixture returns a schema.TraceDraft with ExtractionStage "weak-draft"
+// suitable for review session tests. id must be a valid UUID-shaped string.
+func weakDraftFixture(id, sourceSpan, whatChanged string) schema.TraceDraft {
+	return schema.TraceDraft{
+		ID:              id,
+		SourceSpan:      sourceSpan,
+		WhatChanged:     whatChanged,
+		ExtractionStage: "weak-draft",
+		ExtractedBy:     "llm-v1",
+	}
+}
+
+// writeTempDraftFile serialises drafts as a JSON array to a temp file and
+// returns the path. Named distinctly to avoid collision with writeTempJSONForDraft.
+func writeTempDraftFile(t *testing.T, drafts []schema.TraceDraft) string {
+	t.Helper()
+	data, err := json.Marshal(drafts)
+	if err != nil {
+		t.Fatalf("writeTempDraftFile: marshal: %v", err)
+	}
+	f, err := os.CreateTemp(t.TempDir(), "drafts-*.json")
+	if err != nil {
+		t.Fatalf("writeTempDraftFile: CreateTemp: %v", err)
+	}
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
+		t.Fatalf("writeTempDraftFile: write: %v", err)
+	}
+	return f.Name()
+}
+
+// TestCmdReview_MissingArg verifies that cmdReview returns an error containing
+// "path" when no positional argument is supplied.
+func TestCmdReview_MissingArg(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader(""), []string{})
+	if err == nil {
+		t.Fatal("cmdReview() with no args: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "path") {
+		t.Errorf("cmdReview() error = %q; want it to contain \"path\"", err.Error())
+	}
+}
+
+// TestCmdReview_BadPath verifies that cmdReview returns an error when the
+// supplied path does not point to an existing file.
+func TestCmdReview_BadPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader("q\n"), []string{"/nonexistent/path/drafts.json"})
+	if err == nil {
+		t.Fatal("cmdReview() with bad path: want non-nil error, got nil")
+	}
+}
+
+// TestCmdReview_EmptyInput verifies that cmdReview with an empty draft array
+// (JSON "[]") returns nil error and writes an empty JSON array to w.
+// The empty reader is intentional: RunReviewSession returns immediately when
+// the queue is empty, so it never reads from in at all.
+func TestCmdReview_EmptyInput(t *testing.T) {
+	path := writeTempJSONForDraft(t, "[]")
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader(""), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() with empty draft array: want nil error, got: %v", err)
+	}
+	// Output must contain an empty JSON array (no results to review).
+	out := buf.String()
+	if !strings.Contains(out, "[]") {
+		t.Errorf("cmdReview() empty input: output does not contain \"[]\"; got:\n%s", out)
+	}
+}
+
+// TestCmdReview_NoReviewableDrafts verifies that when the only draft has
+// ExtractionStage "reviewed" (not "weak-draft"), cmdReview returns nil error
+// and outputs an empty array — nothing to review.
+func TestCmdReview_NoReviewableDrafts(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		{
+			ID:              "a1000000-0000-4000-8000-000000000001",
+			SourceSpan:      "span-already-reviewed",
+			ExtractionStage: "reviewed",
+			ExtractedBy:     "llm-v1",
+		},
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader("q\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() with no reviewable drafts: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "[]") {
+		t.Errorf("cmdReview() no reviewable: output does not contain \"[]\"; got:\n%s", out)
+	}
+}
+
+// TestCmdReview_SkipAll verifies that skipping all 2 weak-draft records
+// produces 0 results in the JSON output.
+func TestCmdReview_SkipAll(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+		weakDraftFixture("a1000000-0000-4000-8000-000000000002", "span-2", "change 2"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	// "s\ns\n" skips both drafts.
+	err := cmdReview(&buf, strings.NewReader("s\ns\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() skip-all: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	// JSON output must be an empty array.
+	if !strings.Contains(out, "[]") {
+		t.Errorf("cmdReview() skip-all: output does not contain \"[]\"; got:\n%s", out)
+	}
+	// Summary must confirm 0 accepted — not just any string containing "0".
+	if !strings.Contains(out, "Review complete: 0") {
+		t.Errorf("cmdReview() skip-all: summary does not contain %q; got:\n%s", "Review complete: 0", out)
+	}
+}
+
+// TestCmdReview_AcceptAll verifies that accepting all 2 weak-draft records
+// produces 2 results in the JSON output, each with ExtractionStage "reviewed"
+// and DerivedFrom set to the parent's ID.
+func TestCmdReview_AcceptAll(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+		weakDraftFixture("a1000000-0000-4000-8000-000000000002", "span-2", "change 2"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	// "a\na\n" accepts both drafts.
+	err := cmdReview(&buf, strings.NewReader("a\na\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() accept-all: want nil error, got: %v", err)
+	}
+
+	// Parse the JSON portion of the output — the JSON array precedes the
+	// summary line. Find the array boundaries and decode.
+	out := buf.String()
+	start := strings.Index(out, "[")
+	end := strings.LastIndex(out, "]")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("cmdReview() accept-all: cannot locate JSON array in output:\n%s", out)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal([]byte(out[start:end+1]), &results); err != nil {
+		t.Fatalf("cmdReview() accept-all: parse JSON: %v\nraw output:\n%s", err, out)
+	}
+	if len(results) != 2 {
+		t.Errorf("cmdReview() accept-all: want 2 results, got %d", len(results))
+	}
+	for i, r := range results {
+		if r.ExtractionStage != "reviewed" {
+			t.Errorf("result[%d].ExtractionStage = %q; want \"reviewed\"", i, r.ExtractionStage)
+		}
+		if r.ExtractedBy != "meshant-review" {
+			t.Errorf("result[%d].ExtractedBy = %q; want \"meshant-review\"", i, r.ExtractedBy)
+		}
+		// DerivedFrom must equal the specific parent's ID, not just be non-empty.
+		if i < len(drafts) && r.DerivedFrom != drafts[i].ID {
+			t.Errorf("result[%d].DerivedFrom = %q; want parent ID %q", i, r.DerivedFrom, drafts[i].ID)
+		}
+	}
+}
+
+// TestCmdReview_QuitEarly verifies that accepting the first draft and then
+// quitting produces exactly 1 result.
+func TestCmdReview_QuitEarly(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+		weakDraftFixture("a1000000-0000-4000-8000-000000000002", "span-2", "change 2"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	// Accept first, quit before second.
+	err := cmdReview(&buf, strings.NewReader("a\nq\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() quit-early: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	start := strings.Index(out, "[")
+	end := strings.LastIndex(out, "]")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("cmdReview() quit-early: cannot locate JSON array in output:\n%s", out)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal([]byte(out[start:end+1]), &results); err != nil {
+		t.Fatalf("cmdReview() quit-early: parse JSON: %v\nraw output:\n%s", err, out)
+	}
+	if len(results) != 1 {
+		t.Errorf("cmdReview() quit-early: want 1 result, got %d", len(results))
+	}
+	// Summary must reflect 1 accepted out of 2 loaded.
+	if !strings.Contains(out, "Review complete: 1") {
+		t.Errorf("cmdReview() quit-early: summary does not contain %q; got:\n%s", "Review complete: 1", out)
+	}
+}
+
+// TestCmdReview_OutputToFile verifies that --output writes the JSON array to
+// a file and the summary line on w mentions "1 accepted".
+func TestCmdReview_OutputToFile(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	outFile := filepath.Join(t.TempDir(), "reviewed.json")
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader("a\n"), []string{"--output", outFile, path})
+	if err != nil {
+		t.Fatalf("cmdReview() --output: want nil error, got: %v", err)
+	}
+
+	// Summary on w must mention the accepted count and "Review complete".
+	summary := buf.String()
+	if !strings.Contains(summary, "Review complete: 1") {
+		t.Errorf("cmdReview() --output: summary does not contain %q; got:\n%s", "Review complete: 1", summary)
+	}
+
+	// The output file must contain valid JSON with 1 record.
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("cmdReview() --output: read output file: %v", err)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal(data, &results); err != nil {
+		t.Fatalf("cmdReview() --output: parse output file JSON: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("cmdReview() --output: want 1 result in file, got %d", len(results))
+	}
+}
+
+// TestCmdReview_OutputToStdout verifies that when no --output flag is given,
+// the JSON array is written directly to w (the io.Writer passed to cmdReview).
+func TestCmdReview_OutputToStdout(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader("a\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() stdout mode: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	// Must contain a JSON array in the output.
+	start := strings.Index(out, "[")
+	end := strings.LastIndex(out, "]")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("cmdReview() stdout mode: cannot locate JSON array in output:\n%s", out)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal([]byte(out[start:end+1]), &results); err != nil {
+		t.Fatalf("cmdReview() stdout mode: parse JSON: %v\nraw output:\n%s", err, out)
+	}
+	if len(results) != 1 {
+		t.Errorf("cmdReview() stdout mode: want 1 result, got %d", len(results))
+	}
+}
+
+// TestCmdReview_EditFlow verifies that the edit action ("e") followed by a
+// new value for what_changed and Enter for the remaining 7 fields produces
+// 1 result with the updated WhatChanged field.
+func TestCmdReview_EditFlow(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "original description"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	// "e\n" → edit; "new-description\n" → what_changed; 7×"\n" → keep remaining fields.
+	input := "e\nnew-description\n\n\n\n\n\n\n\n"
+	err := cmdReview(&buf, strings.NewReader(input), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() edit-flow: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	start := strings.Index(out, "[")
+	end := strings.LastIndex(out, "]")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("cmdReview() edit-flow: cannot locate JSON array in output:\n%s", out)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal([]byte(out[start:end+1]), &results); err != nil {
+		t.Fatalf("cmdReview() edit-flow: parse JSON: %v\nraw output:\n%s", err, out)
+	}
+	if len(results) != 1 {
+		t.Fatalf("cmdReview() edit-flow: want 1 result, got %d", len(results))
+	}
+	if results[0].WhatChanged != "new-description" {
+		t.Errorf("cmdReview() edit-flow: WhatChanged = %q; want \"new-description\"", results[0].WhatChanged)
+	}
+}
+
+// TestCmdReview_EOFInput verifies that an immediate EOF on the reader (empty
+// strings.NewReader) is treated as quit: nil error, 0 results.
+func TestCmdReview_EOFInput(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader(""), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() EOF input: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	// Output must still contain the JSON array (empty because no accepts).
+	if !strings.Contains(out, "[]") {
+		t.Errorf("cmdReview() EOF input: output does not contain \"[]\"; got:\n%s", out)
+	}
+	// Summary must confirm 0 accepted.
+	if !strings.Contains(out, "Review complete: 0") {
+		t.Errorf("cmdReview() EOF input: summary does not contain %q; got:\n%s", "Review complete: 0", out)
+	}
+}
+
+// TestRun_ReviewDispatch verifies that run() routes "review" to cmdReview
+// rather than falling through to "unknown command". The error must come from
+// cmdReview (missing path argument) not from the dispatcher.
+func TestRun_ReviewDispatch(t *testing.T) {
+	var buf bytes.Buffer
+	err := run(&buf, []string{"review"})
+	if err == nil {
+		t.Fatal("run([\"review\"]) with no path: want non-nil error, got nil")
+	}
+	if strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("run([\"review\"]): got \"unknown command\" error — dispatch is broken; error: %q", err.Error())
+	}
+}
+
+// TestCmdReview_MalformedJSON verifies that a file containing invalid JSON
+// causes cmdReview to return a non-nil error before the session starts.
+func TestCmdReview_MalformedJSON(t *testing.T) {
+	path := writeTempJSONForDraft(t, "[{not valid json}]")
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader(""), []string{path})
+	if err == nil {
+		t.Fatal("cmdReview() malformed JSON: want non-nil error, got nil")
+	}
+}
+
+// TestCmdReview_UnknownFlag verifies that passing an unrecognised flag to
+// cmdReview returns a non-nil error from flag parsing — the fs.Parse error
+// branch is exercised.
+func TestCmdReview_UnknownFlag(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader(""), []string{"--bogus-flag", "path"})
+	if err == nil {
+		t.Fatal("cmdReview() unknown flag: want non-nil error, got nil")
+	}
+}
+
+// TestCmdReview_NoStageInput verifies the filterReviewable fallback path: when
+// all input drafts have an empty ExtractionStage, all drafts are presented for
+// review (legacy dataset support). Accept one → 1 result in output.
+func TestCmdReview_NoStageInput(t *testing.T) {
+	// Drafts with no ExtractionStage set — triggers the "all drafts" fallback.
+	drafts := []schema.TraceDraft{
+		{
+			ID:         "b1000000-0000-4000-8000-000000000001",
+			SourceSpan: "span-no-stage",
+			WhatChanged: "something",
+		},
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	// Accept the single draft (which has no stage — fallback presents it).
+	err := cmdReview(&buf, strings.NewReader("a\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() no-stage fallback: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	start := strings.Index(out, "[")
+	end := strings.LastIndex(out, "]")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("cmdReview() no-stage fallback: cannot locate JSON array in output:\n%s", out)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal([]byte(out[start:end+1]), &results); err != nil {
+		t.Fatalf("cmdReview() no-stage fallback: parse JSON: %v\nraw:\n%s", err, out)
+	}
+	if len(results) != 1 {
+		t.Errorf("cmdReview() no-stage fallback: want 1 result, got %d", len(results))
+	}
+}
+
+// --- Group: cmdExtractionGap ---
+
+// twoAnalystDraftsJSON returns a JSON string with drafts for two analysts.
+// analyst-a extracted "span-shared" and "span-only-a".
+// analyst-b extracted "span-shared" and "span-only-b".
+// The shared span has different WhatChanged values so there will be a disagreement.
+const twoAnalystDraftsJSON = `[
+  {"source_span":"span-shared","extracted_by":"analyst-a","what_changed":"version from A"},
+  {"source_span":"span-only-a","extracted_by":"analyst-a"},
+  {"source_span":"span-shared","extracted_by":"analyst-b","what_changed":"version from B"},
+  {"source_span":"span-only-b","extracted_by":"analyst-b"}
+]`
+
+// TestCmdExtractionGap_BasicRun verifies that cmdExtractionGap produces a
+// complete gap report for a two-analyst drafts file. The fixture encodes a
+// known structure: a shared span with a what_changed disagreement, a span
+// only analyst-a extracted, and a span only analyst-b extracted.
+func TestCmdExtractionGap_BasicRun(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdExtractionGap(): unexpected error: %v", err)
+	}
+	out := buf.String()
+	// Assert both analyst labels, known span names, and the known disagreement
+	// content — not just label presence, which could pass on a silent writer.
+	for _, want := range []string{
+		"analyst-a", "analyst-b",
+		"span-shared", "span-only-a", "span-only-b",
+		"what_changed", "version from A", "version from B",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("cmdExtractionGap(): output missing %q;\noutput:\n%s", want, out)
+		}
+	}
+}
+
+// TestCmdExtractionGap_MissingAnalystLabel verifies that requesting a label
+// not present in the drafts produces an error containing "not found", for
+// both the --analyst-a and --analyst-b paths (each has a separate lookupSet
+// call and error return in cmdExtractionGap).
+func TestCmdExtractionGap_MissingAnalystLabel(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+
+	cases := []struct {
+		name    string
+		analystA string
+		analystB string
+	}{
+		{
+			name:     "analystB not found",
+			analystA: "analyst-a",
+			analystB: "nonexistent-label",
+		},
+		{
+			name:     "analystA not found",
+			analystA: "nonexistent-label",
+			analystB: "analyst-b",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := cmdExtractionGap(&buf, []string{
+				"--analyst-a", tc.analystA,
+				"--analyst-b", tc.analystB,
+				path,
+			})
+			if err == nil {
+				t.Fatal("cmdExtractionGap(): want non-nil error for missing analyst label, got nil")
+			}
+			if !strings.Contains(err.Error(), "not found") {
+				t.Errorf("cmdExtractionGap(): error should contain 'not found'; got: %v", err)
+			}
+		})
+	}
+}
+
+// TestCmdExtractionGap_BadPath verifies that a nonexistent file path returns
+// a load error, consistent with TestCmdShadow_BadPath and similar tests.
+func TestCmdExtractionGap_BadPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"/nonexistent/path/drafts.json",
+	})
+	if err == nil {
+		t.Fatal("cmdExtractionGap(): want error for bad path, got nil")
+	}
+}
+
+// TestCmdExtractionGap_MalformedJSON verifies that malformed JSON input
+// returns a parse error, consistent with TestCmdReview_MalformedJSON and
+// similar tests.
+func TestCmdExtractionGap_MalformedJSON(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[{"source_span": "incomplete"`)
+
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		path,
+	})
+	if err == nil {
+		t.Fatal("cmdExtractionGap(): want error for malformed JSON, got nil")
+	}
+}
+
+// TestCmdExtractionGap_MissingFlags verifies that omitting required flags or
+// the positional argument returns an error.
+func TestCmdExtractionGap_MissingFlags(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "missing --analyst-a",
+			args: []string{"--analyst-b", "analyst-b", path},
+		},
+		{
+			name: "missing --analyst-b",
+			args: []string{"--analyst-a", "analyst-a", path},
+		},
+		{
+			name: "missing positional arg",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-b"},
+		},
+		{
+			name: "same label for both",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-a", path},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := cmdExtractionGap(&buf, tc.args)
+			if err == nil {
+				t.Fatalf("cmdExtractionGap(%v): want error, got nil", tc.args)
+			}
+		})
+	}
+}
+
+// TestCmdExtractionGap_OutputToFile verifies that --output writes the report
+// to a file rather than stdout, and prints a confirmation to stdout.
+func TestCmdExtractionGap_OutputToFile(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+	outFile := filepath.Join(t.TempDir(), "gap.txt")
+
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--output", outFile,
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdExtractionGap(): unexpected error: %v", err)
+	}
+
+	// File must exist and contain the analyst labels.
+	content, readErr := os.ReadFile(outFile)
+	if readErr != nil {
+		t.Fatalf("output file not created: %v", readErr)
+	}
+	for _, want := range []string{"analyst-a", "analyst-b"} {
+		if !strings.Contains(string(content), want) {
+			t.Errorf("output file missing %q", want)
+		}
+	}
+	// Stdout should contain the confirmation message.
+	if !strings.Contains(buf.String(), outFile) {
+		t.Errorf("stdout missing file path confirmation; got: %s", buf.String())
+	}
+}
+
+// --- chain-diff integration tests ---
+
+// chainDiffDraftsJSON encodes two analyst positions over the same source span
+// ("span-chain"), each with a two-draft derivation chain.
+//
+// analyst-a: a-root → a-rev1: what_changed changes, extraction_stage unchanged
+//            → ClassifyDraftChain classifies step 1 as DraftMediator.
+//
+// analyst-b: b-root → b-rev1: what_changed changes AND extraction_stage advances
+//            → ClassifyDraftChain classifies step 1 as DraftTranslation.
+//
+// The two chains therefore diverge at step 1 (mediator vs translation).
+const chainDiffDraftsJSON = `[
+  {"id":"a-root","source_span":"span-chain","extracted_by":"analyst-a","what_changed":"initial A","extraction_stage":"weak-draft"},
+  {"id":"a-rev1","source_span":"span-chain","extracted_by":"analyst-a","derived_from":"a-root","what_changed":"revised A","extraction_stage":"weak-draft"},
+  {"id":"b-root","source_span":"span-chain","extracted_by":"analyst-b","what_changed":"initial B","extraction_stage":"weak-draft"},
+  {"id":"b-rev1","source_span":"span-chain","extracted_by":"analyst-b","derived_from":"b-root","what_changed":"revised B","extraction_stage":"reviewed"}
+]`
+
+// chainDiffIdenticalJSON encodes two analyst positions where both chains
+// produce an identical classification (both are DraftMediator at step 1).
+const chainDiffIdenticalJSON = `[
+  {"id":"a-root","source_span":"span-same","extracted_by":"analyst-a","what_changed":"initial","extraction_stage":"weak-draft"},
+  {"id":"a-rev1","source_span":"span-same","extracted_by":"analyst-a","derived_from":"a-root","what_changed":"revised","extraction_stage":"weak-draft"},
+  {"id":"b-root","source_span":"span-same","extracted_by":"analyst-b","what_changed":"initial","extraction_stage":"weak-draft"},
+  {"id":"b-rev1","source_span":"span-same","extracted_by":"analyst-b","derived_from":"b-root","what_changed":"revised","extraction_stage":"weak-draft"}
+]`
+
+// TestCmdChainDiff_BasicRun verifies that cmdChainDiff produces a classification
+// diff report for two analysts with diverging chain classifications. The
+// fixture's structure is known: step 1 diverges (mediator vs translation).
+func TestCmdChainDiff_BasicRun(t *testing.T) {
+	path := writeTempJSONForDraft(t, chainDiffDraftsJSON)
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdChainDiff(): unexpected error: %v", err)
+	}
+	out := buf.String()
+
+	// Output must contain both analyst labels, the span name, the step index,
+	// and both classification kinds — these are the minimum meaningful assertions.
+	for _, want := range []string{
+		"analyst-a", "analyst-b",
+		"Step 1",
+		"mediator",
+		"translation",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("cmdChainDiff(): output missing %q;\noutput:\n%s", want, out)
+		}
+	}
+}
+
+// TestCmdChainDiff_IdenticalChains verifies that when both analyst chains
+// produce the same classification at every step, the output contains a
+// "No classification divergence" message.
+func TestCmdChainDiff_IdenticalChains(t *testing.T) {
+	path := writeTempJSONForDraft(t, chainDiffIdenticalJSON)
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-same",
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdChainDiff(): unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "No classification divergence") {
+		t.Errorf("cmdChainDiff(): expected 'No classification divergence' message;\noutput:\n%s", out)
+	}
+}
+
+// TestCmdChainDiff_MissingFlags verifies that omitting required flags or
+// the positional argument returns an error. Table-driven: covers each missing
+// required input including the same-label guard.
+func TestCmdChainDiff_MissingFlags(t *testing.T) {
+	path := writeTempJSONForDraft(t, chainDiffDraftsJSON)
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "missing --analyst-a",
+			args: []string{"--analyst-b", "analyst-b", "--span", "span-chain", path},
+		},
+		{
+			name: "missing --analyst-b",
+			args: []string{"--analyst-a", "analyst-a", "--span", "span-chain", path},
+		},
+		{
+			name: "missing --span",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-b", path},
+		},
+		{
+			name: "missing positional arg",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-b", "--span", "span-chain"},
+		},
+		{
+			name: "same label for both",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-a", "--span", "span-chain", path},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := cmdChainDiff(&buf, tc.args)
+			if err == nil {
+				t.Fatalf("cmdChainDiff(%v): want error, got nil", tc.args)
+			}
+		})
+	}
+}
+
+// TestCmdChainDiff_MissingAnalystLabel verifies that requesting a label not
+// present in the drafts produces an error containing "not found", for both
+// the --analyst-a and --analyst-b paths.
+func TestCmdChainDiff_MissingAnalystLabel(t *testing.T) {
+	path := writeTempJSONForDraft(t, chainDiffDraftsJSON)
+
+	cases := []struct {
+		name     string
+		analystA string
+		analystB string
+	}{
+		{
+			name:     "analystA not found",
+			analystA: "nonexistent-label",
+			analystB: "analyst-b",
+		},
+		{
+			name:     "analystB not found",
+			analystA: "analyst-a",
+			analystB: "nonexistent-label",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := cmdChainDiff(&buf, []string{
+				"--analyst-a", tc.analystA,
+				"--analyst-b", tc.analystB,
+				"--span", "span-chain",
+				path,
+			})
+			if err == nil {
+				t.Fatal("cmdChainDiff(): want error for missing analyst label, got nil")
+			}
+			if !strings.Contains(err.Error(), "not found") {
+				t.Errorf("cmdChainDiff(): error should contain 'not found'; got: %v", err)
+			}
+		})
+	}
+}
+
+// TestCmdChainDiff_SpanNotFound verifies that requesting a span not present
+// for a given analyst produces an error containing "not found". Table-driven
+// to cover both the analyst-a path (first buildChain call) and the analyst-b
+// path (second buildChain call, only reached when analyst-a finds the span).
+func TestCmdChainDiff_SpanNotFound(t *testing.T) {
+	// asymmetricJSON: analyst-a has span-chain; analyst-b does not.
+	// Used to test the analyst-b-span-missing path independently.
+	const asymmetricJSON = `[
+	  {"id":"a-root","source_span":"span-chain","extracted_by":"analyst-a","what_changed":"initial"},
+	  {"id":"b-root","source_span":"other-span","extracted_by":"analyst-b","what_changed":"initial"}
+	]`
+
+	cases := []struct {
+		name     string
+		fixture  string
+		analystA string
+		analystB string
+		span     string
+	}{
+		{
+			name:     "span missing for analyst-a",
+			fixture:  chainDiffDraftsJSON,
+			analystA: "analyst-a",
+			analystB: "analyst-b",
+			span:     "nonexistent-span",
+		},
+		{
+			name:     "span missing for analyst-b",
+			fixture:  asymmetricJSON,
+			analystA: "analyst-a",
+			analystB: "analyst-b",
+			span:     "span-chain",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeTempJSONForDraft(t, tc.fixture)
+			var buf bytes.Buffer
+			err := cmdChainDiff(&buf, []string{
+				"--analyst-a", tc.analystA,
+				"--analyst-b", tc.analystB,
+				"--span", tc.span,
+				path,
+			})
+			if err == nil {
+				t.Fatal("cmdChainDiff(): want error for missing span, got nil")
+			}
+			if !strings.Contains(err.Error(), "not found") {
+				t.Errorf("cmdChainDiff(): error should contain 'not found'; got: %v", err)
+			}
+		})
+	}
+}
+
+// TestCmdChainDiff_OutputToFile verifies that --output writes the report to
+// a file rather than stdout, and prints a confirmation to stdout.
+func TestCmdChainDiff_OutputToFile(t *testing.T) {
+	path := writeTempJSONForDraft(t, chainDiffDraftsJSON)
+	outFile := filepath.Join(t.TempDir(), "diff.txt")
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		"--output", outFile,
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdChainDiff(): unexpected error: %v", err)
+	}
+
+	// File must exist and contain the analyst labels and the known divergence.
+	content, readErr := os.ReadFile(outFile)
+	if readErr != nil {
+		t.Fatalf("output file not created: %v", readErr)
+	}
+	for _, want := range []string{"analyst-a", "analyst-b", "Step 1", "mediator", "translation"} {
+		if !strings.Contains(string(content), want) {
+			t.Errorf("output file missing %q", want)
+		}
+	}
+	// Stdout should contain the confirmation message including the file path.
+	if !strings.Contains(buf.String(), outFile) {
+		t.Errorf("stdout missing file path confirmation; got: %s", buf.String())
+	}
+}
+
+// TestCmdChainDiff_BadPath verifies that a nonexistent file path returns a
+// load error, consistent with TestCmdExtractionGap_BadPath.
+func TestCmdChainDiff_BadPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		"/nonexistent/path/drafts.json",
+	})
+	if err == nil {
+		t.Fatal("cmdChainDiff(): want error for bad path, got nil")
+	}
+}
+
+// TestCmdChainDiff_MalformedJSON verifies that malformed JSON input returns a
+// parse error, consistent with TestCmdExtractionGap_MalformedJSON.
+func TestCmdChainDiff_MalformedJSON(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[{"source_span": "incomplete"`)
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		path,
+	})
+	if err == nil {
+		t.Fatal("cmdChainDiff(): want error for malformed JSON, got nil")
+	}
+}
+
+// TestCmdChainDiff_AmbiguousRoot verifies that when an analyst has two
+// independent root candidates for a span (two drafts with no in-span parent),
+// buildChain returns an error rather than silently picking one by encounter order.
+func TestCmdChainDiff_AmbiguousRoot(t *testing.T) {
+	// Both analyst-a drafts for "span-chain" have no DerivedFrom — two roots.
+	const ambiguousRootJSON = `[
+	  {"id":"a-root1","source_span":"span-chain","extracted_by":"analyst-a","what_changed":"version one"},
+	  {"id":"a-root2","source_span":"span-chain","extracted_by":"analyst-a","what_changed":"version two"},
+	  {"id":"b-root","source_span":"span-chain","extracted_by":"analyst-b","what_changed":"initial B"},
+	  {"id":"b-rev1","source_span":"span-chain","extracted_by":"analyst-b","derived_from":"b-root","what_changed":"revised B","extraction_stage":"reviewed"}
+	]`
+	path := writeTempJSONForDraft(t, ambiguousRootJSON)
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		path,
+	})
+	if err == nil {
+		t.Fatal("cmdChainDiff(): want error for ambiguous root, got nil")
+	}
+	if !strings.Contains(err.Error(), "ambiguous") && !strings.Contains(err.Error(), "multiple") {
+		t.Errorf("cmdChainDiff(): error should mention ambiguity; got: %v", err)
+	}
+}
+
+// TestCmdChainDiff_CyclicDerivation verifies that when an analyst's span drafts
+// form a cycle (every draft references another as its parent — no root exists),
+// buildChain returns an error rather than looping or returning incorrect output.
+func TestCmdChainDiff_CyclicDerivation(t *testing.T) {
+	// analyst-a: a-draft1.DerivedFrom = a-draft2, a-draft2.DerivedFrom = a-draft1 — cycle.
+	// Neither draft qualifies as a root (each has an in-span parent).
+	const cyclicJSON = `[
+	  {"id":"a-draft1","source_span":"span-chain","extracted_by":"analyst-a","derived_from":"a-draft2","what_changed":"v1"},
+	  {"id":"a-draft2","source_span":"span-chain","extracted_by":"analyst-a","derived_from":"a-draft1","what_changed":"v2"},
+	  {"id":"b-root","source_span":"span-chain","extracted_by":"analyst-b","what_changed":"initial B"},
+	  {"id":"b-rev1","source_span":"span-chain","extracted_by":"analyst-b","derived_from":"b-root","what_changed":"revised B"}
+	]`
+	path := writeTempJSONForDraft(t, cyclicJSON)
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		path,
+	})
+	if err == nil {
+		t.Fatal("cmdChainDiff(): want error for cyclic derivation, got nil")
+	}
+	if !strings.Contains(err.Error(), "cycle") && !strings.Contains(err.Error(), "no chain root") {
+		t.Errorf("cmdChainDiff(): error should mention cycle or no-root; got: %v", err)
 	}
 }

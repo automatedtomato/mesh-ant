@@ -637,3 +637,66 @@ How outputs become actionable:
 - Do not hide the cut in the name of usability.
 - LLM integration enters as assisted authoring with visible uncertainty, not automated truth.
 - The project is still in formation. Keep directions open-ended and revisable.
+
+---
+
+## v2.0.0 Roadmap — Rough Plan (B → A → C → F)
+
+**Full rough plan:** `tasks/plan_v2_roadmap.md`
+Detailed per-milestone plans to be written before implementation begins.
+
+### Thread B — Remaining Interpretive Outputs (v1.x, next)
+
+- [x] **B.1 — Bottleneck note** — `IdentifyBottlenecks`, `BottleneckNote`, `meshant bottleneck`
+- [x] **B.2 — Re-articulation suggestion** — `SuggestRearticulations`, `RearticSuggestion`, `--suggest` on `meshant gaps`
+- [x] **B.3 — Incident narrative draft** — `DraftNarrative`, `NarrativeDraft`, `meshant narrative` (complete; `--narrative` flag on `meshant articulate`)
+- [x] **B.4 — Decision record + codemap**
+
+### Thread A — Interactive Review CLI (v1.x → v2.0.0 prereq)
+
+Parent issue: #86
+
+- [x] **A.0 (#87) — Fix classifyDraftStep heuristic** — add stage-only mediator case; 5 new tests; PR #94 merged
+- [x] **A.1 (#88) — review package scaffold** — `AmbiguityWarning`, `DetectAmbiguities`, `RenderDraft`, `RenderAmbiguities`; export `loader.NewUUID`; 23 tests, 100% coverage; PR #97 merged
+- [x] **A.2 (#89) — RenderChain** — `RenderChain` renders derivation chain + step classifications in review session; 31 tests, 100% coverage; PR #98 merged
+- [x] **A.3 (#90) — Session core** — `RunReviewSession`; accept/skip/quit loop; `deriveAccepted` creates new TraceDraft with DerivedFrom link; 47 tests, 98.2% coverage; PR #99 merged
+- [x] **A.4 (#91) — Edit flow** — `runEditFlow`; `deriveEdited`; `parseCommaSeparated`; 8 editable fields, Enter-to-keep, comma-separated slice input; 67 tests, 92.4% coverage; PR #100 merged
+- [x] **A.5 (#92) — CLI wiring** — `cmdReview(w, in, args)` in `cmd/meshant`; `meshant review [--output] <file>`; prompts to stderr, JSON to stdout; 15 tests, 88.2% coverage; PR #101 merged
+- [x] **A.6 (#93) — Decision record + codemap** — `docs/decisions/interactive-review-v1.md` (8 decisions, 5 ANT tensions + T6 added at thread close); codemap updated with `cmdReview`, `run()` dispatcher, Key Design Notes
+
+**Thread A complete** (2026-03-19) — per-thread pipeline: refactor-clean (no changes needed), philosophical review (ALIGNED, T6 named), docs updated, parent issue #86 closed. All 6 child PRs merged to develop.
+
+### Thread C — Multi-Analyst Ingestion Comparison
+
+Parent issue: #103
+
+- [x] **C.1 (#104) — Multi-analyst draft set schema** — `GroupByAnalyst` in `loader/analyst.go`; no `AnalystSet` (ExtractedBy sufficient); `ExtractedBy` doc comment clarified as analyst-position cut axis; 7 tests, 100% coverage; PR #109 merged
+- [x] **C.2 (#105) — Extraction gap analysis** — `CompareExtractions`, `ExtractionGap`, `FieldDisagreement`, `PrintExtractionGap` in `loader/extractiongap.go`; `meshant extraction-gap` CLI; 9 content fields (incl. SourceDocRef); 27 tests; PR #110 merged
+- [x] **C.3 (#106) — Classification comparison** — `CompareChainClassifications`, `ClassificationDiff`, `PrintClassificationDiffs` in `loader/classdiff.go`; `meshant chain-diff` CLI; 14 unit tests in `loader/classdiff_test.go`, 11 integration tests in `cmd/meshant/main_test.go`; PR #111 merged
+- [x] **C.4 (#107) — Multi-analyst example dataset** — `data/examples/multi_analyst_drafts.json`; 10 TraceDraft records, 2 analyst positions, 5 shared+unique spans, 6 extraction-gap disagreements, 1 chain-diff classification divergence; `data/examples/multi_analyst_drafts_README.md` companion guide; PR #112 merged
+- [x] **C.5 (#108) — Decision record + docs** — `docs/decisions/multi-analyst-v1.md` (7 decisions + ANT tensions); codemap updated (run dispatcher entry); `tasks/todo.md` Thread C marked complete; parent #103 closed; PR #113 merged
+
+### Deferred Items
+
+Items identified during review but deferred to future work:
+
+- **CLI code organization** — Architect review (C.3): `main.go` and `main_test.go` extraction candidate; trigger on next subcommand addition (current size ~2010 lines, tracking for future per-command file split)
+- **Slice equality helper naming** — Architect review (C.3): naming inconsistency (`slicesEqual`/`stringSlicesEqual`); clearer names deferred to next refactor-clean pass
+- **buildChain closure extraction** — Architect review (C.3): candidate for extraction if a second consumer appears in future work
+
+---
+
+### Thread D — Real-World Datasets (runs alongside all threads)
+
+- [ ] **D.1 — Software incident dataset** — `data/examples/software_incident.json`
+- [ ] **D.2 — Multi-agent pipeline dataset** — `data/examples/multi_agent_pipeline.json`
+- [ ] **D.3 — Policy / procurement dataset** — `data/examples/policy_process.json`
+
+### Thread F — v2.0.0: LLM-Internal Boundary
+
+- [ ] **F.1 — LLM mediator convention** — `docs/decisions/llm-as-mediator-v1.md`; ExtractedBy + UncertaintyNote as discipline
+- [ ] **F.2 — `meshant extract`** — LLM-assisted draft extraction from source document
+- [ ] **F.3 — `meshant assist`** — interactive authoring companion; LLM suggests, user confirms
+- [ ] **F.4 — LLM critique pass** — `meshant critique`; automated rearticulation via LLM
+- [ ] **F.5 — Real-world LLM-assisted extraction example**
+- [ ] **F.6 — Decision record + docs + v2.0.0 release**
