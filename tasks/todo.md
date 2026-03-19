@@ -668,11 +668,13 @@ Parent issue: #86
 
 ### Thread C — Multi-Analyst Ingestion Comparison
 
-- [ ] **C.1 — Multi-analyst draft set schema** — clarify ExtractedBy as analyst-position cut axis
-- [ ] **C.2 — Extraction gap analysis** — `CompareExtractions`, `ExtractionGap`, `meshant extraction-gap`
-- [ ] **C.3 — Classification comparison** — `CompareChainClassifications`, `ClassificationDiff`
-- [ ] **C.4 — Multi-analyst example dataset** — `data/examples/multi_analyst_drafts.json`
-- [ ] **C.5 — Decision record + docs**
+Parent issue: #103
+
+- [ ] **C.1 (#104) — Multi-analyst draft set schema** — `AnalystSet` wrapper (if warranted) + clarify `ExtractedBy` as analyst-position cut axis
+- [ ] **C.2 (#105) — Extraction gap analysis** — `CompareExtractions`, `ExtractionGap`, `FieldDisagreement`, `PrintExtractionGap`, `meshant extraction-gap` CLI
+- [ ] **C.3 (#106) — Classification comparison** — `CompareChainClassifications`, `ClassificationDiff`, `PrintClassificationDiffs`
+- [ ] **C.4 (#107) — Multi-analyst example dataset** — `data/examples/multi_analyst_drafts.json`
+- [ ] **C.5 (#108) — Decision record + docs** — `docs/decisions/multi-analyst-v1.md`, codemap, `tasks/todo.md`
 
 ### Thread D — Real-World Datasets (runs alongside all threads)
 
