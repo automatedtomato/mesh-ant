@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
+	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
 // --- Group 1: cmdSummarize ---
@@ -2642,5 +2643,394 @@ func TestCmdArticulate_NarrativeFlagSkippedForJSON(t *testing.T) {
 	}
 	if !strings.HasPrefix(out, "{") {
 		t.Errorf("--narrative with --format json: output does not start with '{'; got: %q", out[:min(len(out), 40)])
+	}
+}
+
+// --- Group A.5: cmdReview ---
+
+// weakDraftFixture returns a schema.TraceDraft with ExtractionStage "weak-draft"
+// suitable for review session tests. id must be a valid UUID-shaped string.
+func weakDraftFixture(id, sourceSpan, whatChanged string) schema.TraceDraft {
+	return schema.TraceDraft{
+		ID:              id,
+		SourceSpan:      sourceSpan,
+		WhatChanged:     whatChanged,
+		ExtractionStage: "weak-draft",
+		ExtractedBy:     "llm-v1",
+	}
+}
+
+// writeTempDraftFile serialises drafts as a JSON array to a temp file and
+// returns the path. Named distinctly to avoid collision with writeTempJSONForDraft.
+func writeTempDraftFile(t *testing.T, drafts []schema.TraceDraft) string {
+	t.Helper()
+	data, err := json.Marshal(drafts)
+	if err != nil {
+		t.Fatalf("writeTempDraftFile: marshal: %v", err)
+	}
+	f, err := os.CreateTemp(t.TempDir(), "drafts-*.json")
+	if err != nil {
+		t.Fatalf("writeTempDraftFile: CreateTemp: %v", err)
+	}
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
+		t.Fatalf("writeTempDraftFile: write: %v", err)
+	}
+	return f.Name()
+}
+
+// TestCmdReview_MissingArg verifies that cmdReview returns an error containing
+// "path" when no positional argument is supplied.
+func TestCmdReview_MissingArg(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader(""), []string{})
+	if err == nil {
+		t.Fatal("cmdReview() with no args: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "path") {
+		t.Errorf("cmdReview() error = %q; want it to contain \"path\"", err.Error())
+	}
+}
+
+// TestCmdReview_BadPath verifies that cmdReview returns an error when the
+// supplied path does not point to an existing file.
+func TestCmdReview_BadPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader("q\n"), []string{"/nonexistent/path/drafts.json"})
+	if err == nil {
+		t.Fatal("cmdReview() with bad path: want non-nil error, got nil")
+	}
+}
+
+// TestCmdReview_EmptyInput verifies that cmdReview with an empty draft array
+// (JSON "[]") returns nil error and writes an empty JSON array to w.
+// The empty reader is intentional: RunReviewSession returns immediately when
+// the queue is empty, so it never reads from in at all.
+func TestCmdReview_EmptyInput(t *testing.T) {
+	path := writeTempJSONForDraft(t, "[]")
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader(""), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() with empty draft array: want nil error, got: %v", err)
+	}
+	// Output must contain an empty JSON array (no results to review).
+	out := buf.String()
+	if !strings.Contains(out, "[]") {
+		t.Errorf("cmdReview() empty input: output does not contain \"[]\"; got:\n%s", out)
+	}
+}
+
+// TestCmdReview_NoReviewableDrafts verifies that when the only draft has
+// ExtractionStage "reviewed" (not "weak-draft"), cmdReview returns nil error
+// and outputs an empty array — nothing to review.
+func TestCmdReview_NoReviewableDrafts(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		{
+			ID:              "a1000000-0000-4000-8000-000000000001",
+			SourceSpan:      "span-already-reviewed",
+			ExtractionStage: "reviewed",
+			ExtractedBy:     "llm-v1",
+		},
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader("q\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() with no reviewable drafts: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "[]") {
+		t.Errorf("cmdReview() no reviewable: output does not contain \"[]\"; got:\n%s", out)
+	}
+}
+
+// TestCmdReview_SkipAll verifies that skipping all 2 weak-draft records
+// produces 0 results in the JSON output.
+func TestCmdReview_SkipAll(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+		weakDraftFixture("a1000000-0000-4000-8000-000000000002", "span-2", "change 2"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	// "s\ns\n" skips both drafts.
+	err := cmdReview(&buf, strings.NewReader("s\ns\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() skip-all: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	// JSON output must be an empty array.
+	if !strings.Contains(out, "[]") {
+		t.Errorf("cmdReview() skip-all: output does not contain \"[]\"; got:\n%s", out)
+	}
+	// Summary must confirm 0 accepted — not just any string containing "0".
+	if !strings.Contains(out, "Review complete: 0") {
+		t.Errorf("cmdReview() skip-all: summary does not contain %q; got:\n%s", "Review complete: 0", out)
+	}
+}
+
+// TestCmdReview_AcceptAll verifies that accepting all 2 weak-draft records
+// produces 2 results in the JSON output, each with ExtractionStage "reviewed"
+// and DerivedFrom set to the parent's ID.
+func TestCmdReview_AcceptAll(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+		weakDraftFixture("a1000000-0000-4000-8000-000000000002", "span-2", "change 2"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	// "a\na\n" accepts both drafts.
+	err := cmdReview(&buf, strings.NewReader("a\na\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() accept-all: want nil error, got: %v", err)
+	}
+
+	// Parse the JSON portion of the output — the JSON array precedes the
+	// summary line. Find the array boundaries and decode.
+	out := buf.String()
+	start := strings.Index(out, "[")
+	end := strings.LastIndex(out, "]")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("cmdReview() accept-all: cannot locate JSON array in output:\n%s", out)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal([]byte(out[start:end+1]), &results); err != nil {
+		t.Fatalf("cmdReview() accept-all: parse JSON: %v\nraw output:\n%s", err, out)
+	}
+	if len(results) != 2 {
+		t.Errorf("cmdReview() accept-all: want 2 results, got %d", len(results))
+	}
+	for i, r := range results {
+		if r.ExtractionStage != "reviewed" {
+			t.Errorf("result[%d].ExtractionStage = %q; want \"reviewed\"", i, r.ExtractionStage)
+		}
+		if r.ExtractedBy != "meshant-review" {
+			t.Errorf("result[%d].ExtractedBy = %q; want \"meshant-review\"", i, r.ExtractedBy)
+		}
+		// DerivedFrom must equal the specific parent's ID, not just be non-empty.
+		if i < len(drafts) && r.DerivedFrom != drafts[i].ID {
+			t.Errorf("result[%d].DerivedFrom = %q; want parent ID %q", i, r.DerivedFrom, drafts[i].ID)
+		}
+	}
+}
+
+// TestCmdReview_QuitEarly verifies that accepting the first draft and then
+// quitting produces exactly 1 result.
+func TestCmdReview_QuitEarly(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+		weakDraftFixture("a1000000-0000-4000-8000-000000000002", "span-2", "change 2"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	// Accept first, quit before second.
+	err := cmdReview(&buf, strings.NewReader("a\nq\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() quit-early: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	start := strings.Index(out, "[")
+	end := strings.LastIndex(out, "]")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("cmdReview() quit-early: cannot locate JSON array in output:\n%s", out)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal([]byte(out[start:end+1]), &results); err != nil {
+		t.Fatalf("cmdReview() quit-early: parse JSON: %v\nraw output:\n%s", err, out)
+	}
+	if len(results) != 1 {
+		t.Errorf("cmdReview() quit-early: want 1 result, got %d", len(results))
+	}
+	// Summary must reflect 1 accepted out of 2 loaded.
+	if !strings.Contains(out, "Review complete: 1") {
+		t.Errorf("cmdReview() quit-early: summary does not contain %q; got:\n%s", "Review complete: 1", out)
+	}
+}
+
+// TestCmdReview_OutputToFile verifies that --output writes the JSON array to
+// a file and the summary line on w mentions "1 accepted".
+func TestCmdReview_OutputToFile(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	outFile := filepath.Join(t.TempDir(), "reviewed.json")
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader("a\n"), []string{"--output", outFile, path})
+	if err != nil {
+		t.Fatalf("cmdReview() --output: want nil error, got: %v", err)
+	}
+
+	// Summary on w must mention the accepted count and "Review complete".
+	summary := buf.String()
+	if !strings.Contains(summary, "Review complete: 1") {
+		t.Errorf("cmdReview() --output: summary does not contain %q; got:\n%s", "Review complete: 1", summary)
+	}
+
+	// The output file must contain valid JSON with 1 record.
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("cmdReview() --output: read output file: %v", err)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal(data, &results); err != nil {
+		t.Fatalf("cmdReview() --output: parse output file JSON: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("cmdReview() --output: want 1 result in file, got %d", len(results))
+	}
+}
+
+// TestCmdReview_OutputToStdout verifies that when no --output flag is given,
+// the JSON array is written directly to w (the io.Writer passed to cmdReview).
+func TestCmdReview_OutputToStdout(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader("a\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() stdout mode: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	// Must contain a JSON array in the output.
+	start := strings.Index(out, "[")
+	end := strings.LastIndex(out, "]")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("cmdReview() stdout mode: cannot locate JSON array in output:\n%s", out)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal([]byte(out[start:end+1]), &results); err != nil {
+		t.Fatalf("cmdReview() stdout mode: parse JSON: %v\nraw output:\n%s", err, out)
+	}
+	if len(results) != 1 {
+		t.Errorf("cmdReview() stdout mode: want 1 result, got %d", len(results))
+	}
+}
+
+// TestCmdReview_EditFlow verifies that the edit action ("e") followed by a
+// new value for what_changed and Enter for the remaining 7 fields produces
+// 1 result with the updated WhatChanged field.
+func TestCmdReview_EditFlow(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "original description"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	// "e\n" → edit; "new-description\n" → what_changed; 7×"\n" → keep remaining fields.
+	input := "e\nnew-description\n\n\n\n\n\n\n\n"
+	err := cmdReview(&buf, strings.NewReader(input), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() edit-flow: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	start := strings.Index(out, "[")
+	end := strings.LastIndex(out, "]")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("cmdReview() edit-flow: cannot locate JSON array in output:\n%s", out)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal([]byte(out[start:end+1]), &results); err != nil {
+		t.Fatalf("cmdReview() edit-flow: parse JSON: %v\nraw output:\n%s", err, out)
+	}
+	if len(results) != 1 {
+		t.Fatalf("cmdReview() edit-flow: want 1 result, got %d", len(results))
+	}
+	if results[0].WhatChanged != "new-description" {
+		t.Errorf("cmdReview() edit-flow: WhatChanged = %q; want \"new-description\"", results[0].WhatChanged)
+	}
+}
+
+// TestCmdReview_EOFInput verifies that an immediate EOF on the reader (empty
+// strings.NewReader) is treated as quit: nil error, 0 results.
+func TestCmdReview_EOFInput(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		weakDraftFixture("a1000000-0000-4000-8000-000000000001", "span-1", "change 1"),
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader(""), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() EOF input: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	// Output must still contain the JSON array (empty because no accepts).
+	if !strings.Contains(out, "[]") {
+		t.Errorf("cmdReview() EOF input: output does not contain \"[]\"; got:\n%s", out)
+	}
+	// Summary must confirm 0 accepted.
+	if !strings.Contains(out, "Review complete: 0") {
+		t.Errorf("cmdReview() EOF input: summary does not contain %q; got:\n%s", "Review complete: 0", out)
+	}
+}
+
+// TestRun_ReviewDispatch verifies that run() routes "review" to cmdReview
+// rather than falling through to "unknown command". The error must come from
+// cmdReview (missing path argument) not from the dispatcher.
+func TestRun_ReviewDispatch(t *testing.T) {
+	var buf bytes.Buffer
+	err := run(&buf, []string{"review"})
+	if err == nil {
+		t.Fatal("run([\"review\"]) with no path: want non-nil error, got nil")
+	}
+	if strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("run([\"review\"]): got \"unknown command\" error — dispatch is broken; error: %q", err.Error())
+	}
+}
+
+// TestCmdReview_MalformedJSON verifies that a file containing invalid JSON
+// causes cmdReview to return a non-nil error before the session starts.
+func TestCmdReview_MalformedJSON(t *testing.T) {
+	path := writeTempJSONForDraft(t, "[{not valid json}]")
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader(""), []string{path})
+	if err == nil {
+		t.Fatal("cmdReview() malformed JSON: want non-nil error, got nil")
+	}
+}
+
+// TestCmdReview_UnknownFlag verifies that passing an unrecognised flag to
+// cmdReview returns a non-nil error from flag parsing — the fs.Parse error
+// branch is exercised.
+func TestCmdReview_UnknownFlag(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdReview(&buf, strings.NewReader(""), []string{"--bogus-flag", "path"})
+	if err == nil {
+		t.Fatal("cmdReview() unknown flag: want non-nil error, got nil")
+	}
+}
+
+// TestCmdReview_NoStageInput verifies the filterReviewable fallback path: when
+// all input drafts have an empty ExtractionStage, all drafts are presented for
+// review (legacy dataset support). Accept one → 1 result in output.
+func TestCmdReview_NoStageInput(t *testing.T) {
+	// Drafts with no ExtractionStage set — triggers the "all drafts" fallback.
+	drafts := []schema.TraceDraft{
+		{
+			ID:         "b1000000-0000-4000-8000-000000000001",
+			SourceSpan: "span-no-stage",
+			WhatChanged: "something",
+		},
+	}
+	path := writeTempDraftFile(t, drafts)
+	var buf bytes.Buffer
+	// Accept the single draft (which has no stage — fallback presents it).
+	err := cmdReview(&buf, strings.NewReader("a\n"), []string{path})
+	if err != nil {
+		t.Fatalf("cmdReview() no-stage fallback: want nil error, got: %v", err)
+	}
+	out := buf.String()
+	start := strings.Index(out, "[")
+	end := strings.LastIndex(out, "]")
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("cmdReview() no-stage fallback: cannot locate JSON array in output:\n%s", out)
+	}
+	var results []schema.TraceDraft
+	if err := json.Unmarshal([]byte(out[start:end+1]), &results); err != nil {
+		t.Fatalf("cmdReview() no-stage fallback: parse JSON: %v\nraw:\n%s", err, out)
+	}
+	if len(results) != 1 {
+		t.Errorf("cmdReview() no-stage fallback: want 1 result, got %d", len(results))
 	}
 }
