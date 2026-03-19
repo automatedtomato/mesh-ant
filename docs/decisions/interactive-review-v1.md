@@ -164,6 +164,18 @@ This is a commitment consistent with C1 (traces before actors): a trace records 
 
 The corollary is that the session produces no record of which drafts were presented and skipped. A future session on the same file will present them again. This is intentional — the review session is not a stateful workflow manager. It is a cut, and the next cut may produce different results.
 
+### T6: Edit-without-change is indistinguishable from accept in the derivation chain
+
+When a reviewer chooses `[e]dit` but makes no changes (pressing Enter on every field), `deriveEdited` produces a derived draft whose content fields are identical to the parent's — the same outcome as `deriveAccepted`. The session distinguished accept from edit as actions, but the derivation chain cannot. Both produce a `DerivedFrom` link with `ExtractionStage: "reviewed"` and identical content.
+
+The three derivation classifications (`intermediary`, `mediator`, `translation`, from `classifyDraftStep`) are based on content comparison, not on how the reviewer interacted with the session. An edit that changes nothing classifies identically to an accept.
+
+This is surfaced rather than fixed. The session's action vocabulary is richer than the trace vocabulary: actions are accept/edit/skip/quit, but derivation classifications are content-based. Recording the session's action in a separate metadata field (e.g., `ReviewAction: "accepted"` vs `"edited"`) would be one resolution, but it would also be a form of premature classification (C1) — a claim that "edited but changed nothing" is a meaningfully different kind of event from "accepted." Whether that distinction matters depends on what question the analyst is asking.
+
+A future version could record session metadata in a sidecar record, leaving the derivation chain clean while preserving the action-level detail for analysts who want it. Named here for visibility; deferred to a later thread.
+
+---
+
 ### T5: The review session's own cut is untraced in v1
 
 The review session is a mediating apparatus — it selects, orders, and frames what the reviewer sees (ambiguity warnings, derivation chains, field prompts). It transforms the reviewer's experience of the draft in ways that are not recorded. But the session does not produce a reflexive trace of its own operation.
