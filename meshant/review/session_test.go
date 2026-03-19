@@ -8,6 +8,7 @@ package review_test
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -222,10 +223,10 @@ func TestRunReviewSession_ContentFieldsCopied(t *testing.T) {
 	if r.WhatChanged != parent.WhatChanged {
 		t.Errorf("WhatChanged: want %q, got %q", parent.WhatChanged, r.WhatChanged)
 	}
-	if len(r.Source) != len(parent.Source) || r.Source[0] != parent.Source[0] {
+	if !reflect.DeepEqual(r.Source, parent.Source) {
 		t.Errorf("Source: want %v, got %v", parent.Source, r.Source)
 	}
-	if len(r.Target) != len(parent.Target) || r.Target[0] != parent.Target[0] {
+	if !reflect.DeepEqual(r.Target, parent.Target) {
 		t.Errorf("Target: want %v, got %v", parent.Target, r.Target)
 	}
 	if r.Mediation != parent.Mediation {
@@ -234,7 +235,7 @@ func TestRunReviewSession_ContentFieldsCopied(t *testing.T) {
 	if r.Observer != parent.Observer {
 		t.Errorf("Observer: want %q, got %q", parent.Observer, r.Observer)
 	}
-	if len(r.Tags) != len(parent.Tags) || r.Tags[0] != parent.Tags[0] {
+	if !reflect.DeepEqual(r.Tags, parent.Tags) {
 		t.Errorf("Tags: want %v, got %v", parent.Tags, r.Tags)
 	}
 	if r.SourceSpan != parent.SourceSpan {
@@ -249,7 +250,7 @@ func TestRunReviewSession_ContentFieldsCopied(t *testing.T) {
 	if r.CriterionRef != parent.CriterionRef {
 		t.Errorf("CriterionRef: want %q, got %q", parent.CriterionRef, r.CriterionRef)
 	}
-	if len(r.IntentionallyBlank) != len(parent.IntentionallyBlank) || r.IntentionallyBlank[0] != parent.IntentionallyBlank[0] {
+	if !reflect.DeepEqual(r.IntentionallyBlank, parent.IntentionallyBlank) {
 		t.Errorf("IntentionallyBlank: want %v, got %v", parent.IntentionallyBlank, r.IntentionallyBlank)
 	}
 }
@@ -291,6 +292,28 @@ func TestRunReviewSession_OriginalUnmodified(t *testing.T) {
 	results[0].Tags[0] = "mutated-tag"
 	if parent.Tags[0] != "tag-orig" {
 		t.Errorf("parent.Tags[0] should remain %q, got %q", "tag-orig", parent.Tags[0])
+	}
+
+	// IntentionallyBlank is also cloned — mutations must not reach the parent.
+	parent2 := schema.TraceDraft{
+		ID:                 "id-orig-2",
+		SourceSpan:         "span2",
+		IntentionallyBlank: []string{"field-x"},
+		ExtractionStage:    "weak-draft",
+		ExtractedBy:        "llm-v1",
+	}
+	drafts2 := []schema.TraceDraft{parent2}
+	var out2 bytes.Buffer
+	results2, err2 := review.RunReviewSession(drafts2, strings.NewReader("a\n"), &out2)
+	if err2 != nil {
+		t.Fatalf("unexpected error (IntentionallyBlank case): %v", err2)
+	}
+	if len(results2) != 1 {
+		t.Fatalf("expected 1 result (IntentionallyBlank case), got %d", len(results2))
+	}
+	results2[0].IntentionallyBlank[0] = "mutated-blank"
+	if parent2.IntentionallyBlank[0] != "field-x" {
+		t.Errorf("parent2.IntentionallyBlank[0] should remain %q, got %q", "field-x", parent2.IntentionallyBlank[0])
 	}
 }
 
@@ -467,5 +490,354 @@ func TestRunReviewSession_EOFTreatedAsQuit(t *testing.T) {
 	}
 	if len(results) != 0 {
 		t.Errorf("expected 0 results on EOF, got %d", len(results))
+	}
+}
+
+// TestRunReviewSession_EditProducesOneDerivedDraft enters edit mode, accepts
+// all default values (8 Enter presses for 8 fields), and verifies that one
+// derived draft is produced.
+func TestRunReviewSession_EditProducesOneDerivedDraft(t *testing.T) {
+	d := weakDraft("id-edit", "span-edit", "original change")
+	drafts := []schema.TraceDraft{d}
+
+	// "e\n" enters edit mode; 8 "\n" presses accept all field defaults.
+	// No further input — session advances past the only draft and ends.
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\n\n\n\n\n\n\n\n\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result after edit, got %d", len(results))
+	}
+	if results[0].DerivedFrom != "id-edit" {
+		t.Errorf("DerivedFrom: want %q, got %q", "id-edit", results[0].DerivedFrom)
+	}
+}
+
+// TestRunReviewSession_EditDerivedProvenance verifies that an edited draft
+// carries the correct provenance: DerivedFrom points to the parent, stage is
+// "reviewed", ExtractedBy is "meshant-review", and a fresh ID was assigned.
+func TestRunReviewSession_EditDerivedProvenance(t *testing.T) {
+	d := weakDraft("parent-1", "span-p", "original")
+	drafts := []schema.TraceDraft{d}
+
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\n\n\n\n\n\n\n\n\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	r := results[0]
+	if r.DerivedFrom != "parent-1" {
+		t.Errorf("DerivedFrom: want %q, got %q", "parent-1", r.DerivedFrom)
+	}
+	if r.ExtractionStage != "reviewed" {
+		t.Errorf("ExtractionStage: want %q, got %q", "reviewed", r.ExtractionStage)
+	}
+	if r.ExtractedBy != "meshant-review" {
+		t.Errorf("ExtractedBy: want %q, got %q", "meshant-review", r.ExtractedBy)
+	}
+	if r.ID == "parent-1" || r.ID == "" {
+		t.Errorf("result ID must be a fresh non-empty UUID distinct from parent, got %q", r.ID)
+	}
+}
+
+// TestRunReviewSession_EditChangesWhatChanged enters edit mode and provides a
+// new value for the what_changed field, leaving all others at their defaults.
+func TestRunReviewSession_EditChangesWhatChanged(t *testing.T) {
+	d := weakDraft("id-wc", "span-wc", "original")
+	drafts := []schema.TraceDraft{d}
+
+	// "e\n" = edit; "new description\n" = what_changed; remaining "\n" = default.
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\nnew description\n\n\n\n\n\n\n\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].WhatChanged != "new description" {
+		t.Errorf("WhatChanged: want %q, got %q", "new description", results[0].WhatChanged)
+	}
+}
+
+// TestRunReviewSession_EditKeepsUnchangedFields verifies that pressing Enter
+// (empty input) for each field keeps the current value unchanged.
+func TestRunReviewSession_EditKeepsUnchangedFields(t *testing.T) {
+	d := schema.TraceDraft{
+		ID:              "id-keep",
+		SourceSpan:      "span-keep",
+		WhatChanged:     "orig",
+		Source:          []string{"a"},
+		Mediation:       "m",
+		ExtractionStage: "weak-draft",
+		ExtractedBy:     "llm-v1",
+	}
+	drafts := []schema.TraceDraft{d}
+
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\n\n\n\n\n\n\n\n\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	r := results[0]
+	if r.WhatChanged != "orig" {
+		t.Errorf("WhatChanged: want %q, got %q", "orig", r.WhatChanged)
+	}
+	if len(r.Source) != 1 || r.Source[0] != "a" {
+		t.Errorf("Source: want [a], got %v", r.Source)
+	}
+	if r.Mediation != "m" {
+		t.Errorf("Mediation: want %q, got %q", "m", r.Mediation)
+	}
+}
+
+// TestRunReviewSession_EditChangesSliceField verifies that a non-empty comma-
+// separated input for a slice field (source) replaces the existing value.
+func TestRunReviewSession_EditChangesSliceField(t *testing.T) {
+	d := schema.TraceDraft{
+		ID:              "id-slice",
+		SourceSpan:      "span-slice",
+		Source:          []string{"actor-x"},
+		ExtractionStage: "weak-draft",
+		ExtractedBy:     "llm-v1",
+	}
+	drafts := []schema.TraceDraft{d}
+
+	// Fields in order: what_changed, source, target, mediation, observer, tags,
+	// uncertainty_note, criterion_ref.
+	// Skip what_changed ("\n"), then set source to "actor-a, actor-b".
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\n\nactor-a, actor-b\n\n\n\n\n\n\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	want := []string{"actor-a", "actor-b"}
+	if !reflect.DeepEqual(results[0].Source, want) {
+		t.Errorf("Source: want %v, got %v", want, results[0].Source)
+	}
+}
+
+// TestRunReviewSession_EditContentFromEdited_ProvenanceFromParent verifies
+// that after an edit the derived draft takes content fields from the edited
+// version but provenance fields (SourceSpan, SourceDocRef, IntentionallyBlank)
+// from the original parent.
+func TestRunReviewSession_EditContentFromEdited_ProvenanceFromParent(t *testing.T) {
+	d := schema.TraceDraft{
+		ID:                 "id-prov",
+		SourceSpan:         "sp",
+		SourceDocRef:       "ref",
+		IntentionallyBlank: []string{"x"},
+		WhatChanged:        "original-what",
+		ExtractionStage:    "weak-draft",
+		ExtractedBy:        "llm-v1",
+	}
+	drafts := []schema.TraceDraft{d}
+
+	// Edit: replace what_changed (field 1); leave the other 7 fields as defaults.
+	// Field order: what_changed, source, target, mediation, observer, tags,
+	// uncertainty_note, criterion_ref.
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\nedited-what\n\n\n\n\n\n\n\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	r := results[0]
+
+	// Provenance fields must come from parent.
+	if r.SourceSpan != "sp" {
+		t.Errorf("SourceSpan: want %q, got %q", "sp", r.SourceSpan)
+	}
+	if r.SourceDocRef != "ref" {
+		t.Errorf("SourceDocRef: want %q, got %q", "ref", r.SourceDocRef)
+	}
+	if !reflect.DeepEqual(r.IntentionallyBlank, []string{"x"}) {
+		t.Errorf("IntentionallyBlank: want [x], got %v", r.IntentionallyBlank)
+	}
+
+	// Content fields must come from the edited values (not silently fall back to parent).
+	if r.WhatChanged != "edited-what" {
+		t.Errorf("WhatChanged: want %q (edited), got %q", "edited-what", r.WhatChanged)
+	}
+}
+
+// TestRunReviewSession_EditThenEOFMidFlow verifies that an EOF that occurs
+// inside the edit flow (before all fields are read) causes the session to
+// return 0 results and nil error — no partial draft is appended.
+func TestRunReviewSession_EditThenEOFMidFlow(t *testing.T) {
+	d := weakDraft("id-mideof", "span-mideof", "change")
+	drafts := []schema.TraceDraft{d}
+
+	// "e\n" enters edit mode; no further input → EOF before first field.
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results on mid-flow EOF, got %d", len(results))
+	}
+}
+
+// TestRunReviewSession_PromptShowsEdit verifies that the session prompt
+// includes the "[e]dit" option so reviewers know it is available.
+func TestRunReviewSession_PromptShowsEdit(t *testing.T) {
+	d := weakDraft("id-prompt", "span-prompt", "change-prompt")
+	drafts := []schema.TraceDraft{d}
+
+	var out bytes.Buffer
+	_, err := review.RunReviewSession(drafts, strings.NewReader("q\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "[e]dit") {
+		t.Errorf("prompt should contain %q; got:\n%s", "[e]dit", out.String())
+	}
+}
+
+// TestRunReviewSession_EditChangesTargetField verifies that a non-empty comma-
+// separated input for the target field (field 3) replaces the existing value.
+func TestRunReviewSession_EditChangesTargetField(t *testing.T) {
+	d := schema.TraceDraft{
+		ID:              "id-target",
+		SourceSpan:      "span-target",
+		Target:          []string{"target-x"},
+		ExtractionStage: "weak-draft",
+		ExtractedBy:     "llm-v1",
+	}
+	drafts := []schema.TraceDraft{d}
+
+	// Fields: what_changed(\n), source(\n), target("target-a, target-b\n"), rest(\n*5).
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\n\n\ntarget-a, target-b\n\n\n\n\n\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	want := []string{"target-a", "target-b"}
+	if !reflect.DeepEqual(results[0].Target, want) {
+		t.Errorf("Target: want %v, got %v", want, results[0].Target)
+	}
+}
+
+// TestRunReviewSession_EditChangesTagsField verifies that a non-empty comma-
+// separated input for the tags field (field 6) replaces the existing value.
+func TestRunReviewSession_EditChangesTagsField(t *testing.T) {
+	d := schema.TraceDraft{
+		ID:              "id-tags",
+		SourceSpan:      "span-tags",
+		Tags:            []string{"tag-orig"},
+		ExtractionStage: "weak-draft",
+		ExtractedBy:     "llm-v1",
+	}
+	drafts := []schema.TraceDraft{d}
+
+	// Fields: what_changed(\n), source(\n), target(\n), mediation(\n), observer(\n),
+	// tags("tag-new, tag-extra\n"), uncertainty_note(\n), criterion_ref(\n).
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\n\n\n\n\n\ntag-new, tag-extra\n\n\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	want := []string{"tag-new", "tag-extra"}
+	if !reflect.DeepEqual(results[0].Tags, want) {
+		t.Errorf("Tags: want %v, got %v", want, results[0].Tags)
+	}
+}
+
+// TestRunReviewSession_EditEOFAfterField2 verifies that an EOF after the second
+// field (source) causes the session to return 0 results and nil error — no
+// partial draft is appended regardless of how many fields were already read.
+func TestRunReviewSession_EditEOFAfterField2(t *testing.T) {
+	d := weakDraft("id-eof2", "span-eof2", "change")
+	drafts := []schema.TraceDraft{d}
+
+	// "e\n" = edit; "\n" = what_changed (keep); then EOF before source.
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\n\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results on mid-edit EOF (after field 1), got %d", len(results))
+	}
+}
+
+// TestRunReviewSession_EditEOFAfterField4 verifies that an EOF after the fourth
+// field (mediation) causes the session to return 0 results and nil error.
+func TestRunReviewSession_EditEOFAfterField4(t *testing.T) {
+	d := weakDraft("id-eof4", "span-eof4", "change")
+	drafts := []schema.TraceDraft{d}
+
+	// "e\n" = edit; "\n"*4 = what_changed, source, target, mediation (all keep); then EOF.
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\n\n\n\n\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results on mid-edit EOF (after field 4), got %d", len(results))
+	}
+}
+
+// TestRunReviewSession_EditWhitespaceOnlyKeepsCurrent verifies that a
+// whitespace-only input line (e.g. "   ") is treated as empty (keep current)
+// rather than replacing the field with an empty string.
+func TestRunReviewSession_EditWhitespaceOnlyKeepsCurrent(t *testing.T) {
+	d := schema.TraceDraft{
+		ID:              "id-ws",
+		SourceSpan:      "span-ws",
+		WhatChanged:     "original-ws",
+		ExtractionStage: "weak-draft",
+		ExtractedBy:     "llm-v1",
+	}
+	drafts := []schema.TraceDraft{d}
+
+	// what_changed receives "   " (whitespace only); rest are empty.
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("e\n   \n\n\n\n\n\n\n\n"), &out)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].WhatChanged != "original-ws" {
+		t.Errorf("WhatChanged: whitespace-only input should keep %q, got %q", "original-ws", results[0].WhatChanged)
 	}
 }
