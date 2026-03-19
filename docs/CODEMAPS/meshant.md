@@ -13,7 +13,7 @@
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
 | `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, bottleneck analysis, re-articulation suggestions, narrative drafts, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
-| `review` | Ambiguity detection and terminal rendering for the interactive review session (Thread A). |
+| `review` | Ambiguity detection, terminal rendering, and interactive accept/edit/skip/quit session for TraceDraft records (Thread A). |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
 | `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. `review` is the only interactive subcommand (reads from stdin). |
 
@@ -205,7 +205,8 @@ None (persist carries no domain types; wraps graph types).
 | File | Contains |
 |------|----------|
 | `ambiguity.go` | `AmbiguityWarning` struct; `DetectAmbiguities` function. |
-| `render.go` | `RenderDraft`, `RenderAmbiguities`; helpers `valueOrEmpty`, `sliceOrEmpty`. |
+| `render.go` | `RenderDraft`, `RenderAmbiguities`, `RenderChain`; helpers `valueOrEmpty`, `sliceOrEmpty`, `truncateString`. |
+| `session.go` | `RunReviewSession`, `deriveAccepted`, `deriveEdited`, `runEditFlow`, `parseCommaSeparated`, `filterReviewable`, `cloneStrings`; interactive session loop and derivation logic (Thread A.3/A.4). |
 
 ### Types
 
@@ -249,7 +250,7 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13), `cmdBottleneck` (B.1) handlers. |
+| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13), `cmdBottleneck` (B.1), `cmdReview` (A.5) handlers. (~1720 lines — pre-existing size debt, tracked for future per-command file split.) |
 | `main_test.go` | Tests: all subcommands, flag parsing, file output, error handling, criterion file loading, draft/promote pipeline (M11). |
 
 ### Types
@@ -267,7 +268,7 @@ None (persist carries no domain types; wraps graph types).
 | `parseTimeFlag` | `func parseTimeFlag(name, value string) (time.Time, error)` | Parse RFC3339 string to time.Time with contextual error message naming the flag. |
 | `parseTimeWindow` | `func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error)` | Parse two RFC3339 strings (one or both may be empty) into a TimeWindow. Validates only when both bounds are set. |
 | `main` | `func main()` | Entry point. Calls `run(os.Stdout, os.Args[1:])` and exits non-zero on error. |
-| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, or `cmdGaps()`. |
+| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, or `cmdReview()`. For the `review` case, passes `os.Stdin` as the reader to `cmdReview`. |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
 | `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. Optional `--narrative` flag appends a positioned narrative draft (text format only, skipped for JSON/DOT/Mermaid). |
@@ -280,6 +281,7 @@ None (persist carries no domain types; wraps graph types).
 | `cmdShadow` | `func cmdShadow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, print shadow summary via `graph.SummariseShadow()` + `PrintShadowSummary()`. Flags: `--observer` (repeatable, required), `--tag` (repeatable), `--from`, `--to` (RFC3339), `--output <file>` (M13). |
 | `cmdGaps` | `func cmdGaps(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts, compare node sets via `graph.AnalyseGaps()`, print gap report. Optionally appends re-articulation suggestions via `--suggest`. Flags: `--observer-a`, `--observer-b` (required), per-side `--tag-a/b`, `--from-a/b`, `--to-a/b`, `--suggest` (bool), `--output` (M13, B.2). |
 | `cmdBottleneck` | `func cmdBottleneck(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, identify bottlenecks via `graph.IdentifyBottlenecks()`, print notes via `PrintBottleneckNotes()`. Flags: `--observer` (optional), `--tag`, `--from`, `--to`, `--output` (B.1). |
+| `cmdReview` | `func cmdReview(w io.Writer, in io.Reader, args []string) error` | Subcommand: Load TraceDraft JSON, run interactive accept/edit/skip/quit session via `review.RunReviewSession()`. Only interactive subcommand — signature diverges from all other `cmd*` functions by accepting `in io.Reader` for stdin injection (testability). Interactive prompts go to `os.Stderr`; JSON output and summary go to `w`. Flags: `--output <file>` (A.5). |
 | `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
 | `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
@@ -292,7 +294,9 @@ None (persist carries no domain types; wraps graph types).
 - **Flag parsing**: Uses stdlib `flag.FlagSet` for subcommand isolation; `stringSliceFlag` enables repeatable `--observer` flags without comma-separation
 - **Time handling**: RFC3339 timestamps throughout; `parseTimeFlag()` and `parseTimeWindow()` provide clear error messages with formatting hints
 - **Format options**: `articulate` and `diff` both support text/json/dot/mermaid; `follow` supports text/json
-- **File output**: `--output <file>` writes to file instead of stdout (with deferred close for safety)
+- **File output**: `--output <file>` writes to file instead of stdout; `cmdReview` uses explicit `f.Close()` (not deferred) to surface write errors
+- **Interactive subcommand**: `cmdReview` is the only `cmd*` function that accepts `in io.Reader` — all other subcommands are non-interactive. `run()` passes `os.Stdin` for the review case only. If a second interactive subcommand is added, migrate to a `cmdContext` struct rather than adding more signature exceptions.
+- **Stderr/stdout separation**: `cmdReview` writes interactive prompts to `os.Stderr` and JSON output to `w` (stdout), enabling `meshant review file.json | jq .` and `--output` file routing without prompt contamination.
 - **Ingestion pipeline** (M11): `draft` command ingests LLM extraction JSON and produces TraceDraft records; `promote` command converts promotable TraceDraft records to canonical Traces (tagged with `draft` provenance signal)
 - **Re-articulation pipeline** (M12): `rearticulate` command produces critique skeletons (SourceSpan + DerivedFrom set, all content fields blank); `lineage` command walks DerivedFrom links and renders positional reading sequences as CLI output
 - **Shadow analysis** (M13): `shadow` subcommand summarises shadowed elements from a cut; `gaps` subcommand compares element visibility between two observer positions; neither position is authoritative
@@ -581,6 +585,7 @@ cmd/demo/
 - `docs/decisions/tracedraft-v2.md` — TraceDraft design, ingestion pipeline as analytical object, source span as ground truth, promotion criterion, provenance chain (M11)
 - `docs/decisions/rearticulation-v1.md` — Re-articulation as cut not correction, SourceSpan invariant, blank scaffold as correct output, DerivedFrom positional vocabulary, cmdLineage as first-class CLI output, E3/E14 as demonstration material (M12)
 - `docs/decisions/shadow-analysis-v1.md` — Shadow as cut decision, ObserverGap composability, FollowDraftChain design, CriterionRef as citation metadata, DraftStepKind v1 heuristics, shadow/gaps CLI-first design (M13)
+- `docs/decisions/interactive-review-v1.md` — Interactive review CLI design: session as cut, render-as-string, ExtractedBy sameness, provenance/content partition, stdin/stderr separation, main.go size debt (Thread A)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 

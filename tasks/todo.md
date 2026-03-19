@@ -662,7 +662,7 @@ Parent issue: #86
 - [x] **A.3 (#90) — Session core** — `RunReviewSession`; accept/skip/quit loop; `deriveAccepted` creates new TraceDraft with DerivedFrom link; 47 tests, 98.2% coverage; PR #99 merged
 - [x] **A.4 (#91) — Edit flow** — `runEditFlow`; `deriveEdited`; `parseCommaSeparated`; 8 editable fields, Enter-to-keep, comma-separated slice input; 67 tests, 92.4% coverage; PR #100 merged
 - [x] **A.5 (#92) — CLI wiring** — `cmdReview(w, in, args)` in `cmd/meshant`; `meshant review [--output] <file>`; prompts to stderr, JSON to stdout; 15 tests, 88.2% coverage; PR #101 merged
-- [ ] **A.6 (#93) — Decision record + codemap**
+- [x] **A.6 (#93) — Decision record + codemap** — `docs/decisions/interactive-review-v1.md` (8 decisions, 3 ANT tensions); codemap updated with `cmdReview`, `run()` dispatcher, Key Design Notes
 
 ### Thread C — Multi-Analyst Ingestion Comparison
 
