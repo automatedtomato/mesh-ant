@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-18 (Thread A.3: review session core — RunReviewSession, deriveAccepted, filterReviewable)
+**Last Updated:** 2026-03-18 (Thread A.4: edit flow — runEditFlow, deriveEdited, parseCommaSeparated)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -221,8 +221,11 @@ None (persist carries no domain types; wraps graph types).
 | `RenderDraft` | `func RenderDraft(d schema.TraceDraft, index, total int) string` | Format a TraceDraft for terminal display in the review session. Shows all candidate and provenance fields; blank values rendered as "(empty)". `index` is 1-based queue position (Thread A.1). |
 | `RenderAmbiguities` | `func RenderAmbiguities(warnings []AmbiguityWarning) string` | Format `[]AmbiguityWarning` for display below a rendered draft. Returns "(none)" when warnings is nil or empty (Thread A.1). |
 | `RenderChain` | `func RenderChain(chain []schema.TraceDraft, classifications []loader.DraftStepClassification) string` | Format a derivation chain for display in the review session. Shows each draft with truncated ID (8 chars), extraction_stage, extracted_by, and truncated what_changed (60 chars). Interleaves DraftStepClassification lines (Kind + Reason) between drafts. Last draft marked `<-- current`. Returns "(no derivation chain)" for empty input (Thread A.2). |
-| `RunReviewSession` | `func RunReviewSession(drafts []schema.TraceDraft, in io.Reader, out io.Writer) ([]schema.TraceDraft, error)` | Interactive accept/skip/quit loop over weak-draft records. Renders chain, draft, and ambiguities per draft; returns all newly derived (accepted) drafts. Filters to ExtractionStage "weak-draft"; falls back to all drafts when no stage metadata present. EOF treated as quit (Thread A.3). |
+| `RunReviewSession` | `func RunReviewSession(drafts []schema.TraceDraft, in io.Reader, out io.Writer) ([]schema.TraceDraft, error)` | Interactive accept/edit/skip/quit loop over weak-draft records. Renders chain, draft, and ambiguities per draft; returns all newly derived (accepted or edited) drafts. Filters to ExtractionStage "weak-draft"; falls back to all drafts when no stage metadata present. EOF treated as quit (Thread A.3/A.4). |
 | `deriveAccepted` | `func deriveAccepted(parent schema.TraceDraft) (schema.TraceDraft, error)` | Creates a new TraceDraft derived from parent: copies all candidate fields (deep-copies slices), sets DerivedFrom=parent.ID, ExtractionStage="reviewed", ExtractedBy="meshant-review", new UUID and Timestamp (Thread A.3). |
+| `runEditFlow` | `func runEditFlow(d schema.TraceDraft, scanner *bufio.Scanner, out io.Writer) (schema.TraceDraft, bool, error)` | Field-by-field editing loop over 8 editable content fields (what_changed, source, target, mediation, observer, tags, uncertainty_note, criterion_ref). Empty input keeps current value; slice fields accept comma-separated input. Returns (editedDraft, completedOK, error). EOF mid-flow returns (partial, false, nil) — caller must not append. Provenance fields are not editable (Thread A.4). |
+| `deriveEdited` | `func deriveEdited(parent schema.TraceDraft, edited schema.TraceDraft) (schema.TraceDraft, error)` | Creates a new TraceDraft derived from parent using content fields from edited. Content (WhatChanged, Source, Target, Mediation, Observer, Tags, UncertaintyNote, CriterionRef) from edited; provenance (SourceSpan, SourceDocRef, IntentionallyBlank) from parent. DerivedFrom=parent.ID, ExtractionStage="reviewed", ExtractedBy="meshant-review", new UUID and Timestamp. Edit = one derivation step, not two (Thread A.4). |
+| `parseCommaSeparated` | `func parseCommaSeparated(s string) []string` | Splits s on commas, trims whitespace per element, drops empty strings. Returns nil when no non-empty elements remain (Thread A.4). |
 
 ## Package: cmd/demo
 
