@@ -322,7 +322,7 @@ func TestPrintClassificationDiffs_BothLabelsPresent(t *testing.T) {
 
 // TestPrintClassificationDiffs_NeitherAuthoritative verifies that the output
 // contains a closing note including "Neither" or "authoritative" to signal that
-// no classification position is treated as the ground truth.
+// no classification position is treated as authoritative.
 func TestPrintClassificationDiffs_NeitherAuthoritative(t *testing.T) {
 	var buf bytes.Buffer
 	err := loader.PrintClassificationDiffs(&buf, "alice", "bob", 2, 2, []loader.ClassificationDiff{})
