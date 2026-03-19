@@ -671,7 +671,7 @@ Parent issue: #86
 Parent issue: #103
 
 - [x] **C.1 (#104) — Multi-analyst draft set schema** — `GroupByAnalyst` in `loader/analyst.go`; no `AnalystSet` (ExtractedBy sufficient); `ExtractedBy` doc comment clarified as analyst-position cut axis; 7 tests, 100% coverage; PR #109 merged
-- [ ] **C.2 (#105) — Extraction gap analysis** — `CompareExtractions`, `ExtractionGap`, `FieldDisagreement`, `PrintExtractionGap`, `meshant extraction-gap` CLI
+- [x] **C.2 (#105) — Extraction gap analysis** — `CompareExtractions`, `ExtractionGap`, `FieldDisagreement`, `PrintExtractionGap` in `loader/extractiongap.go`; `meshant extraction-gap` CLI; 9 content fields (incl. SourceDocRef); 27 tests; PR #110 merged
 - [ ] **C.3 (#106) — Classification comparison** — `CompareChainClassifications`, `ClassificationDiff`, `PrintClassificationDiffs`
 - [ ] **C.4 (#107) — Multi-analyst example dataset** — `data/examples/multi_analyst_drafts.json`
 - [ ] **C.5 (#108) — Decision record + docs** — `docs/decisions/multi-analyst-v1.md`, codemap, `tasks/todo.md`
