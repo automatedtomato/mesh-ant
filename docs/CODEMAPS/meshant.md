@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-18 (Thread A.4: edit flow — runEditFlow, deriveEdited, parseCommaSeparated)
+**Last Updated:** 2026-03-19 (Thread A.5: CLI wiring — meshant review subcommand)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -15,7 +15,7 @@
 | `persist` | Read and write graphs to JSON files. |
 | `review` | Ambiguity detection and terminal rendering for the interactive review session (Thread A). |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. `review` is the only interactive subcommand (reads from stdin). |
 
 ## Package: schema
 
