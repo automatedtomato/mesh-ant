@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-19 (Thread A.5: CLI wiring — meshant review subcommand)
+**Last Updated:** 2026-03-19 (C.1: GroupByAnalyst — analyst-position partitioning for multi-analyst comparison)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -56,6 +56,7 @@
 | `loader.go` | `Load`, `Summarise`, `PrintSummary`; `MeshSummary`, `FlaggedTrace` types. |
 | `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; `NewUUID` (exported, Thread A.1). `WithIntentionallyBlank` and `WithCriterionRef` counts added (M12.5, M13). |
 | `draftchain.go` | `FollowDraftChain`, `ClassifyDraftChain`; `DraftStepKind`, `DraftStepClassification` types (M13). |
+| `analyst.go` | `GroupByAnalyst`; analyst-position partitioning for multi-analyst comparison (C.1). |
 
 ### Types
 
@@ -79,6 +80,7 @@
 | `PrintDraftSummary` | `func PrintDraftSummary(w io.Writer, s DraftSummary) error` | Write provenance summary to io.Writer. Shows total/promotable, breakdown by extraction stage and extracted_by, per-field fill rates, critique skeleton counts (M11, M12.5, M13). |
 | `FollowDraftChain` | `func FollowDraftChain(drafts []schema.TraceDraft, from string) []schema.TraceDraft` | Traverse DerivedFrom links from draft with id `from`; return chain in derivation order. Empty slice if `from` not found. Cycle detection via visited set (M13). |
 | `ClassifyDraftChain` | `func ClassifyDraftChain(chain []schema.TraceDraft) []DraftStepClassification` | Apply v1 heuristic classification to consecutive draft pairs. Returns `len(chain)-1` classifications (M13). |
+| `GroupByAnalyst` | `func GroupByAnalyst(drafts []schema.TraceDraft) map[string][]schema.TraceDraft` | Partition drafts by ExtractedBy field (analyst-position cut axis). Preserves encounter order within each group; drafts with empty ExtractedBy grouped under key ""; result map never nil; no aliasing (C.1). |
 
 ## Package: graph
 
