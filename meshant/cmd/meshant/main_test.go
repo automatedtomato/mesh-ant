@@ -3034,3 +3034,188 @@ func TestCmdReview_NoStageInput(t *testing.T) {
 		t.Errorf("cmdReview() no-stage fallback: want 1 result, got %d", len(results))
 	}
 }
+
+// --- Group: cmdExtractionGap ---
+
+// twoAnalystDraftsJSON returns a JSON string with drafts for two analysts.
+// analyst-a extracted "span-shared" and "span-only-a".
+// analyst-b extracted "span-shared" and "span-only-b".
+// The shared span has different WhatChanged values so there will be a disagreement.
+const twoAnalystDraftsJSON = `[
+  {"source_span":"span-shared","extracted_by":"analyst-a","what_changed":"version from A"},
+  {"source_span":"span-only-a","extracted_by":"analyst-a"},
+  {"source_span":"span-shared","extracted_by":"analyst-b","what_changed":"version from B"},
+  {"source_span":"span-only-b","extracted_by":"analyst-b"}
+]`
+
+// TestCmdExtractionGap_BasicRun verifies that cmdExtractionGap produces a
+// complete gap report for a two-analyst drafts file. The fixture encodes a
+// known structure: a shared span with a what_changed disagreement, a span
+// only analyst-a extracted, and a span only analyst-b extracted.
+func TestCmdExtractionGap_BasicRun(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdExtractionGap(): unexpected error: %v", err)
+	}
+	out := buf.String()
+	// Assert both analyst labels, known span names, and the known disagreement
+	// content — not just label presence, which could pass on a silent writer.
+	for _, want := range []string{
+		"analyst-a", "analyst-b",
+		"span-shared", "span-only-a", "span-only-b",
+		"what_changed", "version from A", "version from B",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("cmdExtractionGap(): output missing %q;\noutput:\n%s", want, out)
+		}
+	}
+}
+
+// TestCmdExtractionGap_MissingAnalystLabel verifies that requesting a label
+// not present in the drafts produces an error containing "not found", for
+// both the --analyst-a and --analyst-b paths (each has a separate lookupSet
+// call and error return in cmdExtractionGap).
+func TestCmdExtractionGap_MissingAnalystLabel(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+
+	cases := []struct {
+		name    string
+		analystA string
+		analystB string
+	}{
+		{
+			name:     "analystB not found",
+			analystA: "analyst-a",
+			analystB: "nonexistent-label",
+		},
+		{
+			name:     "analystA not found",
+			analystA: "nonexistent-label",
+			analystB: "analyst-b",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := cmdExtractionGap(&buf, []string{
+				"--analyst-a", tc.analystA,
+				"--analyst-b", tc.analystB,
+				path,
+			})
+			if err == nil {
+				t.Fatal("cmdExtractionGap(): want non-nil error for missing analyst label, got nil")
+			}
+			if !strings.Contains(err.Error(), "not found") {
+				t.Errorf("cmdExtractionGap(): error should contain 'not found'; got: %v", err)
+			}
+		})
+	}
+}
+
+// TestCmdExtractionGap_BadPath verifies that a nonexistent file path returns
+// a load error, consistent with TestCmdShadow_BadPath and similar tests.
+func TestCmdExtractionGap_BadPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"/nonexistent/path/drafts.json",
+	})
+	if err == nil {
+		t.Fatal("cmdExtractionGap(): want error for bad path, got nil")
+	}
+}
+
+// TestCmdExtractionGap_MalformedJSON verifies that malformed JSON input
+// returns a parse error, consistent with TestCmdReview_MalformedJSON and
+// similar tests.
+func TestCmdExtractionGap_MalformedJSON(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[{"source_span": "incomplete"`)
+
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		path,
+	})
+	if err == nil {
+		t.Fatal("cmdExtractionGap(): want error for malformed JSON, got nil")
+	}
+}
+
+// TestCmdExtractionGap_MissingFlags verifies that omitting required flags or
+// the positional argument returns an error.
+func TestCmdExtractionGap_MissingFlags(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "missing --analyst-a",
+			args: []string{"--analyst-b", "analyst-b", path},
+		},
+		{
+			name: "missing --analyst-b",
+			args: []string{"--analyst-a", "analyst-a", path},
+		},
+		{
+			name: "missing positional arg",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-b"},
+		},
+		{
+			name: "same label for both",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-a", path},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := cmdExtractionGap(&buf, tc.args)
+			if err == nil {
+				t.Fatalf("cmdExtractionGap(%v): want error, got nil", tc.args)
+			}
+		})
+	}
+}
+
+// TestCmdExtractionGap_OutputToFile verifies that --output writes the report
+// to a file rather than stdout, and prints a confirmation to stdout.
+func TestCmdExtractionGap_OutputToFile(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+	outFile := filepath.Join(t.TempDir(), "gap.txt")
+
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--output", outFile,
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdExtractionGap(): unexpected error: %v", err)
+	}
+
+	// File must exist and contain the analyst labels.
+	content, readErr := os.ReadFile(outFile)
+	if readErr != nil {
+		t.Fatalf("output file not created: %v", readErr)
+	}
+	for _, want := range []string{"analyst-a", "analyst-b"} {
+		if !strings.Contains(string(content), want) {
+			t.Errorf("output file missing %q", want)
+		}
+	}
+	// Stdout should contain the confirmation message.
+	if !strings.Contains(buf.String(), outFile) {
+		t.Errorf("stdout missing file path confirmation; got: %s", buf.String())
+	}
+}

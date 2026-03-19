@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-19 (C.1: GroupByAnalyst — analyst-position partitioning for multi-analyst comparison)
+**Last Updated:** 2026-03-19 (C.2: ExtractionGap — comparing draft sets from two named extraction positions)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -57,6 +57,7 @@
 | `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; `NewUUID` (exported, Thread A.1). `WithIntentionallyBlank` and `WithCriterionRef` counts added (M12.5, M13). |
 | `draftchain.go` | `FollowDraftChain`, `ClassifyDraftChain`; `DraftStepKind`, `DraftStepClassification` types (M13). |
 | `analyst.go` | `GroupByAnalyst`; analyst-position partitioning for multi-analyst comparison (C.1). |
+| `extractiongap.go` | `CompareExtractions`, `PrintExtractionGap`; `ExtractionGap`, `FieldDisagreement` types (C.2). |
 
 ### Types
 
@@ -67,6 +68,8 @@
 | `DraftSummary` | `Total` (int), `Promotable` (int), `ByStage` (map[string]int), `ByExtractedBy` (map[string]int), `FieldFillRate` (map[string]int), `WithIntentionallyBlank` (int, M12.5), `WithCriterionRef` (int, M13) | Provenance-aware reading of a TraceDraft dataset. Reveals ingestion pipeline breakdown and field fill rates (M11). Counts critique skeletons and self-situated skeletons. |
 | `DraftStepKind` | (string constant: `DraftIntermediary`, `DraftMediator`, `DraftTranslation`) | Classification of a draft chain step; mirrors `StepKind` from graph package. Heuristics are v1 and provisional (M13). |
 | `DraftStepClassification` | `StepIndex` (int), `Kind` (DraftStepKind), `Reason` (string) | Classification and justification for a single draft chain step (M13). |
+| `ExtractionGap` | `AnalystA` (string), `AnalystB` (string), `OnlyInA` ([]string), `OnlyInB` ([]string), `InBoth` ([]string), `Disagreements` ([]FieldDisagreement) | Comparison of two named extraction positions: partitions drafts by SourceSpan into three visibility groups; records field-level disagreements across 9 content fields (C.2). |
+| `FieldDisagreement` | `SourceSpan` (string), `Field` (string), `ValueA` (string), `ValueB` (string) | Mismatch in a single field for a draft visible from both extraction positions; field name and both values recorded (C.2). |
 
 ### Functions
 
@@ -81,6 +84,8 @@
 | `FollowDraftChain` | `func FollowDraftChain(drafts []schema.TraceDraft, from string) []schema.TraceDraft` | Traverse DerivedFrom links from draft with id `from`; return chain in derivation order. Empty slice if `from` not found. Cycle detection via visited set (M13). |
 | `ClassifyDraftChain` | `func ClassifyDraftChain(chain []schema.TraceDraft) []DraftStepClassification` | Apply v1 heuristic classification to consecutive draft pairs. Returns `len(chain)-1` classifications (M13). |
 | `GroupByAnalyst` | `func GroupByAnalyst(drafts []schema.TraceDraft) map[string][]schema.TraceDraft` | Partition drafts by ExtractedBy field (analyst-position cut axis). Preserves encounter order within each group; drafts with empty ExtractedBy grouped under key ""; result map never nil; no aliasing (C.1). |
+| `CompareExtractions` | `func CompareExtractions(analystA string, setA []schema.TraceDraft, analystB string, setB []schema.TraceDraft) ExtractionGap` | Partition two named draft sets by SourceSpan into OnlyInA/OnlyInB/InBoth; compare 9 content fields (WhatChanged, Source, Target, Mediation, Observer, Tags, UncertaintyNote, IntentionallyBlank, SourceDocRef) for drafts visible in both positions; use set-based slice comparison; mark drafts from same SourceSpan but different sets with multiple-drafts sentinel (C.2). |
+| `PrintExtractionGap` | `func PrintExtractionGap(w io.Writer, gap ExtractionGap) error` | Write human-readable extraction gap report to io.Writer. Names both analyst positions, three-way partition with SourceSpan lists, field disagreement block, shadow note (neither position is authoritative), non-authoritative disclaimer (C.2). |
 
 ## Package: graph
 
@@ -252,7 +257,7 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13), `cmdBottleneck` (B.1), `cmdReview` (A.5) handlers. (~1720 lines — pre-existing size debt, tracked for future per-command file split.) |
+| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13), `cmdBottleneck` (B.1), `cmdExtractionGap` (C.2), `cmdReview` (A.5) handlers. (~1800 lines — pre-existing size debt, tracked for future per-command file split.) |
 | `main_test.go` | Tests: all subcommands, flag parsing, file output, error handling, criterion file loading, draft/promote pipeline (M11). |
 
 ### Types
@@ -270,7 +275,7 @@ None (persist carries no domain types; wraps graph types).
 | `parseTimeFlag` | `func parseTimeFlag(name, value string) (time.Time, error)` | Parse RFC3339 string to time.Time with contextual error message naming the flag. |
 | `parseTimeWindow` | `func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error)` | Parse two RFC3339 strings (one or both may be empty) into a TimeWindow. Validates only when both bounds are set. |
 | `main` | `func main()` | Entry point. Calls `run(os.Stdout, os.Args[1:])` and exits non-zero on error. |
-| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, or `cmdReview()`. For the `review` case, passes `os.Stdin` as the reader to `cmdReview`. |
+| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, `cmdExtractionGap()`, or `cmdReview()`. For the `review` case, passes `os.Stdin` as the reader to `cmdReview`. |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
 | `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. Optional `--narrative` flag appends a positioned narrative draft (text format only, skipped for JSON/DOT/Mermaid). |
@@ -283,6 +288,7 @@ None (persist carries no domain types; wraps graph types).
 | `cmdShadow` | `func cmdShadow(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, print shadow summary via `graph.SummariseShadow()` + `PrintShadowSummary()`. Flags: `--observer` (repeatable, required), `--tag` (repeatable), `--from`, `--to` (RFC3339), `--output <file>` (M13). |
 | `cmdGaps` | `func cmdGaps(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts, compare node sets via `graph.AnalyseGaps()`, print gap report. Optionally appends re-articulation suggestions via `--suggest`. Flags: `--observer-a`, `--observer-b` (required), per-side `--tag-a/b`, `--from-a/b`, `--to-a/b`, `--suggest` (bool), `--output` (M13, B.2). |
 | `cmdBottleneck` | `func cmdBottleneck(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, identify bottlenecks via `graph.IdentifyBottlenecks()`, print notes via `PrintBottleneckNotes()`. Flags: `--observer` (optional), `--tag`, `--from`, `--to`, `--output` (B.1). |
+| `cmdExtractionGap` | `func cmdExtractionGap(w io.Writer, args []string) error` | Subcommand: Load two TraceDraft JSON files, compare extractions from named positions via `loader.CompareExtractions()`, print gap report via `PrintExtractionGap()`. Flags: `--analyst-a <label>`, `--analyst-b <label>` (both required, names of analyst positions), `--output <file>` (C.2). |
 | `cmdReview` | `func cmdReview(w io.Writer, in io.Reader, args []string) error` | Subcommand: Load TraceDraft JSON, run interactive accept/edit/skip/quit session via `review.RunReviewSession()`. Only interactive subcommand — signature diverges from all other `cmd*` functions by accepting `in io.Reader` for stdin injection (testability). Interactive prompts go to `os.Stderr`; JSON output and summary go to `w`. Flags: `--output <file>` (A.5). |
 | `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
