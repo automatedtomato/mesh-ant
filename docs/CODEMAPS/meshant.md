@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-19 (C.2: ExtractionGap — comparing draft sets from two named extraction positions)
+**Last Updated:** 2026-03-19 (C.3: ClassificationDiff — comparing chain classifications from two analyst positions)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -58,6 +58,7 @@
 | `draftchain.go` | `FollowDraftChain`, `ClassifyDraftChain`; `DraftStepKind`, `DraftStepClassification` types (M13). |
 | `analyst.go` | `GroupByAnalyst`; analyst-position partitioning for multi-analyst comparison (C.1). |
 | `extractiongap.go` | `CompareExtractions`, `PrintExtractionGap`; `ExtractionGap`, `FieldDisagreement` types (C.2). |
+| `classdiff.go` | `CompareChainClassifications`, `PrintClassificationDiffs`; `ClassificationDiff` type (C.3). Classification-diff analysis: compare how two analyst positions classified the same derivation chain. |
 
 ### Types
 
@@ -70,6 +71,7 @@
 | `DraftStepClassification` | `StepIndex` (int), `Kind` (DraftStepKind), `Reason` (string) | Classification and justification for a single draft chain step (M13). |
 | `ExtractionGap` | `AnalystA` (string), `AnalystB` (string), `OnlyInA` ([]string), `OnlyInB` ([]string), `InBoth` ([]string), `Disagreements` ([]FieldDisagreement) | Comparison of two named extraction positions: partitions drafts by SourceSpan into three visibility groups; records field-level disagreements across 9 content fields (C.2). |
 | `FieldDisagreement` | `SourceSpan` (string), `Field` (string), `ValueA` (string), `ValueB` (string) | Mismatch in a single field for a draft visible from both extraction positions; field name and both values recorded (C.2). |
+| `ClassificationDiff` | `StepIndex` (int), `KindA` (DraftStepKind), `KindB` (DraftStepKind), `ReasonA` (string), `ReasonB` (string) | Classification disagreement at a single step position between two analyst positions; neither value is authoritative (C.3). |
 
 ### Functions
 
@@ -86,6 +88,8 @@
 | `GroupByAnalyst` | `func GroupByAnalyst(drafts []schema.TraceDraft) map[string][]schema.TraceDraft` | Partition drafts by ExtractedBy field (analyst-position cut axis). Preserves encounter order within each group; drafts with empty ExtractedBy grouped under key ""; result map never nil; no aliasing (C.1). |
 | `CompareExtractions` | `func CompareExtractions(analystA string, setA []schema.TraceDraft, analystB string, setB []schema.TraceDraft) ExtractionGap` | Partition two named draft sets by SourceSpan into OnlyInA/OnlyInB/InBoth; compare 9 content fields (WhatChanged, Source, Target, Mediation, Observer, Tags, UncertaintyNote, IntentionallyBlank, SourceDocRef) for drafts visible in both positions; use set-based slice comparison; mark drafts from same SourceSpan but different sets with multiple-drafts sentinel (C.2). |
 | `PrintExtractionGap` | `func PrintExtractionGap(w io.Writer, gap ExtractionGap) error` | Write human-readable extraction gap report to io.Writer. Names both analyst positions, three-way partition with SourceSpan lists, field disagreement block, shadow note (neither position is authoritative), non-authoritative disclaimer (C.2). |
+| `CompareChainClassifications` | `func CompareChainClassifications(chainA, chainB []DraftStepClassification) []ClassificationDiff` | Compare two classified chains by position (0-indexed step index). Returns classifications differing by Kind or Reason, up to min(len(chainA), lenB) steps. Returns non-nil empty slice when chains are identical (C.3). |
+| `PrintClassificationDiffs` | `func PrintClassificationDiffs(w io.Writer, analystA, analystB string, lenA, lenB int, diffs []ClassificationDiff) error` | Write human-readable classification diff report to io.Writer. Names both analyst positions, overall chain length context (lenA/lenB steps), per-diff lines (step position, Kind/Reason for each analyst, position note), footer caveat (neither position is authoritative, data-dependent heuristics) (C.3). |
 
 ## Package: graph
 
@@ -257,7 +261,7 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13), `cmdBottleneck` (B.1), `cmdExtractionGap` (C.2), `cmdReview` (A.5) handlers. (~1800 lines — pre-existing size debt, tracked for future per-command file split.) |
+| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13), `cmdBottleneck` (B.1), `cmdExtractionGap` (C.2), `cmdChainDiff` (C.3), `cmdReview` (A.5) handlers. (~2010 lines — pre-existing size debt, tracked for future per-command file split.) |
 | `main_test.go` | Tests: all subcommands, flag parsing, file output, error handling, criterion file loading, draft/promote pipeline (M11). |
 
 ### Types
@@ -289,6 +293,7 @@ None (persist carries no domain types; wraps graph types).
 | `cmdGaps` | `func cmdGaps(w io.Writer, args []string) error` | Subcommand: Load traces, articulate two cuts, compare node sets via `graph.AnalyseGaps()`, print gap report. Optionally appends re-articulation suggestions via `--suggest`. Flags: `--observer-a`, `--observer-b` (required), per-side `--tag-a/b`, `--from-a/b`, `--to-a/b`, `--suggest` (bool), `--output` (M13, B.2). |
 | `cmdBottleneck` | `func cmdBottleneck(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut, identify bottlenecks via `graph.IdentifyBottlenecks()`, print notes via `PrintBottleneckNotes()`. Flags: `--observer` (optional), `--tag`, `--from`, `--to`, `--output` (B.1). |
 | `cmdExtractionGap` | `func cmdExtractionGap(w io.Writer, args []string) error` | Subcommand: Load two TraceDraft JSON files, compare extractions from named positions via `loader.CompareExtractions()`, print gap report via `PrintExtractionGap()`. Flags: `--analyst-a <label>`, `--analyst-b <label>` (both required, names of analyst positions), `--output <file>` (C.2). |
+| `cmdChainDiff` | `func cmdChainDiff(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, build span-scoped derivation chains for two named analyst positions via `loader.FollowDraftChain()` + `loader.ClassifyDraftChain()`, compare classifications via `loader.CompareChainClassifications()`, print diff report via `PrintClassificationDiffs()`. Flags: `--analyst-a <label>`, `--analyst-b <label>` (both required), `--span <source_span>` (required), `--output <file>` (C.3). |
 | `cmdReview` | `func cmdReview(w io.Writer, in io.Reader, args []string) error` | Subcommand: Load TraceDraft JSON, run interactive accept/edit/skip/quit session via `review.RunReviewSession()`. Only interactive subcommand — signature diverges from all other `cmd*` functions by accepting `in io.Reader` for stdin injection (testability). Interactive prompts go to `os.Stderr`; JSON output and summary go to `w`. Flags: `--output <file>` (A.5). |
 | `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
@@ -436,6 +441,9 @@ cmd/demo/
 | Draft narrative reading of a graph | `graph/narrative.go` → `DraftNarrative()` |
 | Print narrative draft | `graph/narrative.go` → `PrintNarrativeDraft()` |
 | Add narrative draft to articulation output | `cmd/meshant/main.go` → `cmdArticulate()` with `--narrative` flag |
+| Compare chain classifications from two analysts | `loader/classdiff.go` → `CompareChainClassifications()` |
+| Print classification diff report | `loader/classdiff.go` → `PrintClassificationDiffs()` |
+| Classification diff via CLI | `cmd/meshant/main.go` → `cmdChainDiff()` |
 | Read critique prompt contract | `data/prompts/critique_pass.md` |
 | Run minimal demo | `cmd/demo/main.go` → `run()` |
 
