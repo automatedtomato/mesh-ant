@@ -179,6 +179,28 @@ func TestGroupByAnalyst_OrderPreservation(t *testing.T) {
 	}
 }
 
+// TestGroupByAnalyst_ThreeAnalysts verifies that N>2 distinct ExtractedBy
+// values all produce separate keys. Guards against implementations that could
+// silently drop keys beyond the first two (e.g., a hardcoded two-bucket path).
+func TestGroupByAnalyst_ThreeAnalysts(t *testing.T) {
+	drafts := []schema.TraceDraft{
+		makeDraft("span-a", "analyst-a"),
+		makeDraft("span-b", "analyst-b"),
+		makeDraft("span-c", "analyst-c"),
+	}
+
+	result := loader.GroupByAnalyst(drafts)
+
+	if len(result) != 3 {
+		t.Fatalf("expected 3 keys, got %d: %v", len(result), result)
+	}
+	for _, label := range []string{"analyst-a", "analyst-b", "analyst-c"} {
+		if len(result[label]) != 1 {
+			t.Errorf("key %q: expected 1 draft, got %d", label, len(result[label]))
+		}
+	}
+}
+
 // TestGroupByAnalyst_NoAliasing verifies that returned slices do not alias
 // the input. Two properties are checked:
 //
