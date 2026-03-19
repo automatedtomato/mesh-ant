@@ -3219,3 +3219,345 @@ func TestCmdExtractionGap_OutputToFile(t *testing.T) {
 		t.Errorf("stdout missing file path confirmation; got: %s", buf.String())
 	}
 }
+
+// --- chain-diff integration tests ---
+
+// chainDiffDraftsJSON encodes two analyst positions over the same source span
+// ("span-chain"), each with a two-draft derivation chain.
+//
+// analyst-a: a-root → a-rev1: what_changed changes, extraction_stage unchanged
+//            → ClassifyDraftChain classifies step 1 as DraftMediator.
+//
+// analyst-b: b-root → b-rev1: what_changed changes AND extraction_stage advances
+//            → ClassifyDraftChain classifies step 1 as DraftTranslation.
+//
+// The two chains therefore diverge at step 1 (mediator vs translation).
+const chainDiffDraftsJSON = `[
+  {"id":"a-root","source_span":"span-chain","extracted_by":"analyst-a","what_changed":"initial A","extraction_stage":"weak-draft"},
+  {"id":"a-rev1","source_span":"span-chain","extracted_by":"analyst-a","derived_from":"a-root","what_changed":"revised A","extraction_stage":"weak-draft"},
+  {"id":"b-root","source_span":"span-chain","extracted_by":"analyst-b","what_changed":"initial B","extraction_stage":"weak-draft"},
+  {"id":"b-rev1","source_span":"span-chain","extracted_by":"analyst-b","derived_from":"b-root","what_changed":"revised B","extraction_stage":"reviewed"}
+]`
+
+// chainDiffIdenticalJSON encodes two analyst positions where both chains
+// produce an identical classification (both are DraftMediator at step 1).
+const chainDiffIdenticalJSON = `[
+  {"id":"a-root","source_span":"span-same","extracted_by":"analyst-a","what_changed":"initial","extraction_stage":"weak-draft"},
+  {"id":"a-rev1","source_span":"span-same","extracted_by":"analyst-a","derived_from":"a-root","what_changed":"revised","extraction_stage":"weak-draft"},
+  {"id":"b-root","source_span":"span-same","extracted_by":"analyst-b","what_changed":"initial","extraction_stage":"weak-draft"},
+  {"id":"b-rev1","source_span":"span-same","extracted_by":"analyst-b","derived_from":"b-root","what_changed":"revised","extraction_stage":"weak-draft"}
+]`
+
+// TestCmdChainDiff_BasicRun verifies that cmdChainDiff produces a classification
+// diff report for two analysts with diverging chain classifications. The
+// fixture's structure is known: step 1 diverges (mediator vs translation).
+func TestCmdChainDiff_BasicRun(t *testing.T) {
+	path := writeTempJSONForDraft(t, chainDiffDraftsJSON)
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdChainDiff(): unexpected error: %v", err)
+	}
+	out := buf.String()
+
+	// Output must contain both analyst labels, the span name, the step index,
+	// and both classification kinds — these are the minimum meaningful assertions.
+	for _, want := range []string{
+		"analyst-a", "analyst-b",
+		"Step 1",
+		"mediator",
+		"translation",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("cmdChainDiff(): output missing %q;\noutput:\n%s", want, out)
+		}
+	}
+}
+
+// TestCmdChainDiff_IdenticalChains verifies that when both analyst chains
+// produce the same classification at every step, the output contains a
+// "No classification divergence" message.
+func TestCmdChainDiff_IdenticalChains(t *testing.T) {
+	path := writeTempJSONForDraft(t, chainDiffIdenticalJSON)
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-same",
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdChainDiff(): unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "No classification divergence") {
+		t.Errorf("cmdChainDiff(): expected 'No classification divergence' message;\noutput:\n%s", out)
+	}
+}
+
+// TestCmdChainDiff_MissingFlags verifies that omitting required flags or
+// the positional argument returns an error. Table-driven: covers each missing
+// required input including the same-label guard.
+func TestCmdChainDiff_MissingFlags(t *testing.T) {
+	path := writeTempJSONForDraft(t, chainDiffDraftsJSON)
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "missing --analyst-a",
+			args: []string{"--analyst-b", "analyst-b", "--span", "span-chain", path},
+		},
+		{
+			name: "missing --analyst-b",
+			args: []string{"--analyst-a", "analyst-a", "--span", "span-chain", path},
+		},
+		{
+			name: "missing --span",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-b", path},
+		},
+		{
+			name: "missing positional arg",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-b", "--span", "span-chain"},
+		},
+		{
+			name: "same label for both",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-a", "--span", "span-chain", path},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := cmdChainDiff(&buf, tc.args)
+			if err == nil {
+				t.Fatalf("cmdChainDiff(%v): want error, got nil", tc.args)
+			}
+		})
+	}
+}
+
+// TestCmdChainDiff_MissingAnalystLabel verifies that requesting a label not
+// present in the drafts produces an error containing "not found", for both
+// the --analyst-a and --analyst-b paths.
+func TestCmdChainDiff_MissingAnalystLabel(t *testing.T) {
+	path := writeTempJSONForDraft(t, chainDiffDraftsJSON)
+
+	cases := []struct {
+		name     string
+		analystA string
+		analystB string
+	}{
+		{
+			name:     "analystA not found",
+			analystA: "nonexistent-label",
+			analystB: "analyst-b",
+		},
+		{
+			name:     "analystB not found",
+			analystA: "analyst-a",
+			analystB: "nonexistent-label",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := cmdChainDiff(&buf, []string{
+				"--analyst-a", tc.analystA,
+				"--analyst-b", tc.analystB,
+				"--span", "span-chain",
+				path,
+			})
+			if err == nil {
+				t.Fatal("cmdChainDiff(): want error for missing analyst label, got nil")
+			}
+			if !strings.Contains(err.Error(), "not found") {
+				t.Errorf("cmdChainDiff(): error should contain 'not found'; got: %v", err)
+			}
+		})
+	}
+}
+
+// TestCmdChainDiff_SpanNotFound verifies that requesting a span not present
+// for a given analyst produces an error containing "not found". Table-driven
+// to cover both the analyst-a path (first buildChain call) and the analyst-b
+// path (second buildChain call, only reached when analyst-a finds the span).
+func TestCmdChainDiff_SpanNotFound(t *testing.T) {
+	// asymmetricJSON: analyst-a has span-chain; analyst-b does not.
+	// Used to test the analyst-b-span-missing path independently.
+	const asymmetricJSON = `[
+	  {"id":"a-root","source_span":"span-chain","extracted_by":"analyst-a","what_changed":"initial"},
+	  {"id":"b-root","source_span":"other-span","extracted_by":"analyst-b","what_changed":"initial"}
+	]`
+
+	cases := []struct {
+		name     string
+		fixture  string
+		analystA string
+		analystB string
+		span     string
+	}{
+		{
+			name:     "span missing for analyst-a",
+			fixture:  chainDiffDraftsJSON,
+			analystA: "analyst-a",
+			analystB: "analyst-b",
+			span:     "nonexistent-span",
+		},
+		{
+			name:     "span missing for analyst-b",
+			fixture:  asymmetricJSON,
+			analystA: "analyst-a",
+			analystB: "analyst-b",
+			span:     "span-chain",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeTempJSONForDraft(t, tc.fixture)
+			var buf bytes.Buffer
+			err := cmdChainDiff(&buf, []string{
+				"--analyst-a", tc.analystA,
+				"--analyst-b", tc.analystB,
+				"--span", tc.span,
+				path,
+			})
+			if err == nil {
+				t.Fatal("cmdChainDiff(): want error for missing span, got nil")
+			}
+			if !strings.Contains(err.Error(), "not found") {
+				t.Errorf("cmdChainDiff(): error should contain 'not found'; got: %v", err)
+			}
+		})
+	}
+}
+
+// TestCmdChainDiff_OutputToFile verifies that --output writes the report to
+// a file rather than stdout, and prints a confirmation to stdout.
+func TestCmdChainDiff_OutputToFile(t *testing.T) {
+	path := writeTempJSONForDraft(t, chainDiffDraftsJSON)
+	outFile := filepath.Join(t.TempDir(), "diff.txt")
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		"--output", outFile,
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdChainDiff(): unexpected error: %v", err)
+	}
+
+	// File must exist and contain the analyst labels and the known divergence.
+	content, readErr := os.ReadFile(outFile)
+	if readErr != nil {
+		t.Fatalf("output file not created: %v", readErr)
+	}
+	for _, want := range []string{"analyst-a", "analyst-b", "Step 1", "mediator", "translation"} {
+		if !strings.Contains(string(content), want) {
+			t.Errorf("output file missing %q", want)
+		}
+	}
+	// Stdout should contain the confirmation message including the file path.
+	if !strings.Contains(buf.String(), outFile) {
+		t.Errorf("stdout missing file path confirmation; got: %s", buf.String())
+	}
+}
+
+// TestCmdChainDiff_BadPath verifies that a nonexistent file path returns a
+// load error, consistent with TestCmdExtractionGap_BadPath.
+func TestCmdChainDiff_BadPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		"/nonexistent/path/drafts.json",
+	})
+	if err == nil {
+		t.Fatal("cmdChainDiff(): want error for bad path, got nil")
+	}
+}
+
+// TestCmdChainDiff_MalformedJSON verifies that malformed JSON input returns a
+// parse error, consistent with TestCmdExtractionGap_MalformedJSON.
+func TestCmdChainDiff_MalformedJSON(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[{"source_span": "incomplete"`)
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		path,
+	})
+	if err == nil {
+		t.Fatal("cmdChainDiff(): want error for malformed JSON, got nil")
+	}
+}
+
+// TestCmdChainDiff_AmbiguousRoot verifies that when an analyst has two
+// independent root candidates for a span (two drafts with no in-span parent),
+// buildChain returns an error rather than silently picking one by encounter order.
+func TestCmdChainDiff_AmbiguousRoot(t *testing.T) {
+	// Both analyst-a drafts for "span-chain" have no DerivedFrom — two roots.
+	const ambiguousRootJSON = `[
+	  {"id":"a-root1","source_span":"span-chain","extracted_by":"analyst-a","what_changed":"version one"},
+	  {"id":"a-root2","source_span":"span-chain","extracted_by":"analyst-a","what_changed":"version two"},
+	  {"id":"b-root","source_span":"span-chain","extracted_by":"analyst-b","what_changed":"initial B"},
+	  {"id":"b-rev1","source_span":"span-chain","extracted_by":"analyst-b","derived_from":"b-root","what_changed":"revised B","extraction_stage":"reviewed"}
+	]`
+	path := writeTempJSONForDraft(t, ambiguousRootJSON)
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		path,
+	})
+	if err == nil {
+		t.Fatal("cmdChainDiff(): want error for ambiguous root, got nil")
+	}
+	if !strings.Contains(err.Error(), "ambiguous") && !strings.Contains(err.Error(), "multiple") {
+		t.Errorf("cmdChainDiff(): error should mention ambiguity; got: %v", err)
+	}
+}
+
+// TestCmdChainDiff_CyclicDerivation verifies that when an analyst's span drafts
+// form a cycle (every draft references another as its parent — no root exists),
+// buildChain returns an error rather than looping or returning incorrect output.
+func TestCmdChainDiff_CyclicDerivation(t *testing.T) {
+	// analyst-a: a-draft1.DerivedFrom = a-draft2, a-draft2.DerivedFrom = a-draft1 — cycle.
+	// Neither draft qualifies as a root (each has an in-span parent).
+	const cyclicJSON = `[
+	  {"id":"a-draft1","source_span":"span-chain","extracted_by":"analyst-a","derived_from":"a-draft2","what_changed":"v1"},
+	  {"id":"a-draft2","source_span":"span-chain","extracted_by":"analyst-a","derived_from":"a-draft1","what_changed":"v2"},
+	  {"id":"b-root","source_span":"span-chain","extracted_by":"analyst-b","what_changed":"initial B"},
+	  {"id":"b-rev1","source_span":"span-chain","extracted_by":"analyst-b","derived_from":"b-root","what_changed":"revised B"}
+	]`
+	path := writeTempJSONForDraft(t, cyclicJSON)
+
+	var buf bytes.Buffer
+	err := cmdChainDiff(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--span", "span-chain",
+		path,
+	})
+	if err == nil {
+		t.Fatal("cmdChainDiff(): want error for cyclic derivation, got nil")
+	}
+	if !strings.Contains(err.Error(), "cycle") && !strings.Contains(err.Error(), "no chain root") {
+		t.Errorf("cmdChainDiff(): error should mention cycle or no-root; got: %v", err)
+	}
+}
