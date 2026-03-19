@@ -3034,3 +3034,127 @@ func TestCmdReview_NoStageInput(t *testing.T) {
 		t.Errorf("cmdReview() no-stage fallback: want 1 result, got %d", len(results))
 	}
 }
+
+// --- Group: cmdExtractionGap ---
+
+// twoAnalystDraftsJSON returns a JSON string with drafts for two analysts.
+// analyst-a extracted "span-shared" and "span-only-a".
+// analyst-b extracted "span-shared" and "span-only-b".
+// The shared span has different WhatChanged values so there will be a disagreement.
+const twoAnalystDraftsJSON = `[
+  {"source_span":"span-shared","extracted_by":"analyst-a","what_changed":"version from A"},
+  {"source_span":"span-only-a","extracted_by":"analyst-a"},
+  {"source_span":"span-shared","extracted_by":"analyst-b","what_changed":"version from B"},
+  {"source_span":"span-only-b","extracted_by":"analyst-b"}
+]`
+
+// TestCmdExtractionGap_BasicRun verifies that cmdExtractionGap produces output
+// containing the analyst labels when given a valid two-analyst drafts file.
+func TestCmdExtractionGap_BasicRun(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdExtractionGap(): unexpected error: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"analyst-a", "analyst-b"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("cmdExtractionGap(): output missing %q;\noutput:\n%s", want, out)
+		}
+	}
+}
+
+// TestCmdExtractionGap_MissingAnalystLabel verifies that requesting a label
+// that is not present in the drafts produces an error containing "not found".
+func TestCmdExtractionGap_MissingAnalystLabel(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "nonexistent-label",
+		path,
+	})
+	if err == nil {
+		t.Fatal("cmdExtractionGap(): want non-nil error for missing analyst label, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("cmdExtractionGap(): error should contain 'not found'; got: %v", err)
+	}
+}
+
+// TestCmdExtractionGap_MissingFlags verifies that omitting required flags or
+// the positional argument returns an error.
+func TestCmdExtractionGap_MissingFlags(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "missing --analyst-a",
+			args: []string{"--analyst-b", "analyst-b", path},
+		},
+		{
+			name: "missing --analyst-b",
+			args: []string{"--analyst-a", "analyst-a", path},
+		},
+		{
+			name: "missing positional arg",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-b"},
+		},
+		{
+			name: "same label for both",
+			args: []string{"--analyst-a", "analyst-a", "--analyst-b", "analyst-a", path},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := cmdExtractionGap(&buf, tc.args)
+			if err == nil {
+				t.Fatalf("cmdExtractionGap(%v): want error, got nil", tc.args)
+			}
+		})
+	}
+}
+
+// TestCmdExtractionGap_OutputToFile verifies that --output writes the report
+// to a file rather than stdout, and prints a confirmation to stdout.
+func TestCmdExtractionGap_OutputToFile(t *testing.T) {
+	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+	outFile := filepath.Join(t.TempDir(), "gap.txt")
+
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"--output", outFile,
+		path,
+	})
+	if err != nil {
+		t.Fatalf("cmdExtractionGap(): unexpected error: %v", err)
+	}
+
+	// File must exist and contain the analyst labels.
+	content, readErr := os.ReadFile(outFile)
+	if readErr != nil {
+		t.Fatalf("output file not created: %v", readErr)
+	}
+	for _, want := range []string{"analyst-a", "analyst-b"} {
+		if !strings.Contains(string(content), want) {
+			t.Errorf("output file missing %q", want)
+		}
+	}
+	// Stdout should contain the confirmation message.
+	if !strings.Contains(buf.String(), outFile) {
+		t.Errorf("stdout missing file path confirmation; got: %s", buf.String())
+	}
+}
