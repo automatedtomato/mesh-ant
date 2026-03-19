@@ -311,33 +311,48 @@ func TestCompareExtractions_AllFieldsCompared(t *testing.T) {
 // (ExtractionStage, ExtractedBy, DerivedFrom, CriterionRef, ID) are NOT
 // included in the comparison — they describe the analyst position, not the
 // content of what was extracted.
+//
+// SourceDocRef is a source material field (not provenance) and IS compared.
+// To guard against SourceDocRef being silently reclassified as provenance,
+// this test sets SourceDocRef to different non-empty values and expects
+// exactly one disagreement on "source_doc_ref" — confirming that the content
+// field comparison runs while provenance fields are correctly excluded.
 func TestCompareExtractions_ProvenanceFieldsIgnored(t *testing.T) {
 	draftA := schema.TraceDraft{
 		SourceSpan:      "span-shared",
+		SourceDocRef:    "doc-a", // content field — should produce one disagreement
 		ExtractedBy:     "alice",
 		ID:              "id-a",
 		ExtractionStage: "span-harvest",
 		DerivedFrom:     "parent-a",
 		CriterionRef:    "criterion-a",
-		// All content fields identical.
+		// All other content fields identical.
 		WhatChanged: "same",
 	}
 	draftB := schema.TraceDraft{
 		SourceSpan:      "span-shared",
+		SourceDocRef:    "doc-b", // content field — differs from A
 		ExtractedBy:     "bob",
 		ID:              "id-b",
 		ExtractionStage: "reviewed",
 		DerivedFrom:     "parent-b",
 		CriterionRef:    "criterion-b",
-		// All content fields identical.
+		// All other content fields identical.
 		WhatChanged: "same",
 	}
 
 	gap := loader.CompareExtractions("alice", []schema.TraceDraft{draftA}, "bob", []schema.TraceDraft{draftB})
 
-	if len(gap.Disagreements) != 0 {
-		t.Errorf("Disagreements: want 0 (provenance fields should be ignored), got %d: %v",
+	// Exactly one disagreement expected: source_doc_ref (a content field).
+	// Provenance fields (ID, ExtractionStage, ExtractedBy, DerivedFrom,
+	// CriterionRef) must produce no disagreements.
+	if len(gap.Disagreements) != 1 {
+		t.Errorf("Disagreements: want 1 (source_doc_ref only), got %d: %v",
 			len(gap.Disagreements), gap.Disagreements)
+	}
+	if len(gap.Disagreements) == 1 && gap.Disagreements[0].Field != "source_doc_ref" {
+		t.Errorf("Disagreements[0].Field: want %q, got %q",
+			"source_doc_ref", gap.Disagreements[0].Field)
 	}
 }
 

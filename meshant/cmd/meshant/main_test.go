@@ -3048,8 +3048,10 @@ const twoAnalystDraftsJSON = `[
   {"source_span":"span-only-b","extracted_by":"analyst-b"}
 ]`
 
-// TestCmdExtractionGap_BasicRun verifies that cmdExtractionGap produces output
-// containing the analyst labels when given a valid two-analyst drafts file.
+// TestCmdExtractionGap_BasicRun verifies that cmdExtractionGap produces a
+// complete gap report for a two-analyst drafts file. The fixture encodes a
+// known structure: a shared span with a what_changed disagreement, a span
+// only analyst-a extracted, and a span only analyst-b extracted.
 func TestCmdExtractionGap_BasicRun(t *testing.T) {
 	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
 
@@ -3063,7 +3065,13 @@ func TestCmdExtractionGap_BasicRun(t *testing.T) {
 		t.Fatalf("cmdExtractionGap(): unexpected error: %v", err)
 	}
 	out := buf.String()
-	for _, want := range []string{"analyst-a", "analyst-b"} {
+	// Assert both analyst labels, known span names, and the known disagreement
+	// content — not just label presence, which could pass on a silent writer.
+	for _, want := range []string{
+		"analyst-a", "analyst-b",
+		"span-shared", "span-only-a", "span-only-b",
+		"what_changed", "version from A", "version from B",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("cmdExtractionGap(): output missing %q;\noutput:\n%s", want, out)
 		}
@@ -3071,21 +3079,74 @@ func TestCmdExtractionGap_BasicRun(t *testing.T) {
 }
 
 // TestCmdExtractionGap_MissingAnalystLabel verifies that requesting a label
-// that is not present in the drafts produces an error containing "not found".
+// not present in the drafts produces an error containing "not found", for
+// both the --analyst-a and --analyst-b paths (each has a separate lookupSet
+// call and error return in cmdExtractionGap).
 func TestCmdExtractionGap_MissingAnalystLabel(t *testing.T) {
 	path := writeTempJSONForDraft(t, twoAnalystDraftsJSON)
+
+	cases := []struct {
+		name    string
+		analystA string
+		analystB string
+	}{
+		{
+			name:     "analystB not found",
+			analystA: "analyst-a",
+			analystB: "nonexistent-label",
+		},
+		{
+			name:     "analystA not found",
+			analystA: "nonexistent-label",
+			analystB: "analyst-b",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := cmdExtractionGap(&buf, []string{
+				"--analyst-a", tc.analystA,
+				"--analyst-b", tc.analystB,
+				path,
+			})
+			if err == nil {
+				t.Fatal("cmdExtractionGap(): want non-nil error for missing analyst label, got nil")
+			}
+			if !strings.Contains(err.Error(), "not found") {
+				t.Errorf("cmdExtractionGap(): error should contain 'not found'; got: %v", err)
+			}
+		})
+	}
+}
+
+// TestCmdExtractionGap_BadPath verifies that a nonexistent file path returns
+// a load error, consistent with TestCmdShadow_BadPath and similar tests.
+func TestCmdExtractionGap_BadPath(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdExtractionGap(&buf, []string{
+		"--analyst-a", "analyst-a",
+		"--analyst-b", "analyst-b",
+		"/nonexistent/path/drafts.json",
+	})
+	if err == nil {
+		t.Fatal("cmdExtractionGap(): want error for bad path, got nil")
+	}
+}
+
+// TestCmdExtractionGap_MalformedJSON verifies that malformed JSON input
+// returns a parse error, consistent with TestCmdReview_MalformedJSON and
+// similar tests.
+func TestCmdExtractionGap_MalformedJSON(t *testing.T) {
+	path := writeTempJSONForDraft(t, `[{"source_span": "incomplete"`)
 
 	var buf bytes.Buffer
 	err := cmdExtractionGap(&buf, []string{
 		"--analyst-a", "analyst-a",
-		"--analyst-b", "nonexistent-label",
+		"--analyst-b", "analyst-b",
 		path,
 	})
 	if err == nil {
-		t.Fatal("cmdExtractionGap(): want non-nil error for missing analyst label, got nil")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("cmdExtractionGap(): error should contain 'not found'; got: %v", err)
+		t.Fatal("cmdExtractionGap(): want error for malformed JSON, got nil")
 	}
 }
 
