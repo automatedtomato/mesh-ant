@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-19 (C.3: ClassificationDiff — comparing chain classifications from two analyst positions)
+**Last Updated:** 2026-03-20 (C.4: Multi-analyst example dataset — 10 TraceDraft records across two analyst positions with documented divergences)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -572,6 +572,13 @@ cmd/demo/
 |---------|----------|-------|---------|
 | CVE Critique Skeleton | `data/examples/cve_critique_skeleton.json` | Scaffold | Skeleton output from `meshant rearticulate`: SourceSpan + DerivedFrom set, content fields blank, one record per CVE draft |
 | CVE Critique Drafts | `data/examples/cve_critique_drafts.json` | Reviewed | Filled critique drafts for E3 (resists "attacker" as stable actor) and E14 (reframes CVE as document, not agent); methodological demonstration material |
+
+### Multi-Analyst Ingestion Datasets (C.4)
+
+| Dataset | Location | Stage | Purpose |
+|---------|----------|-------|---------|
+| Multi-Analyst Drafts | `data/examples/multi_analyst_drafts.json` | Output | 10 TraceDraft records from two analyst positions (`analyst-a`, `analyst-b`) over a shared incident scenario; exercises `extraction-gap` and `chain-diff` operations |
+| Multi-Analyst README | `data/examples/multi_analyst_drafts_README.md` | Documentation | Companion guide: scenario description, deliberate divergences between analyst positions, CLI commands to reproduce analysis output |
 
 ### Extraction Prompt Templates
 
