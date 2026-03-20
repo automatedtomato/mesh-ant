@@ -694,14 +694,14 @@ Items identified during review but deferred to future work:
 
 ### Thread F — v2.0.0: LLM-Internal Boundary
 
+Parent issue: #115
 **Full plan:** `tasks/plan_thread_f.md`
 
-**Prerequisite:** Phase 0 — CLI file split (`main.go` ~2010 lines → per-subcommand files; standalone PR before F.0)
-
-- [ ] **F.0 — `SessionRef` on TraceDraft** — add `session_ref` field (schema, draftloader, review/session.go); prerequisite for all F issues
-- [ ] **F.1 — LLM mediator convention** — `docs/decisions/llm-as-mediator-v1.md`; ExtractedBy + UncertaintyNote discipline; `"critiqued"` ExtractionStage; extraction prompt template
-- [ ] **F.2 — `meshant extract`** — new `meshant/llm` package; `LLMClient` interface; `ExtractionConditions`; `SessionRecord`; `RunExtraction`; `cmdExtract`
-- [ ] **F.3 — `meshant assist`** — interactive authoring companion; LLM suggests per span; user confirms/edits/skips; skipped drafts preserved; `RunAssistSession`; per-draft dispositions in SessionRecord
-- [ ] **F.4 — `meshant critique`** — `RunCritique`; `"critiqued"` stage; `filterReviewable` updated; `cmdCritique`
-- [ ] **F.5 — Real-world LLM-assisted extraction example** — `data/examples/llm_assisted_extraction/`; full pipeline documented
-- [ ] **F.6 — Decision record + docs + v2.0.0 release** — `docs/decisions/llm-boundary-v2.md`; codemap; README; v2.0.0 tag
+- [ ] **Phase 0 (#116) — CLI file split** — `main.go` ~2010 lines → per-subcommand files; standalone PR, prerequisite for all F issues
+- [ ] **F.0 (#114) — `SessionRef` on TraceDraft** — add `session_ref` field (schema, draftloader, review/session.go)
+- [ ] **F.1 (#117) — LLM mediator convention** — `docs/decisions/llm-as-mediator-v1.md`; `"critiqued"` ExtractionStage; extraction prompt template
+- [ ] **F.2 (#118) — `meshant extract`** — new `meshant/llm` package; `LLMClient` interface; `ExtractionConditions`; `SessionRecord`; `RunExtraction`; `cmdExtract`
+- [ ] **F.3 (#119) — `meshant assist`** — interactive authoring companion; LLM suggests per span; user confirms/edits/skips; skipped drafts preserved; `RunAssistSession`; per-draft dispositions in SessionRecord
+- [ ] **F.4 (#120) — `meshant critique`** — `RunCritique`; `"critiqued"` stage; `filterReviewable` updated; `cmdCritique`
+- [ ] **F.5 (#121) — Real-world LLM-assisted extraction example** — `data/examples/llm_assisted_extraction/`; full pipeline documented
+- [ ] **F.6 (#122) — Decision record + docs + v2.0.0 release** — `docs/decisions/llm-boundary-v2.md`; codemap; README; v2.0.0 tag
