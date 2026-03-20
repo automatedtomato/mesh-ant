@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-20 (C.4: Multi-analyst example dataset — 10 TraceDraft records across two analyst positions with documented divergences)
+**Last Updated:** 2026-03-20 (Phase 0: split main.go into per-subcommand cmd_*.go files — no behavioral changes)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -261,7 +261,22 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13), `cmdBottleneck` (B.1), `cmdExtractionGap` (C.2), `cmdChainDiff` (C.3), `cmdReview` (A.5) handlers. (~2010 lines — pre-existing size debt, tracked for future per-command file split.) |
+| `main.go` | CLI entry point: `main()`, `run()` dispatcher, `usage()`, and shared helpers (`loadCriterionFile`, `stringSliceFlag`, `parseTimeFlag`, `parseTimeWindow`, `outputWriter`, `confirmOutput`). ~259 lines. |
+| `cmd_summarize.go` | `cmdSummarize` subcommand handler. |
+| `cmd_validate.go` | `cmdValidate` subcommand handler. |
+| `cmd_articulate.go` | `cmdArticulate` subcommand handler (`--narrative` flag). |
+| `cmd_diff.go` | `cmdDiff` subcommand handler. |
+| `cmd_follow.go` | `cmdFollow` subcommand handler (`--criterion-file` flag). |
+| `cmd_draft.go` | `cmdDraft` subcommand handler (M11). |
+| `cmd_promote.go` | `cmdPromote` subcommand handler (M11). |
+| `cmd_rearticulate.go` | `cmdRearticulate` subcommand handler (M12). |
+| `cmd_lineage.go` | `cmdLineage` subcommand handler plus 13 exclusive helpers: `lineageNode`, `lineageResult`, `buildLineage`, `detectCycleDFS`, `idPrefix`, `spanPreview`, `printLineageText`, `printLineageStep`, `lineageJSONChain`, `collectMembers`, `printLineageJSON`, `filterLineageByID`, `chainContainsID` (M12). |
+| `cmd_shadow.go` | `cmdShadow` subcommand handler (M13). |
+| `cmd_gaps.go` | `cmdGaps` subcommand handler (`--suggest` flag, B.2) (M13). |
+| `cmd_bottleneck.go` | `cmdBottleneck` subcommand handler (B.1). |
+| `cmd_review.go` | `cmdReview` subcommand handler — only interactive subcommand; accepts `in io.Reader` (A.5). |
+| `cmd_extraction_gap.go` | `cmdExtractionGap` subcommand handler (C.2). |
+| `cmd_chain_diff.go` | `cmdChainDiff` subcommand handler (C.3). |
 | `main_test.go` | Tests: all subcommands, flag parsing, file output, error handling, criterion file loading, draft/promote pipeline (M11). |
 
 ### Types

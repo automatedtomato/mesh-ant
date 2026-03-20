@@ -697,7 +697,7 @@ Items identified during review but deferred to future work:
 Parent issue: #115
 **Full plan:** `tasks/plan_thread_f.md`
 
-- [ ] **Phase 0 (#116) — CLI file split** — `main.go` ~2010 lines → per-subcommand files; standalone PR, prerequisite for all F issues
+- [x] **Phase 0 (#116) — CLI file split** — `main.go` 2003 → 259 lines; 15 `cmd_*.go` files; PR #123 merged to develop
 - [ ] **F.0 (#114) — `SessionRef` on TraceDraft** — add `session_ref` field (schema, draftloader, review/session.go)
 - [ ] **F.1 (#117) — LLM mediator convention** — `docs/decisions/llm-as-mediator-v1.md`; `"critiqued"` ExtractionStage; extraction prompt template
 - [ ] **F.2 (#118) — `meshant extract`** — new `meshant/llm` package; `LLMClient` interface; `ExtractionConditions`; `SessionRecord`; `RunExtraction`; `cmdExtract`
