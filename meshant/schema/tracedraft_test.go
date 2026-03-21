@@ -329,3 +329,61 @@ func TestTraceDraft_CriterionRef_PresentInJSON(t *testing.T) {
 		t.Errorf("criterion_ref missing from JSON: %s", b)
 	}
 }
+
+// --- SessionRef ---
+
+// TestTraceDraft_SessionRef_JSONRoundtrip verifies that SessionRef survives
+// a marshal/unmarshal cycle intact.
+func TestTraceDraft_SessionRef_JSONRoundtrip(t *testing.T) {
+	d := schema.TraceDraft{SourceSpan: "span", SessionRef: "sess-abc"}
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	var got schema.TraceDraft
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if got.SessionRef != "sess-abc" {
+		t.Errorf("SessionRef roundtrip: want %q, got %q", "sess-abc", got.SessionRef)
+	}
+}
+
+// TestTraceDraft_SessionRef_OmitEmpty verifies that an empty SessionRef is
+// omitted from JSON output (omitempty tag).
+func TestTraceDraft_SessionRef_OmitEmpty(t *testing.T) {
+	d := schema.TraceDraft{SourceSpan: "span"}
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if strings.Contains(string(b), "session_ref") {
+		t.Errorf("session_ref should be omitted when empty; JSON: %s", b)
+	}
+}
+
+// TestTraceDraft_SessionRef_NotTransferredByPromote verifies that SessionRef
+// is a draft-layer provenance field only and is NOT transferred to a
+// canonical Trace by Promote(). SessionRef names the ingestion session, not
+// the analytical content — it has no place in a canonical record.
+func TestTraceDraft_SessionRef_NotTransferredByPromote(t *testing.T) {
+	d := schema.TraceDraft{
+		ID:          "a0000000-0000-4000-8000-000000000099",
+		SourceSpan:  "span",
+		WhatChanged: "something changed",
+		Observer:    "analyst-1",
+		SessionRef:  "sess-xyz",
+	}
+	tr, err := d.Promote()
+	if err != nil {
+		t.Fatalf("Promote(): unexpected error: %v", err)
+	}
+	// Trace has no SessionRef field — verify via JSON that the key is absent.
+	b, err := json.Marshal(tr)
+	if err != nil {
+		t.Fatalf("json.Marshal(Trace): %v", err)
+	}
+	if strings.Contains(string(b), "session_ref") {
+		t.Errorf("session_ref must not appear in promoted Trace JSON; got: %s", b)
+	}
+}

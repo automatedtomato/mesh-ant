@@ -55,6 +55,12 @@ type DraftSummary struct {
 	// they were produced. A non-zero count means some skeletons are self-situated:
 	// their interpretive frame is named, not implicit.
 	WithCriterionRef int
+
+	// WithSessionRef is the number of drafts that carry a non-empty SessionRef —
+	// i.e., that are structurally linked to the ingestion session that produced
+	// them. A non-zero count means extraction conditions are recoverable from
+	// the drafts themselves.
+	WithSessionRef int
 }
 
 // LoadDrafts reads a JSON array of TraceDraft records from path.
@@ -173,6 +179,10 @@ func SummariseDrafts(drafts []schema.TraceDraft) DraftSummary {
 		if d.DerivedFrom != "" {
 			s.FieldFillRate["derived_from"]++
 		}
+		if d.SessionRef != "" {
+			s.FieldFillRate["session_ref"]++
+			s.WithSessionRef++
+		}
 		if len(d.IntentionallyBlank) > 0 {
 			s.WithIntentionallyBlank++
 		}
@@ -224,7 +234,7 @@ func PrintDraftSummary(w io.Writer, s DraftSummary) error {
 	orderedFields := []string{
 		"source_span", "source_doc_ref", "what_changed", "source", "target",
 		"mediation", "observer", "tags", "uncertainty_note",
-		"extraction_stage", "extracted_by", "derived_from",
+		"extraction_stage", "extracted_by", "derived_from", "session_ref",
 	}
 	lines = append(lines, "", fmt.Sprintf("Field fill rates (out of %d):", s.Total))
 	for _, field := range orderedFields {
@@ -236,6 +246,7 @@ func PrintDraftSummary(w io.Writer, s DraftSummary) error {
 		"",
 		fmt.Sprintf("Critique skeletons (intentionally_blank set): %d", s.WithIntentionallyBlank),
 		fmt.Sprintf("Self-situated skeletons (criterion_ref set):  %d", s.WithCriterionRef),
+		fmt.Sprintf("Session-linked drafts (session_ref set):       %d", s.WithSessionRef),
 		"",
 		"---",
 		"Note: empty fields are honest abstentions, not missing data.",
