@@ -150,7 +150,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 **Example pipeline:**
 
 ```bash
-# Step 1: LLM extracts candidate drafts from a source document
+# Step 1: LLM produces candidate drafts from a source document
 meshant extract \
   --source-doc data/examples/llm_assisted_extraction/source_document.md \
   --output raw_drafts.json \
