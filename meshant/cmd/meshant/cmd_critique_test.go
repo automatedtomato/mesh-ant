@@ -298,10 +298,83 @@ func TestCmdCritique_StdoutMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cmdCritique stdout mode: unexpected error: %v", err)
 	}
-	// w should contain a JSON array with at least one draft.
+	// w should contain a valid JSON array with at least one draft.
+	// Unmarshal to verify structure, not just string presence.
+	var jsonStart int
+	rawOutput := w.Bytes()
+	for jsonStart = 0; jsonStart < len(rawOutput); jsonStart++ {
+		if rawOutput[jsonStart] == '[' {
+			break
+		}
+	}
+	if jsonStart >= len(rawOutput) {
+		t.Fatalf("stdout output: want JSON array, got no '[' in output: %q", w.String())
+	}
+	var drafts []schema.TraceDraft
+	if err := json.Unmarshal(rawOutput[jsonStart:], &drafts); err != nil {
+		// The encoder may write the JSON followed by other text; try just the JSON portion.
+		dec := json.NewDecoder(bytes.NewReader(rawOutput[jsonStart:]))
+		if decErr := dec.Decode(&drafts); decErr != nil {
+			t.Fatalf("stdout output: not valid JSON array: %v; output was %q", decErr, w.String())
+		}
+	}
+	if len(drafts) == 0 {
+		t.Errorf("stdout output: want at least one draft in JSON array, got 0")
+	}
+	if drafts[0].SourceSpan == "" {
+		t.Errorf("stdout output: draft[0].SourceSpan must not be empty")
+	}
+}
+
+// TestCmdCritique_IDFilterNotFound verifies that --id with a non-existent
+// draft ID causes cmdCritique to return a non-nil error.
+func TestCmdCritique_IDFilterNotFound(t *testing.T) {
+	d1 := minimalDraft("real-id", "Span A.")
+	inputPath := writeDraftsFile(t, []schema.TraceDraft{d1})
+	promptPath := writeCritiquePromptTemplate(t)
+	outDir := t.TempDir()
+	outPath := filepath.Join(outDir, "out.json")
+
+	client := &critiqueMockClient{}
+	var w bytes.Buffer
+	err := cmdCritique(&w, client, []string{
+		"--input", inputPath,
+		"--prompt-template", promptPath,
+		"--model", "test-model",
+		"--output", outPath,
+		"--id", "nonexistent-id",
+	})
+	if err == nil {
+		t.Fatal("want error when --id does not match any draft, got nil")
+	}
+}
+
+// TestCmdCritique_SessionOutputConfirmation verifies that the session record
+// path is printed to the writer after a successful run.
+func TestCmdCritique_SessionOutputConfirmation(t *testing.T) {
+	orig := minimalDraft("confirm-001", "Confirm span.")
+	inputPath := writeDraftsFile(t, []schema.TraceDraft{orig})
+	promptPath := writeCritiquePromptTemplate(t)
+	outDir := t.TempDir()
+	outPath := filepath.Join(outDir, "out.json")
+	sessPath := filepath.Join(outDir, "session.json")
+
+	response := `{"source_span":"Confirm span.","what_changed":"a condition"}`
+	client := &critiqueMockClient{responses: []string{response}}
+	var w bytes.Buffer
+	err := cmdCritique(&w, client, []string{
+		"--input", inputPath,
+		"--prompt-template", promptPath,
+		"--model", "test-model",
+		"--output", outPath,
+		"--session-output", sessPath,
+	})
+	if err != nil {
+		t.Fatalf("cmdCritique: unexpected error: %v", err)
+	}
 	output := w.String()
-	if !strings.Contains(output, "source_span") {
-		t.Errorf("stdout output: want JSON array containing source_span, got %q", output)
+	if !strings.Contains(output, "wrote session record") {
+		t.Errorf("stdout: want session confirmation message, got %q", output)
 	}
 }
 

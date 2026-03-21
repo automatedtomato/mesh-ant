@@ -89,6 +89,10 @@ func TestRunCritique_HappyPath(t *testing.T) {
 	if d.SourceSpan != orig.SourceSpan {
 		t.Errorf("SourceSpan: want %q, got %q", orig.SourceSpan, d.SourceSpan)
 	}
+	// ID must be a fresh UUID, distinct from the original (not reused).
+	if d.ID == "" || d.ID == orig.ID {
+		t.Errorf("ID: want fresh UUID distinct from %q, got %q", orig.ID, d.ID)
+	}
 
 	// SessionRecord basics.
 	if rec.ID == "" {
@@ -382,6 +386,10 @@ func TestRunCritique_ArrayResponse(t *testing.T) {
 	if drafts[0].ExtractionStage != "critiqued" {
 		t.Errorf("ExtractionStage: want %q, got %q", "critiqued", drafts[0].ExtractionStage)
 	}
+	// SourceSpan must be preserved through the array-parse path.
+	if drafts[0].SourceSpan != orig.SourceSpan {
+		t.Errorf("SourceSpan: want %q, got %q", orig.SourceSpan, drafts[0].SourceSpan)
+	}
 	if rec.DraftCount != 1 {
 		t.Errorf("DraftCount: want 1, got %d", rec.DraftCount)
 	}
@@ -430,7 +438,11 @@ func TestRunCritique_IDFilterNotFound(t *testing.T) {
 	opts := baseCritiqueOpts(t)
 	opts.DraftID = "nonexistent-id"
 
-	_, rec, err := llm.RunCritique(context.Background(), nil, []schema.TraceDraft{d1}, opts)
+	// Use an error client to make intent explicit: the ID guard must fire before
+	// any LLM call. If the guard is ever removed, the error client will panic-
+	// free fail rather than a nil dereference.
+	client := newErrClient(errors.New("should not be called"))
+	_, rec, err := llm.RunCritique(context.Background(), client, []schema.TraceDraft{d1}, opts)
 	if err == nil {
 		t.Fatal("want error when DraftID not found, got nil")
 	}
