@@ -26,7 +26,7 @@ type ExtractionConditions struct {
 	Timestamp          time.Time `json:"timestamp"`
 }
 
-// DraftDisposition records the fate of a single draft within a session.
+// DraftDisposition records the reviewer's decision about a single draft within a session.
 // Used by assist and critique sessions; empty in extract sessions (all
 // drafts from extract are implicitly "accepted" into the output).
 //
