@@ -170,7 +170,7 @@ configuration push.
   "mediation": "routing-table-propagation",
   "observer": "network-operations",
   "tags": [],
-  "uncertainty_note": "The span does not name the agent that initiated the configuration push. 'Configuration push' is treated as a candidate source element; the initiating actor is not attributable from this span.",
+  "uncertainty_note": "The span does not name the initiator of the configuration push. 'Configuration push' is treated as a candidate source element; the initiating actant is not attributable from this span.",
   "intentionally_blank": ["tags"]
 }
 ```

@@ -217,8 +217,11 @@ func TestCmdAssist_QuitOutputsPartialResults(t *testing.T) {
 	}
 }
 
-// TestCmdAssist_LLMError verifies that an LLM error causes cmdAssist to return
-// a non-nil error. The session record is still written even on LLM error.
+// TestCmdAssist_LLMError verifies that when all LLM calls fail, cmdAssist
+// returns a non-nil error (surfaced via rec.ErrorNote != "" in cmdAssist,
+// not via RunAssistSession returning an error — per-span failures accumulate
+// in ErrorNote and do not cause RunAssistSession to return non-nil).
+// The session file must still be on disk even when cmdAssist returns an error.
 func TestCmdAssist_LLMError(t *testing.T) {
 	spansPath := writeAssistSpansFile(t, []string{"error span"})
 	promptPath := writeAssistPromptTemplate(t)
@@ -242,5 +245,64 @@ func TestCmdAssist_LLMError(t *testing.T) {
 	// Session file must still be written (always-write-on-error convention).
 	if _, statErr := os.Stat(sessPath); statErr != nil {
 		t.Errorf("session file not written on LLM error: %v", statErr)
+	}
+}
+
+// TestCmdAssist_MalformedSpansFile verifies that a spans file containing
+// valid bytes but no parseable spans (e.g. only whitespace) returns an error.
+func TestCmdAssist_MalformedSpansFile(t *testing.T) {
+	dir := t.TempDir()
+	spansPath := filepath.Join(dir, "spans.txt")
+	// Whitespace-only content — ParseSpans will reject this.
+	if err := os.WriteFile(spansPath, []byte("   \n\n   \n"), 0o644); err != nil {
+		t.Fatalf("write spans file: %v", err)
+	}
+	promptPath := writeAssistPromptTemplate(t)
+	outPath := filepath.Join(dir, "out.json")
+	sessPath := filepath.Join(dir, "session.json")
+
+	client := &assistMockClientCmd{}
+	var w bytes.Buffer
+	err := cmdAssist(&w, client, strings.NewReader(""), []string{
+		"--spans-file", spansPath,
+		"--prompt-template", promptPath,
+		"--model", "test-model",
+		"--output", outPath,
+		"--session-output", sessPath,
+	})
+	if err == nil {
+		t.Fatal("want error for whitespace-only spans file, got nil")
+	}
+}
+
+// TestCmdAssist_SpansFileSizeCap verifies that a spans file exceeding the
+// 4 MiB cap causes cmdAssist to return an error before any LLM calls.
+func TestCmdAssist_SpansFileSizeCap(t *testing.T) {
+	dir := t.TempDir()
+	spansPath := filepath.Join(dir, "big.txt")
+	// Write 4 MiB + 1 byte of data — just over the cap.
+	data := make([]byte, 4*1024*1024+1)
+	for i := range data {
+		data[i] = 'a'
+	}
+	if err := os.WriteFile(spansPath, data, 0o644); err != nil {
+		t.Fatalf("write spans file: %v", err)
+	}
+	promptPath := writeAssistPromptTemplate(t)
+	outPath := filepath.Join(dir, "out.json")
+
+	client := &assistMockClientCmd{}
+	var w bytes.Buffer
+	err := cmdAssist(&w, client, strings.NewReader(""), []string{
+		"--spans-file", spansPath,
+		"--prompt-template", promptPath,
+		"--model", "test-model",
+		"--output", outPath,
+	})
+	if err == nil {
+		t.Fatal("want error for oversized spans file, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("error should mention 'exceeds', got: %v", err)
 	}
 }

@@ -155,20 +155,41 @@ func RunAssistSession(
 spanLoop:
 	for _, span := range spans {
 		// Call the LLM for this span.
-		rawResponse, err := client.Complete(ctx, systemInstructions, span)
-		if err != nil {
-			// Use span length rather than content in ErrorNote — spans may
-			// contain PII from source documents; the session file is often
-			// written to a shared or version-controlled directory.
-			rec.ErrorNote = fmt.Sprintf("LLM client error on span (len=%d): %v", len(span), err)
-			return nil, rec, fmt.Errorf("llm: assist: complete: %w", err)
+		rawResponse, spanErr := client.Complete(ctx, systemInstructions, span)
+		var llmDraft schema.TraceDraft
+		if spanErr == nil {
+			// Parse the single-draft response.
+			llmDraft, spanErr = parseSingleDraft(rawResponse, opts.ModelID, sessionID, opts.SourceDocRef, now)
 		}
 
-		// Parse the single-draft response.
-		llmDraft, err := parseSingleDraft(rawResponse, opts.ModelID, sessionID, opts.SourceDocRef, now)
-		if err != nil {
-			rec.ErrorNote = fmt.Sprintf("parse draft for span (len=%d): %v", len(span), err)
-			return nil, rec, fmt.Errorf("llm: assist: %w", err)
+		// On LLM error or parse failure: display the error, offer [s]kip / [q]uit.
+		// The session continues rather than terminating — one bad span should not
+		// kill an interactive session over a potentially large span set.
+		// Use span length in the error note (not content) — spans may carry PII.
+		if spanErr != nil {
+			errNotes := append(splitErrNotes(rec.ErrorNote),
+				fmt.Sprintf("span (len=%d): %v", len(span), spanErr))
+			rec.ErrorNote = joinErrNotes(errNotes)
+
+			fmt.Fprintf(out, "\n--- Span ---\n%s\n\nError: %v\n", span, spanErr)
+			fmt.Fprintf(out, "[s]kip span  [q]uit session > ")
+			for {
+				if !scanner.Scan() {
+					break spanLoop
+				}
+				action := strings.TrimSpace(strings.ToLower(scanner.Text()))
+				switch action {
+				case "s":
+					break // inner for — continue spanLoop
+				case "q":
+					break spanLoop
+				default:
+					fmt.Fprintf(out, "unknown action -- enter s or q\n[s]kip span  [q]uit session > ")
+					continue
+				}
+				break
+			}
+			continue
 		}
 
 		// Render the draft and prompt the user.
@@ -258,6 +279,20 @@ spanLoop:
 	}
 
 	return results, rec, nil
+}
+
+// splitErrNotes splits a semicolon-separated ErrorNote string into individual
+// notes. Returns nil for an empty string.
+func splitErrNotes(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "; ")
+}
+
+// joinErrNotes joins individual error notes with "; " for storage in ErrorNote.
+func joinErrNotes(notes []string) string {
+	return strings.Join(notes, "; ")
 }
 
 // parseSingleDraft parses an LLM response expected to contain exactly one

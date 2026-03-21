@@ -14,29 +14,40 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/llm"
 )
 
-// assistMockClient implements llm.LLMClient and returns a preset response
+// assistMockClient implements llm.LLMClient and returns preset responses
 // for each successive Complete call. When calls exceed len(responses), the
 // last entry is repeated so short response lists still work for multi-span
 // sessions.
+//
+// errs, when non-nil, is consulted per-call before responses. If errs[i] is
+// non-nil for call index i, that error is returned. If len(errs) is less than
+// the call index, it defaults to nil (no error). This allows tests to model
+// sessions where some calls succeed and others fail.
 type assistMockClient struct {
 	responses []string
+	errs      []error // per-call errors; nil slice = no errors
 	calls     int
 	err       error // if non-nil, returned on every Complete call
 }
 
 func (m *assistMockClient) Complete(_ context.Context, _, _ string) (string, error) {
+	idx := m.calls
+	m.calls++
+	// Per-call error takes precedence over global err.
+	if idx < len(m.errs) && m.errs[idx] != nil {
+		return "", m.errs[idx]
+	}
 	if m.err != nil {
 		return "", m.err
 	}
 	if len(m.responses) == 0 {
 		return `[{"source_span":"fallback"}]`, nil
 	}
-	idx := m.calls
-	if idx >= len(m.responses) {
-		idx = len(m.responses) - 1
+	ri := idx
+	if ri >= len(m.responses) {
+		ri = len(m.responses) - 1
 	}
-	m.calls++
-	return m.responses[idx], nil
+	return m.responses[ri], nil
 }
 
 // minimalDraft is a JSON object that parseSingleDraft accepts: only source_span
@@ -124,6 +135,31 @@ func TestParseSpans_JSONArrayDropsBlanks(t *testing.T) {
 }
 
 // --- RunAssistSession ---
+
+// TestRunAssistSession_InvalidPromptTemplate verifies that a non-existent
+// prompt template path causes RunAssistSession to return a non-nil error
+// and a well-formed SessionRecord with a non-empty ErrorNote.
+func TestRunAssistSession_InvalidPromptTemplate(t *testing.T) {
+	client := &assistMockClient{}
+	var out bytes.Buffer
+	_, rec, err := llm.RunAssistSession(
+		context.Background(), client, []string{"some span"},
+		llm.AssistOptions{
+			ModelID:            "test-model",
+			PromptTemplatePath: "/nonexistent/prompt.md",
+		},
+		strings.NewReader(""), &out,
+	)
+	if err == nil {
+		t.Fatal("want error for non-existent prompt template, got nil")
+	}
+	if rec.ID == "" {
+		t.Error("SessionRecord.ID must not be empty even on early error")
+	}
+	if rec.ErrorNote == "" {
+		t.Error("SessionRecord.ErrorNote must describe the failure")
+	}
+}
 
 // TestRunAssistSession_NoSpans verifies that an empty spans slice returns
 // 0 drafts, a well-formed SessionRecord, and no error.
@@ -286,25 +322,64 @@ func TestRunAssistSession_SessionRecord(t *testing.T) {
 	}
 }
 
-// TestRunAssistSession_LLMError verifies that an LLM client error is
-// propagated as a returned error and that the SessionRecord still carries
-// a non-empty ID and a non-empty ErrorNote.
+// TestRunAssistSession_LLMError verifies that when the LLM fails on a span,
+// the session displays the error and prompts [s]kip / [q]uit. On user skip,
+// the session continues and returns nil error. The ErrorNote in the
+// SessionRecord records the failure.
 func TestRunAssistSession_LLMError(t *testing.T) {
-	client := &assistMockClient{err: errors.New("network failure")}
+	// First call errors; second call succeeds. User skips the failed span.
+	okJSON := `[{"source_span":"ok-span","what_changed":"something"}]`
+	client := &assistMockClient{
+		errs:      []error{errors.New("network failure")},
+		responses: []string{okJSON},
+	}
 	var out bytes.Buffer
-	_, rec, err := llm.RunAssistSession(
-		context.Background(), client, []string{"span-err"},
+	// "s\n" skips the failed span; "a\n" accepts the second span.
+	drafts, rec, err := llm.RunAssistSession(
+		context.Background(), client, []string{"err-span", "ok-span"},
 		llm.AssistOptions{ModelID: "test-model"},
-		strings.NewReader(""), &out,
+		strings.NewReader("s\na\n"), &out,
 	)
-	if err == nil {
-		t.Fatal("want error from LLM failure, got nil")
+	if err != nil {
+		t.Fatalf("want nil error (session continues past LLM failure), got: %v", err)
+	}
+	// The successful span should produce one draft.
+	if len(drafts) != 1 {
+		t.Fatalf("want 1 draft (ok-span accepted), got %d", len(drafts))
 	}
 	if rec.ID == "" {
-		t.Error("SessionRecord.ID must not be empty even on error")
+		t.Error("SessionRecord.ID must not be empty")
 	}
 	if rec.ErrorNote == "" {
-		t.Error("SessionRecord.ErrorNote must be set on error")
+		t.Error("SessionRecord.ErrorNote must record the LLM failure")
+	}
+}
+
+// TestRunAssistSession_LLMRefusal verifies that an LLM refusal on one span
+// does not terminate the session — the user is prompted to skip or quit, and
+// the session continues to the next span on skip.
+func TestRunAssistSession_LLMRefusal(t *testing.T) {
+	// First call returns a refusal response; second call returns a valid draft.
+	refusalResponse := "I'm sorry, I can't help with that."
+	okJSON := `[{"source_span":"next-span","what_changed":"a condition"}]`
+	client := &assistMockClient{
+		responses: []string{refusalResponse, okJSON},
+	}
+	var out bytes.Buffer
+	// "s\n" skips the refused span; "a\n" accepts the next span.
+	drafts, rec, err := llm.RunAssistSession(
+		context.Background(), client, []string{"refused-span", "next-span"},
+		llm.AssistOptions{ModelID: "test-model"},
+		strings.NewReader("s\na\n"), &out,
+	)
+	if err != nil {
+		t.Fatalf("want nil error (session continues past refusal), got: %v", err)
+	}
+	if len(drafts) != 1 {
+		t.Fatalf("want 1 draft (next-span accepted), got %d", len(drafts))
+	}
+	if rec.ErrorNote == "" {
+		t.Error("SessionRecord.ErrorNote must record the refusal/parse failure")
 	}
 }
 
@@ -490,19 +565,25 @@ func TestRunAssistSession_JSONObjectResponse(t *testing.T) {
 }
 
 // TestRunAssistSession_MalformedLLMResponse verifies that a response with no
-// JSON at all produces an error that is propagated through RunAssistSession.
+// JSON at all does not terminate the session — the parse failure is accumulated
+// in SessionRecord.ErrorNote and the user is offered [s]kip / [q]uit.
+// EOF on the prompt is treated as quit: nil error is returned.
 func TestRunAssistSession_MalformedLLMResponse(t *testing.T) {
 	// Plain text with no JSON structure — no '[' or '{'.
 	plainText := "I cannot help with that request."
 	client := &assistMockClient{responses: []string{plainText}}
 	var out bytes.Buffer
-	_, rec, err := llm.RunAssistSession(
+	// Empty reader → EOF on the s/q prompt → session quits with nil error.
+	drafts, rec, err := llm.RunAssistSession(
 		context.Background(), client, []string{"some span"},
 		llm.AssistOptions{ModelID: "test-model"},
 		strings.NewReader(""), &out,
 	)
-	if err == nil {
-		t.Fatal("want error for malformed LLM response, got nil")
+	if err != nil {
+		t.Fatalf("want nil error (parse failures accumulate in ErrorNote), got: %v", err)
+	}
+	if len(drafts) != 0 {
+		t.Errorf("want 0 drafts (no successful parse), got %d", len(drafts))
 	}
 	if rec.ErrorNote == "" {
 		t.Error("SessionRecord.ErrorNote must be set on parse failure")
@@ -510,19 +591,27 @@ func TestRunAssistSession_MalformedLLMResponse(t *testing.T) {
 }
 
 // TestRunAssistSession_MissingSourceSpan verifies that a draft missing
-// source_span fails validation and produces an error.
+// source_span fails validation without terminating the session. The failure
+// is accumulated in SessionRecord.ErrorNote; nil error is returned on EOF.
 func TestRunAssistSession_MissingSourceSpan(t *testing.T) {
 	// LLM returns a draft with no source_span — schema validation should fail.
 	noSpanJSON := `[{"what_changed":"something happened"}]`
 	client := &assistMockClient{responses: []string{noSpanJSON}}
 	var out bytes.Buffer
-	_, _, err := llm.RunAssistSession(
+	// Empty reader → EOF on the s/q prompt → session quits with nil error.
+	drafts, rec, err := llm.RunAssistSession(
 		context.Background(), client, []string{"some span"},
 		llm.AssistOptions{ModelID: "test-model"},
 		strings.NewReader(""), &out,
 	)
-	if err == nil {
-		t.Fatal("want error when LLM draft is missing source_span, got nil")
+	if err != nil {
+		t.Fatalf("want nil error (validation failures accumulate in ErrorNote), got: %v", err)
+	}
+	if len(drafts) != 0 {
+		t.Errorf("want 0 drafts (no successful parse), got %d", len(drafts))
+	}
+	if rec.ErrorNote == "" {
+		t.Error("SessionRecord.ErrorNote must be set on validation failure")
 	}
 }
 
@@ -573,6 +662,73 @@ func TestRunAssistSession_UnknownActionReprompts(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "unknown") {
 		t.Errorf("output should contain re-prompt message; got:\n%s", out.String())
+	}
+}
+
+// TestRunAssistSession_MultipleErrorsAccumulate verifies that consecutive
+// LLM failures on different spans each append an entry to ErrorNote, producing
+// a semicolon-joined string with two distinct error records.
+// This exercises the splitErrNotes / joinErrNotes accumulation path directly.
+func TestRunAssistSession_MultipleErrorsAccumulate(t *testing.T) {
+	// Both calls fail — two ErrorNote entries should be accumulated.
+	client := &assistMockClient{
+		errs: []error{
+			errors.New("failure on span 1"),
+			errors.New("failure on span 2"),
+		},
+	}
+	var out bytes.Buffer
+	// Skip both failed spans, then EOF ends the session.
+	_, rec, err := llm.RunAssistSession(
+		context.Background(), client, []string{"span-1", "span-2"},
+		llm.AssistOptions{ModelID: "test-model"},
+		strings.NewReader("s\ns\n"), &out,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// ErrorNote should contain both failure messages.
+	if !strings.Contains(rec.ErrorNote, "failure on span 1") {
+		t.Errorf("ErrorNote: expected first failure, got %q", rec.ErrorNote)
+	}
+	if !strings.Contains(rec.ErrorNote, "failure on span 2") {
+		t.Errorf("ErrorNote: expected second failure, got %q", rec.ErrorNote)
+	}
+	// The two entries should be separated by "; ".
+	if !strings.Contains(rec.ErrorNote, "; ") {
+		t.Errorf("ErrorNote: expected semicolon separator between entries, got %q", rec.ErrorNote)
+	}
+}
+
+// TestRunAssistSession_QuitOnErrorPrompt verifies that typing "q" on the
+// [s]kip / [q]uit error prompt terminates the session without processing
+// further spans.
+func TestRunAssistSession_QuitOnErrorPrompt(t *testing.T) {
+	okJSON := `[{"source_span":"second-span","what_changed":"something"}]`
+	client := &assistMockClient{
+		errs:      []error{errors.New("network failure")},
+		responses: []string{okJSON},
+	}
+	var out bytes.Buffer
+	// "q\n" on the error prompt: session terminates before processing second span.
+	drafts, rec, err := llm.RunAssistSession(
+		context.Background(), client, []string{"err-span", "second-span"},
+		llm.AssistOptions{ModelID: "test-model"},
+		strings.NewReader("q\n"), &out,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// No drafts — session quit before any success.
+	if len(drafts) != 0 {
+		t.Errorf("want 0 drafts after quit on error prompt, got %d", len(drafts))
+	}
+	// The LLM was only called once (the second span was never reached).
+	if client.calls != 1 {
+		t.Errorf("want 1 LLM call (second span not reached), got %d", client.calls)
+	}
+	if rec.ErrorNote == "" {
+		t.Error("SessionRecord.ErrorNote must record the failure from span 1")
 	}
 }
 

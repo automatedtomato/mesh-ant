@@ -141,6 +141,10 @@ func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) e
 	// error: the provenance record is lost.
 	sessionWriteErr := writeSessionRecord(sessionOutputPath, rec)
 	if err != nil {
+		// RunAssistSession only returns non-nil here if RunEditFlow or
+		// review.DeriveEdited fails — both require loader.NewUUID to fail,
+		// which requires OS-level entropy failure. There is no injection
+		// point at the CLI level to trigger this path in unit tests.
 		// Primary session error takes precedence; demote session-write failure
 		// to a warning so the session error is not masked.
 		if sessionWriteErr != nil {
@@ -178,8 +182,17 @@ func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) e
 	if err := confirmOutput(w, outputPath); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(w, "wrote session record to %s\n", sessionOutputPath)
-	return err
+	if _, err = fmt.Fprintf(w, "wrote session record to %s\n", sessionOutputPath); err != nil {
+		return err
+	}
+
+	// Surface per-span errors after writing all output. The session record and
+	// drafts are already persisted — callers can inspect them for details.
+	// This ensures the command exit code reflects that some spans failed.
+	if rec.ErrorNote != "" {
+		return fmt.Errorf("assist: session completed with span errors: %s", rec.ErrorNote)
+	}
+	return nil
 }
 
 // readSpansFile opens the spans file at path and reads up to maxSpansBytes.
