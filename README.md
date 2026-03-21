@@ -121,6 +121,66 @@ go run ./cmd/demo /path/to/dataset.json
 The `meshant` CLI binary is also available — see the [CLI](#cli) section below for
 `articulate`, `diff`, and other commands.
 
+## v2.0.0 — LLM-Assisted Ingestion
+
+v2.0.0 moves the LLM boundary inside the CLI. Three new subcommands call the LLM directly:
+
+- **`meshant extract`** — takes a source document, calls the LLM once, produces `weak-draft`
+  TraceDraft records with full provenance (`extracted_by`, `session_ref`, `uncertainty_note`).
+- **`meshant assist`** — interactive session: presents each source span to the user, calls the
+  LLM for a candidate draft, asks the user to accept / edit / skip. Skipped and accepted drafts
+  are both preserved — shadow is not absence.
+- **`meshant critique`** — takes existing TraceDraft records, calls the LLM to produce
+  `critiqued` derived drafts with `derived_from` links to the originals.
+
+The LLM is a **mediator**, not an extractor. Every LLM-produced draft carries the model ID
+(`extracted_by`), a session link (`session_ref` → `SessionRecord`), and a framework-appended
+uncertainty note. No LLM draft enters the mesh without a named analytical position.
+
+A `SessionRecord` is written on every code path — success, partial, and error. It records the
+extraction conditions (model ID, prompt template, source document reference, system
+instructions, timestamp) alongside every draft ID produced.
+
+**API key setup:**
+
+```bash
+export MESHANT_LLM_API_KEY=sk-ant-...   # or ANTHROPIC_API_KEY as fallback
+```
+
+**Example pipeline:**
+
+```bash
+# Step 1: LLM produces candidate drafts from a source document
+meshant extract \
+  --source-doc data/examples/llm_assisted_extraction/source_document.md \
+  --output raw_drafts.json \
+  --session-output session.json
+
+# Step 2: Interactive human review — accept, edit, or skip each draft
+meshant assist \
+  --spans-file spans.txt \
+  --output reviewed_drafts.json
+
+# Step 3: LLM critiques existing drafts — produces derived re-articulations
+meshant critique \
+  --input reviewed_drafts.json \
+  --output critiqued_drafts.json
+
+# Step 4: Promote reviewed drafts to canonical traces
+meshant promote --output traces.json reviewed_drafts.json
+
+# Step 5: Articulate from a named observer position
+meshant articulate --observer registry-security-team --format json traces.json
+```
+
+See `data/examples/llm_assisted_extraction/` for a complete worked example with provenance
+analysis and documented analytical divergences between the LLM's reading and a human reviewer's.
+
+See `docs/decisions/llm-as-mediator-v1.md` and `docs/decisions/llm-boundary-v2.md` for
+the design decisions governing this boundary.
+
+---
+
 ## CLI
 
 Install the binary:
@@ -163,6 +223,30 @@ meshant draft       [--source-doc <ref>] [--extracted-by <label>] [--stage <stag
 meshant promote     [--output <file>] drafts.json
 meshant rearticulate [--id <id>] [--criterion-file <path>] [--output <file>] drafts.json
 meshant lineage     [--id <id>] [--format text|json] drafts.json
+```
+
+**LLM-assisted ingestion (v2.0.0)**
+
+Requires `MESHANT_LLM_API_KEY` (or `ANTHROPIC_API_KEY` as fallback) set in the environment.
+
+```
+meshant extract     --source-doc <path> [--source-doc-ref <ref>] [--prompt-template <path>] [--model <id>] [--criterion-file <path>] [--output <file>] [--session-output <file>]
+meshant assist      --spans-file <path> [--prompt-template <path>] [--model <id>] [--source-doc-ref <ref>] [--criterion-file <path>] [--output <file>] [--session-output <file>]
+meshant critique    --input <path> [--prompt-template <path>] [--model <id>] [--source-doc-ref <ref>] [--criterion-file <path>] [--id <id>] [--output <file>] [--session-output <file>]
+```
+
+**Interactive review**
+
+```
+meshant review      [--output <file>] drafts.json
+meshant bottleneck  [--observer <pos>] [--tag <t>] [--from RFC3339] [--to RFC3339] [--output <file>] traces.json
+```
+
+**Multi-analyst comparison**
+
+```
+meshant extraction-gap  --analyst-a <label> --analyst-b <label> [--output <file>] drafts.json
+meshant chain-diff      --analyst-a <label> --analyst-b <label> --span <source_span> [--output <file>] drafts.json
 ```
 
 ### Example

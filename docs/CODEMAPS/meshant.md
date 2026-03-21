@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-21 (F.3: `meshant assist`; F.4: `meshant critique` — RunCritique, parseCritiqueDraft, CritiqueOptions; filterReviewable extended to "critiqued")
+**Last Updated:** 2026-03-22 (F.5: `data/examples/llm_assisted_extraction/` + provenance validation tests; F.6: `docs/decisions/llm-boundary-v2.md`, README v2.0.0 section, v2.0.0 tag)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -724,6 +724,7 @@ cmd/demo/
 - `docs/decisions/shadow-analysis-v1.md` — Shadow as cut decision, ObserverGap composability, FollowDraftChain design, CriterionRef as citation metadata, DraftStepKind v1 heuristics, shadow/gaps CLI-first design (M13)
 - `docs/decisions/interactive-review-v1.md` — Interactive review CLI design: session as cut, render-as-string, ExtractedBy sameness, provenance/content partition, stdin/stderr separation, main.go size debt (Thread A)
 - `docs/decisions/llm-as-mediator-v1.md` — 7 conventions for LLM participation in the ingestion pipeline: mediator framing, model ID strings, framework-imposed UncertaintyNote, ExtractionStage values (incl. "critiqued"), SessionRecord mandate, IntentionallyBlank requirement; 3 named ANT tensions (F.1)
+- `docs/decisions/llm-boundary-v2.md` — 9 implementation decisions for Thread F: llm package boundary, LLMClient interface, SessionRecord mandate, "critiqued" semantics, span splitting deferred, API key from env, no retry, main.go file split, no ExtractionCut type; 5 named ANT tensions; deferred items (F.6)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 
