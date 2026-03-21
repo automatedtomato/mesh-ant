@@ -24,29 +24,13 @@ const defaultExtractModel = "claude-sonnet-4-6"
 
 // cmdExtract implements the "extract" subcommand.
 //
-// It calls the LLM to produce TraceDraft records from a source document,
-// then writes two outputs:
-//  1. TraceDraft JSON array to --output (or stdout)
-//  2. SessionRecord JSON to --session-output (see defaulting rules below)
+// Calls the LLM to produce TraceDraft records from a source document. Writes
+// TraceDraft JSON to --output (or stdout) and a SessionRecord to
+// --session-output (defaults: <output>.session.json for file output, or
+// session_<timestamp>.json in cwd for stdout output).
 //
-// The LLM client is injected via the client parameter. When client is nil,
-// cmdExtract constructs a real AnthropicClient from the environment (reading
-// MESHANT_LLM_API_KEY or ANTHROPIC_API_KEY). Tests pass a mock client so the
-// extraction pipeline is exercised without live API calls.
-//
-// Session output defaulting:
-//   - if --session-output is provided: write to that path
-//   - if --output is a file: write to <output>.session.json
-//   - if output is stdout: write to session_<compact-ISO8601-timestamp>.json in cwd
-//
-// Flags:
-//   - --source-doc <path>         path to source document (required)
-//   - --source-doc-ref <ref>      document reference string for provenance (defaults to --source-doc path)
-//   - --prompt-template <path>    path to extraction prompt template (default: data/prompts/extraction_pass.md)
-//   - --model <id>                LLM model ID (default: claude-sonnet-4-6)
-//   - --criterion-file <path>     optional criterion JSON file (CriterionRef provenance)
-//   - --output <file>             write TraceDraft JSON to file (default: stdout)
-//   - --session-output <file>     write SessionRecord JSON to file (see defaulting above)
+// client may be nil; a real AnthropicClient is then constructed from env vars.
+// Tests inject a mock client.
 func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 	fs := flag.NewFlagSet("extract", flag.ContinueOnError)
 
@@ -79,14 +63,11 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 		return fmt.Errorf("extract: --source-doc is required\n\nUsage: meshant extract --source-doc <path> [--source-doc-ref <ref>] [--prompt-template <path>] [--model <id>] [--criterion-file <path>] [--output <file>] [--session-output <file>]")
 	}
 
-	// sourceDocRef defaults to the source document path when not provided.
 	if sourceDocRef == "" {
 		sourceDocRef = sourceDoc
 	}
 
-	// Derive sessionOutputPath from outputPath when not explicitly provided.
-	// For a file output, use <output>.session.json.
-	// For stdout, use session_<timestamp>.json in the current directory.
+	// Default session output path when not explicitly provided.
 	if sessionOutputPath == "" {
 		if outputPath != "" {
 			sessionOutputPath = outputPath + ".session.json"
@@ -95,7 +76,6 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 		}
 	}
 
-	// Resolve criterion reference string from optional --criterion-file.
 	var criterionRef string
 	if criterionFile != "" {
 		c, err := loadCriterionFile(criterionFile)
@@ -105,7 +85,6 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 		criterionRef = c.Name
 	}
 
-	// Construct real LLM client from environment when none is injected.
 	if client == nil {
 		c, err := llm.NewAnthropicClient(modelID)
 		if err != nil {
@@ -126,9 +105,9 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 	drafts, rec, err := llm.RunExtraction(context.Background(), client, opts)
 
 	// Always write the SessionRecord before returning — even on extraction error.
-	// The session record carries ErrorNote so failures are inspectable from disk
-	// without re-running. When the extraction succeeded but the session write
-	// fails, that is a hard error: the provenance record is lost.
+	// The session record carries ErrorNote so failures are inspectable from disk.
+	// A session-write failure after a successful extraction is a hard error:
+	// the provenance record is lost.
 	sessionWriteErr := writeSessionRecord(sessionOutputPath, rec)
 	if err != nil {
 		// Primary extraction error takes precedence; demote session-write failure
@@ -143,7 +122,6 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 		return fmt.Errorf("extract: write session record: %w", sessionWriteErr)
 	}
 
-	// Write TraceDraft JSON array to output destination.
 	dest, err := outputWriter(w, outputPath)
 	if err != nil {
 		return fmt.Errorf("extract: %w", err)
@@ -158,14 +136,12 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 		return fmt.Errorf("extract: encode output: %w", err)
 	}
 
-	// Print a provenance summary to w (always stdout) — never to the output
-	// file. This mirrors cmdDraft's behaviour.
+	// Print provenance summary to w (stdout), never to the output file.
 	summary := loader.SummariseDrafts(drafts)
 	if err := loader.PrintDraftSummary(w, summary); err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}
 
-	// Confirm file output paths.
 	if err := confirmOutput(w, outputPath); err != nil {
 		return err
 	}
@@ -174,9 +150,8 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 }
 
 // writeSessionRecord serialises rec as indented JSON to path.
-// It encodes to a buffer before creating the file so that a serialisation
-// failure does not leave an empty or truncated file on disk.
-// Shared by cmdExtract, cmdAssist, and cmdCritique.
+// Encodes to a buffer before creating the file to avoid leaving a partial file
+// on serialisation error. Shared by cmdExtract, cmdAssist, and cmdCritique.
 func writeSessionRecord(path string, rec llm.SessionRecord) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

@@ -1,31 +1,11 @@
 // Package main is the meshant CLI entry point.
 //
-// It provides subcommands for trace-first network analysis:
-//   - summarize:  load traces from a JSON file and print a mesh summary
-//   - validate:   load and validate all traces, reporting success or error
-//   - articulate: articulate an observer-situated graph from traces
-//   - diff:       diff two observer-situated articulations of the same trace set
-//   - follow:     follow a translation chain through an articulated graph
-//   - draft:      ingest LLM extraction JSON and produce TraceDraft records
-//   - promote:    promote TraceDraft records to canonical Traces
-//   - rearticulate:  produce a blank critique skeleton for each draft (M12)
-//   - lineage:       walk DerivedFrom links and print chains (M12)
-//   - bottleneck:      identify provisionally central elements from an articulation (B.1)
-//   - review:          interactively accept/edit/skip weak-draft records (A.5)
-//   - extraction-gap:  compare extraction positions across a shared draft set (C.2)
-//   - chain-diff:      compare derivation-chain classifications across two analyst positions (C.3)
-//   - extract:         call an LLM to produce TraceDraft records from a source document (F.2)
-//   - assist:          interactively refine span text into TraceDraft records with LLM assistance (F.3)
-//   - critique:        call an LLM to produce "critiqued" derived drafts from existing TraceDrafts (F.4)
-//
-// The testable logic lives in run() and each cmd* function. main() itself is
-// a thin wrapper that wires os.Stdout and os.Args, then exits non-zero on
-// error — a pattern that makes every meaningful path independently testable
-// without I/O redirection.
-//
 // Subcommand implementations live in cmd_*.go files within this package.
 // Shared helpers (loadCriterionFile, stringSliceFlag, parseTimeWindow, etc.)
 // are defined here and available to all subcommand files in package main.
+//
+// main() is a thin wrapper that wires os.Stdout and os.Args, then exits
+// non-zero on error. Testable logic lives in run() and each cmd* function.
 //
 // Usage:
 //
@@ -48,20 +28,10 @@ import (
 // loadCriterionFile. 1 MiB is generous for a human-authored declaration.
 const maxCriterionBytes = 1 * 1024 * 1024
 
-// loadCriterionFile reads a JSON file at path and decodes it into an
-// EquivalenceCriterion. Four failure modes, each a distinct error:
-//  1. File cannot be opened (non-existent, permissions)
-//  2. File contains invalid JSON or a field not in EquivalenceCriterion
-//     (DisallowUnknownFields — precision over forward-compatibility
-//     tolerance for an interpretive declaration)
-//  3. Decoded criterion is zero-value — no interpretive content
-//     (hard error: silent fallback not acceptable when --criterion-file
-//     was explicitly provided)
-//  4. Layer ordering violation: Preserve or Ignore without Declaration
-//
-// Reads are capped at maxCriterionBytes. A file exceeding that cap is
-// truncated at the I/O boundary and produces a "malformed JSON" error
-// (unexpected EOF), not a distinct "file too large" error.
+// loadCriterionFile reads and decodes a JSON EquivalenceCriterion from path.
+// Fails if the file is unreadable, contains unknown fields (DisallowUnknownFields
+// — precision matters for an interpretive declaration), decodes to zero-value,
+// or has a layer ordering violation. Reads are capped at maxCriterionBytes.
 func loadCriterionFile(path string) (graph.EquivalenceCriterion, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -92,18 +62,15 @@ func loadCriterionFile(path string) (graph.EquivalenceCriterion, error) {
 	return c, nil
 }
 
-// stringSliceFlag is a custom flag.Value that accumulates string values on
-// each Set() call. This enables repeatable flags like --observer a --observer b,
-// which is more ergonomic than a single comma-separated value for names that
-// may themselves contain commas.
+// stringSliceFlag is a custom flag.Value that accumulates values on each Set()
+// call, enabling repeatable flags like --observer a --observer b.
 type stringSliceFlag []string
 
-// String returns the accumulated values joined by commas. Required by flag.Value.
+// String returns accumulated values joined by commas. Required by flag.Value.
 func (f *stringSliceFlag) String() string { return strings.Join(*f, ",") }
 
-// Set appends a new non-empty value to the slice. Required by flag.Value.
-// Returns an error if v is empty or blank so that --observer "" is rejected
-// early rather than silently producing an empty-observer articulation.
+// Set appends v to the slice. Rejects blank values so --observer "" is caught
+// early rather than producing an empty-observer articulation. Required by flag.Value.
 func (f *stringSliceFlag) Set(v string) error {
 	if strings.TrimSpace(v) == "" {
 		return errors.New("value must not be empty")
@@ -112,10 +79,8 @@ func (f *stringSliceFlag) Set(v string) error {
 	return nil
 }
 
-// parseTimeFlag parses an RFC3339 timestamp string for a named flag.
-// Returns a clear error message with the flag name and a formatting hint
-// so users understand exactly what format is expected. The underlying parse
-// error is wrapped so callers can inspect it with errors.Is/errors.As.
+// parseTimeFlag parses an RFC3339 timestamp for a named flag, returning a
+// user-readable error with a formatting hint on failure.
 func parseTimeFlag(name, value string) (time.Time, error) {
 	t, err := time.Parse(time.RFC3339, value)
 	if err != nil {
@@ -125,9 +90,8 @@ func parseTimeFlag(name, value string) (time.Time, error) {
 }
 
 // parseTimeWindow parses a pair of RFC3339 strings into a graph.TimeWindow.
-// fromName/toName are the flag names used in error messages.
-// Either string may be empty (half-open window). Both ends are validated
-// together only when both are non-zero.
+// Either end may be empty (half-open window). Both ends are validated only
+// when both are non-zero.
 func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error) {
 	var tw graph.TimeWindow
 	if fromStr != "" {
@@ -144,8 +108,7 @@ func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow,
 		}
 		tw.End = t
 	}
-	// Validate only when both bounds are set; a half-open window is valid
-	// (e.g. --from only means "from this point onward").
+	// Validate only when both bounds are set; a half-open window is valid.
 	if !tw.Start.IsZero() && !tw.End.IsZero() {
 		if err := tw.Validate(); err != nil {
 			return graph.TimeWindow{}, err
@@ -154,10 +117,8 @@ func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow,
 	return tw, nil
 }
 
-// outputWriter returns the destination writer for command output.
-// If outputPath is empty, it returns w (stdout). Otherwise it creates the
-// file at outputPath and returns the *os.File. The caller must call
-// closeAndConfirm after writing to handle file closing and confirmation.
+// outputWriter returns w when outputPath is empty, or creates and returns
+// a file at outputPath. The caller is responsible for closing the file.
 func outputWriter(w io.Writer, outputPath string) (io.Writer, error) {
 	if outputPath == "" {
 		return w, nil
@@ -169,9 +130,8 @@ func outputWriter(w io.Writer, outputPath string) (io.Writer, error) {
 	return f, nil
 }
 
-// confirmOutput writes a confirmation message to stdout (w) when output was
-// written to a file. If outputPath is empty (stdout mode), this is a no-op.
-// File closing is handled by the caller's deferred Close.
+// confirmOutput prints a "wrote <path>" message to w when outputPath is set.
+// No-op when output goes to stdout.
 func confirmOutput(w io.Writer, outputPath string) error {
 	if outputPath == "" {
 		return nil
@@ -187,10 +147,8 @@ func main() {
 	}
 }
 
-// run is the testable entry point for the CLI. w receives all output.
-// It dispatches to the appropriate subcommand handler based on args[0].
-// Returns an error if no arguments are provided, if the subcommand is
-// unknown, or if the subcommand handler itself returns an error.
+// run is the testable CLI entry point; dispatches to the appropriate
+// subcommand handler based on args[0].
 func run(w io.Writer, args []string) error {
 	if len(args) == 0 {
 		return errors.New(usage())
@@ -225,31 +183,26 @@ func run(w io.Writer, args []string) error {
 	case "chain-diff":
 		return cmdChainDiff(w, args[1:])
 	case "review":
-		// cmdReview receives os.Stdin so the interactive prompts can read from
-		// the terminal. The extra in parameter keeps the session testable
-		// without a real terminal — tests pass a strings.Reader instead.
+		// os.Stdin is passed so interactive prompts can read from the terminal;
+		// tests inject a strings.Reader instead.
 		return cmdReview(w, os.Stdin, args[1:])
 	case "extract":
-		// cmdExtract receives a nil client so the real AnthropicClient is
-		// constructed from env vars at runtime. Tests inject a mock client.
+		// nil client: real AnthropicClient is constructed from env at runtime;
+		// tests inject a mock.
 		return cmdExtract(w, nil, args[1:])
 	case "assist":
-		// cmdAssist receives a nil client (real AnthropicClient from env) and
-		// os.Stdin so the interactive prompts can read from the terminal. The
-		// extra in parameter keeps the session testable without a real terminal.
+		// nil client + os.Stdin: real client from env, interactive input from
+		// terminal; tests inject mock client and strings.Reader.
 		return cmdAssist(w, nil, os.Stdin, args[1:])
 	case "critique":
-		// cmdCritique receives a nil client so the real AnthropicClient is
-		// constructed from env vars at runtime. Tests inject a mock client.
+		// nil client: real AnthropicClient from env; tests inject a mock.
 		return cmdCritique(w, nil, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
 }
 
-// usage returns the CLI usage text as a string. Keeping it as a pure
-// string-returning function allows it to be embedded in error messages
-// without going through an io.Writer, which simplifies error construction.
+// usage returns the CLI usage text, suitable for embedding in error messages.
 func usage() string {
 	return `meshant — trace-first network analysis
 

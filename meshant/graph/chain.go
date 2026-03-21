@@ -107,7 +107,6 @@ type TranslationChain struct {
 //
 // The returned chain carries g.Cut so the chain is self-situated.
 func FollowTranslation(g MeshGraph, from string, opts FollowOptions) TranslationChain {
-	// Resolve default direction.
 	dir := opts.Direction
 	if dir == "" {
 		dir = DirectionForward
@@ -118,7 +117,6 @@ func FollowTranslation(g MeshGraph, from string, opts FollowOptions) Translation
 		Cut:          g.Cut,
 	}
 
-	// Check that the start element exists in the graph.
 	if _, ok := g.Nodes[from]; !ok {
 		chain.Breaks = append(chain.Breaks, ChainBreak{
 			AtElement: from,
@@ -127,8 +125,7 @@ func FollowTranslation(g MeshGraph, from string, opts FollowOptions) Translation
 		return chain
 	}
 
-	// Build adjacency: for forward, index edges by each source element;
-	// for backward, index edges by each target element.
+	// Build adjacency: forward = index by source; backward = index by target.
 	type adjacencyEntry struct {
 		edgeIdx int
 		target  string // the element we'd enter (target for forward, source for backward)
@@ -151,12 +148,10 @@ func FollowTranslation(g MeshGraph, from string, opts FollowOptions) Translation
 		}
 	}
 
-	// Walk the chain.
 	visited := map[string]bool{from: true}
 	current := from
 
 	for {
-		// Check depth limit.
 		if opts.MaxDepth > 0 && len(chain.Steps) >= opts.MaxDepth {
 			chain.Breaks = append(chain.Breaks, ChainBreak{
 				AtElement: current,

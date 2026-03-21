@@ -42,42 +42,17 @@ import (
 const maxEdgeLabel = 28
 
 // PrintGraphJSON writes g as indented JSON to w.
-//
-// The output is a complete, self-contained JSON object that can be stored,
-// transmitted, or re-ingested by any JSON consumer. Indentation uses two spaces
-// per level ("  ") for readability and diff-friendliness.
-//
-// TimeWindow bounds follow the M7 null convention defined in serial.go: a zero
-// Start or End is serialised as JSON null rather than the RFC3339 zero-time
-// string "0001-01-01T00:00:00Z". This makes unbounded windows unambiguous.
-//
-// The caller is responsible for any surrounding JSON structure (e.g. wrapping
-// the object in an array or adding envelope fields). PrintGraphJSON writes only
-// the MeshGraph object itself.
-//
-// Returns any write error from w. MeshGraph contains only JSON-safe types
-// (strings, ints, slices, maps, and time.Time via a custom marshaler that always
-// succeeds), so json.MarshalIndent will not fail for a well-formed MeshGraph.
+// TimeWindow bounds follow the M7 null convention (serial.go): zero = JSON null.
+// Returns any write error. json.MarshalIndent cannot fail for a well-formed MeshGraph.
 func PrintGraphJSON(w io.Writer, g MeshGraph) error {
-	// MarshalIndent cannot fail for MeshGraph: all fields are basic types or
-	// time.Time via a custom codec that always succeeds. The error return from
-	// MarshalIndent is intentionally ignored here; only write errors are returned.
-	data, _ := json.MarshalIndent(g, "", "  ")
+	data, _ := json.MarshalIndent(g, "", "  ") // cannot fail for MeshGraph
 	_, err := w.Write(data)
 	return err
 }
 
-// PrintDiffJSON writes d as indented JSON to w.
-//
-// The output follows the same conventions as PrintGraphJSON: two-space
-// indentation, TimeWindow null convention for zero bounds, and no surrounding
-// envelope. The caller is responsible for any wrapping structure.
-//
-// Returns any write error from w. GraphDiff contains only JSON-safe types,
-// so json.MarshalIndent will not fail for a well-formed GraphDiff.
+// PrintDiffJSON writes d as indented JSON to w. Same conventions as PrintGraphJSON.
 func PrintDiffJSON(w io.Writer, d GraphDiff) error {
-	// MarshalIndent cannot fail for GraphDiff — see PrintGraphJSON for rationale.
-	data, _ := json.MarshalIndent(d, "", "  ")
+	data, _ := json.MarshalIndent(d, "", "  ") // cannot fail for GraphDiff
 	_, err := w.Write(data)
 	return err
 }
@@ -101,21 +76,17 @@ func PrintDiffJSON(w io.Writer, d GraphDiff) error {
 func PrintGraphDOT(w io.Writer, g MeshGraph) error {
 	var b strings.Builder
 
-	// Metadata comment: name the articulation position.
 	b.WriteString("// ")
 	b.WriteString(dotCutComment(g.Cut))
 	b.WriteString("\ndigraph {\n")
 	b.WriteString("  rankdir=TB\n")
 	b.WriteString("  node [shape=box]\n")
 
-	// Sort node names for deterministic output.
-	names := make([]string, 0, len(g.Nodes))
+	names := make([]string, 0, len(g.Nodes)) // sorted for deterministic output
 	for name := range g.Nodes {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-
-	// Emit nodes with appearance count label.
 	for _, name := range names {
 		node := g.Nodes[name]
 		fmt.Fprintf(&b, "  %s [label=%s]\n",
@@ -124,7 +95,6 @@ func PrintGraphDOT(w io.Writer, g MeshGraph) error {
 		)
 	}
 
-	// Emit edges as Cartesian product of sources × targets.
 	for _, edge := range g.Edges {
 		label := dotQuote(truncateLabel(edge.WhatChanged))
 		for _, src := range edge.Sources {
@@ -135,9 +105,6 @@ func PrintGraphDOT(w io.Writer, g MeshGraph) error {
 		}
 	}
 
-	// Shadow subgraph — only emitted if there are shadow elements.
-	// Invisible edges chain consecutive shadow nodes vertically so they
-	// don't all land on a single wide rank.
 	if len(g.Cut.ShadowElements) > 0 {
 		b.WriteString("  subgraph cluster_shadow {\n")
 		b.WriteString("    label=\"shadow\"\n")
@@ -146,8 +113,7 @@ func PrintGraphDOT(w io.Writer, g MeshGraph) error {
 		for _, se := range g.Cut.ShadowElements {
 			fmt.Fprintf(&b, "    %s [style=dashed, color=grey]\n", dotQuote(se.Name))
 		}
-		// Chain invisible edges to force vertical layout.
-		for i := 1; i < len(g.Cut.ShadowElements); i++ {
+		for i := 1; i < len(g.Cut.ShadowElements); i++ { // invisible edges force vertical layout
 			fmt.Fprintf(&b, "    %s -> %s [style=invis]\n",
 				dotQuote(g.Cut.ShadowElements[i-1].Name),
 				dotQuote(g.Cut.ShadowElements[i].Name))
@@ -178,24 +144,18 @@ func PrintGraphDOT(w io.Writer, g MeshGraph) error {
 func PrintGraphMermaid(w io.Writer, g MeshGraph) error {
 	var b strings.Builder
 
-	// Metadata comment.
 	b.WriteString("%% ")
 	b.WriteString(dotCutComment(g.Cut))
 	b.WriteString("\nflowchart TD\n")
 
-	// Build a sanitized-ID map for all names that appear in nodes or edges.
-	// This ensures edges referencing elements not in g.Nodes still get valid IDs.
 	allNames := collectAllNames(g)
 	idMap := buildMermaidIDMap(allNames)
 
-	// Sort node names for deterministic output.
 	names := make([]string, 0, len(g.Nodes))
 	for name := range g.Nodes {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-
-	// Emit node declarations with sanitized IDs and original labels.
 	for _, name := range names {
 		node := g.Nodes[name]
 		fmt.Fprintf(&b, "  %s[\"%s (%d)\"]\n",
@@ -205,7 +165,6 @@ func PrintGraphMermaid(w io.Writer, g MeshGraph) error {
 		)
 	}
 
-	// Emit edges as Cartesian product of sources × targets.
 	for _, edge := range g.Edges {
 		label := mermaidLabel(truncateLabel(edge.WhatChanged))
 		for _, src := range edge.Sources {
@@ -216,14 +175,12 @@ func PrintGraphMermaid(w io.Writer, g MeshGraph) error {
 		}
 	}
 
-	// Shadow subgraph — only emitted if there are shadow elements.
-	// Invisible links (~~~) chain consecutive nodes vertically.
 	if len(g.Cut.ShadowElements) > 0 {
 		b.WriteString("  subgraph Shadow\n")
 		for _, se := range g.Cut.ShadowElements {
 			fmt.Fprintf(&b, "    %s[\"%s\"]\n", idMap[se.Name], mermaidLabel(se.Name))
 		}
-		for i := 1; i < len(g.Cut.ShadowElements); i++ {
+		for i := 1; i < len(g.Cut.ShadowElements); i++ { // invisible links force vertical layout
 			fmt.Fprintf(&b, "    %s ~~~ %s\n",
 				idMap[g.Cut.ShadowElements[i-1].Name],
 				idMap[g.Cut.ShadowElements[i].Name])
@@ -251,7 +208,6 @@ func PrintGraphMermaid(w io.Writer, g MeshGraph) error {
 func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 	var b strings.Builder
 
-	// Two-line comment: From and To cuts.
 	b.WriteString("// From: ")
 	b.WriteString(dotCutComment(d.From))
 	b.WriteString("\n// To: ")
@@ -260,12 +216,9 @@ func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 	b.WriteString("  rankdir=TB\n")
 	b.WriteString("  node [shape=box]\n")
 
-	// Sort added nodes for deterministic output.
 	addedNodes := make([]string, len(d.NodesAdded))
 	copy(addedNodes, d.NodesAdded)
 	sort.Strings(addedNodes)
-
-	// Emit added nodes: green/bold with "(added)" label.
 	for _, name := range addedNodes {
 		fmt.Fprintf(&b, "  %s [label=%s, color=green, style=bold]\n",
 			dotQuote(stripNewlines(name)),
@@ -273,12 +226,9 @@ func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 		)
 	}
 
-	// Sort removed nodes for deterministic output.
 	removedNodes := make([]string, len(d.NodesRemoved))
 	copy(removedNodes, d.NodesRemoved)
 	sort.Strings(removedNodes)
-
-	// Emit removed nodes: red/dashed with "(removed)" label.
 	for _, name := range removedNodes {
 		fmt.Fprintf(&b, "  %s [label=%s, color=red, style=dashed]\n",
 			dotQuote(stripNewlines(name)),
@@ -286,12 +236,9 @@ func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 		)
 	}
 
-	// Sort persisted nodes for deterministic output.
 	persistedNodes := make([]PersistedNode, len(d.NodesPersisted))
 	copy(persistedNodes, d.NodesPersisted)
 	sort.Slice(persistedNodes, func(i, j int) bool { return persistedNodes[i].Name < persistedNodes[j].Name })
-
-	// Emit persisted nodes with appearance count label "name (N→M)".
 	for _, p := range persistedNodes {
 		fmt.Fprintf(&b, "  %s [label=%s]\n",
 			dotQuote(stripNewlines(p.Name)),
@@ -299,7 +246,6 @@ func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 		)
 	}
 
-	// Emit added edges as Cartesian product with green/bold style.
 	for _, edge := range d.EdgesAdded {
 		label := dotQuote(truncateLabel(stripNewlines(edge.WhatChanged)))
 		for _, src := range edge.Sources {
@@ -310,7 +256,6 @@ func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 		}
 	}
 
-	// Emit removed edges as Cartesian product with red/dashed style.
 	for _, edge := range d.EdgesRemoved {
 		label := dotQuote(truncateLabel(stripNewlines(edge.WhatChanged)))
 		for _, src := range edge.Sources {
@@ -321,10 +266,7 @@ func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 		}
 	}
 
-	// Shadow shifts subgraph — only emitted if there are shifts.
-	// Colors per kind: emerged=green (now visible — consistent with added-node convention),
-	// submerged=red (now hidden — consistent with removed-node convention),
-	// reason-changed=orange (shifted meaning but still in shadow).
+	// Shadow shifts: emerged=green, submerged=red, reason-changed=orange.
 	if len(d.ShadowShifts) > 0 {
 		b.WriteString("  subgraph cluster_shadow_shifts {\n")
 		b.WriteString("    label=\"shadow shifts\"\n")
@@ -344,8 +286,7 @@ func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 				color,
 			)
 		}
-		// Chain invisible edges to force vertical layout.
-		for i := 1; i < len(d.ShadowShifts); i++ {
+		for i := 1; i < len(d.ShadowShifts); i++ { // invisible edges force vertical layout
 			fmt.Fprintf(&b, "    %s -> %s [style=invis]\n",
 				dotQuote(stripNewlines(d.ShadowShifts[i-1].Name)),
 				dotQuote(stripNewlines(d.ShadowShifts[i].Name)))
@@ -374,40 +315,29 @@ func PrintDiffDOT(w io.Writer, d GraphDiff) error {
 func PrintDiffMermaid(w io.Writer, d GraphDiff) error {
 	var b strings.Builder
 
-	// Two-line comment: From and To cuts.
 	b.WriteString("%% From: ")
 	b.WriteString(dotCutComment(d.From))
 	b.WriteString("\n%% To: ")
 	b.WriteString(dotCutComment(d.To))
 	b.WriteString("\nflowchart TD\n")
 
-	// Build a sanitized-ID map for all names in the diff.
 	allNames := collectAllDiffNames(d)
 	idMap := buildMermaidIDMap(allNames)
 
-	// Emit added node declarations with "(added)" label.
 	addedNodes := make([]string, len(d.NodesAdded))
 	copy(addedNodes, d.NodesAdded)
 	sort.Strings(addedNodes)
 	for _, name := range addedNodes {
-		fmt.Fprintf(&b, "  %s[\"%s (added)\"]\n",
-			idMap[name],
-			mermaidLabel(name),
-		)
+		fmt.Fprintf(&b, "  %s[\"%s (added)\"]\n", idMap[name], mermaidLabel(name))
 	}
 
-	// Emit removed node declarations with "(removed)" label.
 	removedNodes := make([]string, len(d.NodesRemoved))
 	copy(removedNodes, d.NodesRemoved)
 	sort.Strings(removedNodes)
 	for _, name := range removedNodes {
-		fmt.Fprintf(&b, "  %s[\"%s (removed)\"]\n",
-			idMap[name],
-			mermaidLabel(name),
-		)
+		fmt.Fprintf(&b, "  %s[\"%s (removed)\"]\n", idMap[name], mermaidLabel(name))
 	}
 
-	// Emit persisted node declarations with "(N→M)" count label.
 	persistedNodes := make([]PersistedNode, len(d.NodesPersisted))
 	copy(persistedNodes, d.NodesPersisted)
 	sort.Slice(persistedNodes, func(i, j int) bool { return persistedNodes[i].Name < persistedNodes[j].Name })
@@ -420,8 +350,6 @@ func PrintDiffMermaid(w io.Writer, d GraphDiff) error {
 		)
 	}
 
-	// Emit style directives for added nodes (green stroke) and removed nodes
-	// (red dashed stroke). These follow all node declarations.
 	for _, name := range addedNodes {
 		fmt.Fprintf(&b, "  style %s stroke:green,stroke-width:3px\n", idMap[name])
 	}
@@ -429,7 +357,6 @@ func PrintDiffMermaid(w io.Writer, d GraphDiff) error {
 		fmt.Fprintf(&b, "  style %s stroke:red,stroke-dasharray:5\n", idMap[name])
 	}
 
-	// Emit added edges as solid --> arrows (Cartesian product).
 	for _, edge := range d.EdgesAdded {
 		label := mermaidLabel(truncateLabel(edge.WhatChanged))
 		for _, src := range edge.Sources {
@@ -440,7 +367,6 @@ func PrintDiffMermaid(w io.Writer, d GraphDiff) error {
 		}
 	}
 
-	// Emit removed edges as dashed -.-> arrows (Cartesian product).
 	for _, edge := range d.EdgesRemoved {
 		label := mermaidLabel(truncateLabel(edge.WhatChanged))
 		for _, src := range edge.Sources {
@@ -451,27 +377,22 @@ func PrintDiffMermaid(w io.Writer, d GraphDiff) error {
 		}
 	}
 
-	// Shadow shifts subgraph — only emitted if there are shifts.
-	// Per-node style directives mirror the DOT color convention:
-	// emerged=green, submerged=red, reason-changed=orange.
+	// Shadow shifts: emerged=green, submerged=red, reason-changed=orange.
 	if len(d.ShadowShifts) > 0 {
 		b.WriteString("  subgraph ShadowShifts\n")
 		for _, ss := range d.ShadowShifts {
-			// Label describes both the name and shift kind for readability.
 			fmt.Fprintf(&b, "    %s[\"%s (%s)\"]\n",
 				idMap[ss.Name],
 				mermaidLabel(ss.Name),
 				mermaidLabel(string(ss.Kind)),
 			)
 		}
-		// Invisible links chain consecutive nodes vertically.
-		for i := 1; i < len(d.ShadowShifts); i++ {
+		for i := 1; i < len(d.ShadowShifts); i++ { // invisible links force vertical layout
 			fmt.Fprintf(&b, "    %s ~~~ %s\n",
 				idMap[d.ShadowShifts[i-1].Name],
 				idMap[d.ShadowShifts[i].Name])
 		}
 		b.WriteString("  end\n")
-		// Style directives for shadow shift nodes (after subgraph block).
 		for _, ss := range d.ShadowShifts {
 			color := "orange"
 			switch ss.Kind {
@@ -488,10 +409,7 @@ func PrintDiffMermaid(w io.Writer, d GraphDiff) error {
 	return err
 }
 
-// collectAllDiffNames returns all element names that appear in a GraphDiff:
-// added/removed node names, persisted node names, edge sources/targets, and
-// shadow shift names. Returns sorted, deduplicated list.
-// This ensures every name referenced in the diagram gets a sanitized Mermaid ID.
+// collectAllDiffNames returns all element names in a GraphDiff (sorted, deduplicated).
 func collectAllDiffNames(d GraphDiff) []string {
 	seen := make(map[string]bool)
 	for _, name := range d.NodesAdded {
@@ -530,10 +448,7 @@ func collectAllDiffNames(d GraphDiff) []string {
 	return names
 }
 
-// --- helpers ---
-
-// dotCutComment returns a short human-readable summary of a Cut for use as
-// a comment in DOT and Mermaid output. Example:
+// dotCutComment returns a short Cut summary for DOT/Mermaid comment lines. Example:
 //
 //	"observer: meteorological-analyst | window: 2026-04-14T00:00:00Z–2026-04-14T23:59:59Z | tags: critical, mediated"
 //
@@ -548,9 +463,6 @@ func dotCutComment(c Cut) string {
 		}
 		obs = strings.Join(sanitized, ", ")
 	}
-	// "full temporal cut" names the zero TimeWindow as a deliberate choice —
-	// the full temporal extent of the dataset — rather than implying a neutral
-	// absence. Mirrors the "(all — full cut)" observer convention.
 	win := "full temporal cut"
 	if !c.TimeWindow.IsZero() {
 		start := "(unbounded)"
@@ -563,8 +475,6 @@ func dotCutComment(c Cut) string {
 		}
 		win = start + "–" + end
 	}
-	// "full tag cut" names the empty Tags slice as a deliberate choice —
-	// the full tag extent of the dataset — rather than implying a neutral absence.
 	tags := "full tag cut"
 	if len(c.Tags) > 0 {
 		sanitized := make([]string, len(c.Tags))
@@ -576,14 +486,12 @@ func dotCutComment(c Cut) string {
 	return fmt.Sprintf("observer: %s | window: %s | tags: %s", obs, win, tags)
 }
 
-// dotQuote wraps s in double quotes and escapes any double quotes within s.
-// Required for DOT node IDs and labels that may contain hyphens or spaces.
+// dotQuote wraps s in double quotes and escapes internal double quotes.
 func dotQuote(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
 }
 
 // truncateLabel truncates s to maxEdgeLabel runes, appending "..." if truncated.
-// This keeps DOT and Mermaid edge labels readable without losing identity.
 func truncateLabel(s string) string {
 	runes := []rune(s)
 	if len(runes) <= maxEdgeLabel {
@@ -626,9 +534,7 @@ func sanitizeMermaidID(name string) string {
 	return id
 }
 
-// collectAllNames returns all element names that appear in a MeshGraph:
-// node names, edge sources/targets, and shadow element names.
-// This ensures every name referenced in the diagram gets a sanitized ID.
+// collectAllNames returns all element names in a MeshGraph (sorted, deduplicated).
 func collectAllNames(g MeshGraph) []string {
 	seen := make(map[string]bool)
 	for name := range g.Nodes {
@@ -653,9 +559,8 @@ func collectAllNames(g MeshGraph) []string {
 	return names
 }
 
-// buildMermaidIDMap builds a map from original name → unique sanitized Mermaid ID.
-// Collisions (two names that sanitize to the same ID) are resolved by appending
-// "_2", "_3", etc. to the later-sorted name.
+// buildMermaidIDMap builds original name → sanitized Mermaid ID.
+// Collisions are resolved by appending "_2", "_3", etc.
 func buildMermaidIDMap(names []string) map[string]string {
 	idMap := make(map[string]string, len(names))
 	usedIDs := make(map[string]int) // base ID → collision count

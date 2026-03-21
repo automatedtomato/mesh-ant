@@ -26,37 +26,28 @@ import (
 )
 
 // BottleneckOptions configures IdentifyBottlenecks.
-// v1: intentionally empty — reserved as an extension point for future
-// thresholds, weight overrides, or heuristic toggles without a breaking
-// API change.
+// v1: intentionally empty — reserved for future thresholds or heuristic toggles.
 type BottleneckOptions struct{}
 
-// BottleneckNote is a provisional reading of one element's centrality from
-// a cut. The three counts are independent measures derived from different
-// aspects of the graph — combining them into a single score would obscure
-// what each dimension is saying and imply a false precision.
+// BottleneckNote is a provisional reading of one element's centrality from a cut.
+// The three counts are independent — combining them would imply false precision.
 type BottleneckNote struct {
 	// Element is the element name as it appears in the graph Nodes.
 	Element string
 
-	// AppearanceCount mirrors Node.AppearanceCount: total source+target
-	// appearances across all included traces.
+	// AppearanceCount mirrors Node.AppearanceCount: total source+target appearances.
 	AppearanceCount int
 
-	// MediationCount is the number of edges (included traces) in which
-	// this element appears as Edge.Mediation. A mediator is an element
-	// that transforms what passes through it — not a neutral conduit.
+	// MediationCount is the number of edges where this element is Edge.Mediation.
+	// A mediator transforms what passes through it — not a neutral conduit.
 	MediationCount int
 
-	// ShadowCount mirrors Node.ShadowCount: the number of excluded traces
-	// in which this element also appears. A non-zero ShadowCount means
-	// this element crosses the cut boundary — visible from here AND present
-	// in traces the cut cannot see.
+	// ShadowCount mirrors Node.ShadowCount: excluded traces in which this element
+	// also appears — visible here AND present in what this cut cannot see.
 	ShadowCount int
 
-	// Reason is a provisional, human-readable explanation of why this
-	// element was flagged. Always non-empty. Must contain "appears" or
-	// "from this cut" to signal provisionality.
+	// Reason is a provisional explanation of why this element was flagged.
+	// Always non-empty; always contains "appears" or "from this cut".
 	Reason string
 }
 
@@ -76,15 +67,12 @@ type BottleneckNote struct {
 // Always returns a non-nil slice (empty slice when no nodes qualify, never nil).
 // The returned slice is independent of g — callers may mutate it safely.
 func IdentifyBottlenecks(g MeshGraph, _ BottleneckOptions) []BottleneckNote {
-	// Guard: empty graph — return non-nil empty slice, never nil.
 	if len(g.Nodes) == 0 {
 		return []BottleneckNote{}
 	}
 
-	// Build a mediation count map: count edges where each element is the mediator.
-	// Iterates g.Edges once, independent of g.Nodes, so elements that appear only
+	// Count edges where each element is the mediator. Elements that only appear
 	// as mediators (not in source/target) are not in Nodes and won't be surfaced.
-	// That is intentional — we only report Nodes (visible elements in this cut).
 	mediationCounts := make(map[string]int)
 	for _, e := range g.Edges {
 		if e.Mediation != "" {
@@ -92,14 +80,13 @@ func IdentifyBottlenecks(g MeshGraph, _ BottleneckOptions) []BottleneckNote {
 		}
 	}
 
-	// Apply inclusion heuristic to each node.
 	var notes []BottleneckNote
 	for name, node := range g.Nodes {
 		mc := mediationCounts[name]
 
-		// v1 heuristic: include if any of the three measures signals centrality.
+		// v1 heuristic: include if any dimension signals centrality.
 		if mc == 0 && node.AppearanceCount < 2 && node.ShadowCount == 0 {
-			continue // exclude — no signal from any dimension
+			continue
 		}
 
 		reason := buildBottleneckReason(node.AppearanceCount, mc, node.ShadowCount)
@@ -114,8 +101,6 @@ func IdentifyBottlenecks(g MeshGraph, _ BottleneckOptions) []BottleneckNote {
 	}
 
 	// Sort: MediationCount desc → AppearanceCount desc → name asc.
-	// Stable deterministic ordering avoids implying significance in position
-	// beyond what the three measures express.
 	sort.SliceStable(notes, func(i, j int) bool {
 		if notes[i].MediationCount != notes[j].MediationCount {
 			return notes[i].MediationCount > notes[j].MediationCount
@@ -126,8 +111,6 @@ func IdentifyBottlenecks(g MeshGraph, _ BottleneckOptions) []BottleneckNote {
 		return notes[i].Element < notes[j].Element
 	})
 
-	// Return non-nil empty slice if no elements qualified — callers can use
-	// len(result) == 0 safely without a nil check.
 	if len(notes) == 0 {
 		return []BottleneckNote{}
 	}
@@ -135,9 +118,7 @@ func IdentifyBottlenecks(g MeshGraph, _ BottleneckOptions) []BottleneckNote {
 }
 
 // buildBottleneckReason constructs the provisional Reason string for a note.
-// The language is intentionally hedged ("appears central from this cut") to
-// prevent the reading from being mistaken for a definitive claim.
-// The returned string always contains both "appears" and "from this cut".
+// Always returns a string containing both "appears" and "from this cut".
 func buildBottleneckReason(ac, mc, sc int) string {
 	var parts []string
 	if mc > 0 {
@@ -149,36 +130,20 @@ func buildBottleneckReason(ac, mc, sc int) string {
 	if sc > 0 {
 		parts = append(parts, fmt.Sprintf("shadow count %d", sc))
 	}
-	// Fallback: if somehow no part was added (shouldn't happen given the
-	// caller's inclusion check) produce a safe default that still satisfies
-	// the provisional-language contract.
 	if len(parts) == 0 {
 		return "appears central from this cut"
 	}
 	return "appears central from this cut: " + strings.Join(parts, ", ")
 }
 
-// PrintBottleneckNotes writes a bottleneck analysis report to w.
-//
-// Output format:
-//   - Header: "=== Bottleneck Notes (provisional reading from this cut) ==="
-//   - Cut context: observer position(s) and trace counts
-//   - Per-note lines: element name, AppearanceCount, MediationCount,
-//     ShadowCount, Reason
-//   - Footer caveat naming the provisionality of the cut
-//
-// Uses fmt.Fprintln directly (not writeLines) to avoid the hardcoded
-// "PrintShadowSummary" in writeLines's error wrap string.
-//
+// PrintBottleneckNotes writes a bottleneck analysis report to w. Uses its own
+// Fprintln loop rather than writeLines (which carries a wrong error prefix).
 // Returns the first write error encountered, if any.
 func PrintBottleneckNotes(w io.Writer, g MeshGraph, notes []BottleneckNote) error {
-	// writeLine is a local helper that wraps one fmt.Fprintln call and
-	// returns early on error. Using a closure avoids repeating the error
-	// wrap pattern on every line.
 	var writeErr error
 	writeLine := func(line string) {
 		if writeErr != nil {
-			return // already failed; skip remaining writes
+			return
 		}
 		_, writeErr = fmt.Fprintln(w, line)
 	}
@@ -186,8 +151,6 @@ func PrintBottleneckNotes(w io.Writer, g MeshGraph, notes []BottleneckNote) erro
 	writeLine("=== Bottleneck Notes (provisional reading from this cut) ===")
 	writeLine("")
 
-	// Cut context — observer positions using the same cutLabel helper as
-	// reflexive.go uses in diffWhatChanged.
 	writeLine(fmt.Sprintf("Cut position: %s", cutLabel(g.Cut)))
 	writeLine(fmt.Sprintf("Traces: %d included of %d total",
 		g.Cut.TracesIncluded, g.Cut.TracesTotal))

@@ -111,10 +111,7 @@ type GraphDiff struct {
 	To Cut `json:"to"`
 }
 
-// --- Diff helpers ---
-
-// copyCut returns a deep copy of a Cut, duplicating all slice fields to
-// prevent callers from mutating the diff's stored cut metadata.
+// copyCut returns a deep copy of a Cut; all slice fields are duplicated.
 func copyCut(c Cut) Cut {
 	out := c
 
@@ -136,8 +133,7 @@ func copyCut(c Cut) Cut {
 	return out
 }
 
-// buildShadowLookup converts a ShadowElement slice into a name→ShadowElement
-// map for O(1) lookup during shadow shift computation.
+// buildShadowLookup converts a ShadowElement slice into a name→ShadowElement map.
 func buildShadowLookup(elements []ShadowElement) map[string]ShadowElement {
 	m := make(map[string]ShadowElement, len(elements))
 	for _, se := range elements {
@@ -146,8 +142,7 @@ func buildShadowLookup(elements []ShadowElement) map[string]ShadowElement {
 	return m
 }
 
-// shadowReasonsEqual returns true if two ShadowReason slices have identical
-// length and elements in identical order.
+// shadowReasonsEqual reports whether two ShadowReason slices are identical.
 func shadowReasonsEqual(a, b []ShadowReason) bool {
 	if len(a) != len(b) {
 		return false
@@ -160,8 +155,7 @@ func shadowReasonsEqual(a, b []ShadowReason) bool {
 	return true
 }
 
-// copyReasons returns a copy of a ShadowReason slice. Returns nil if src is
-// nil to preserve the nil/empty distinction.
+// copyReasons returns a copy of a ShadowReason slice; returns nil for nil input.
 func copyReasons(src []ShadowReason) []ShadowReason {
 	if src == nil {
 		return nil
@@ -171,8 +165,7 @@ func copyReasons(src []ShadowReason) []ShadowReason {
 	return out
 }
 
-// computeNodeDiff builds NodesAdded, NodesRemoved, and NodesPersisted by
-// comparing the two Nodes maps. All output slices are sorted alphabetically.
+// computeNodeDiff builds NodesAdded, NodesRemoved, and NodesPersisted (all sorted).
 func computeNodeDiff(g1nodes, g2nodes map[string]Node) (added, removed []string, persisted []PersistedNode) {
 	for name, n2 := range g2nodes {
 		if n1, ok := g1nodes[name]; ok {
@@ -192,8 +185,7 @@ func computeNodeDiff(g1nodes, g2nodes map[string]Node) (added, removed []string,
 	return added, removed, persisted
 }
 
-// computeEdgeDiff builds EdgesAdded and EdgesRemoved by comparing TraceIDs.
-// Both output slices are sorted alphabetically by TraceID.
+// computeEdgeDiff builds EdgesAdded and EdgesRemoved by comparing TraceIDs (sorted).
 func computeEdgeDiff(g1edges, g2edges []Edge) (added, removed []Edge) {
 	g1ids := make(map[string]bool, len(g1edges))
 	for _, e := range g1edges {
@@ -225,8 +217,7 @@ func computeShadowShifts(g1 MeshGraph, g2 MeshGraph) []ShadowShift {
 	s1 := buildShadowLookup(g1.Cut.ShadowElements)
 	s2 := buildShadowLookup(g2.Cut.ShadowElements)
 
-	// Collect the union of all names that appear in either shadow.
-	candidates := make(map[string]bool)
+	candidates := make(map[string]bool) // union of names in either shadow
 	for name := range s1 {
 		candidates[name] = true
 	}
@@ -242,22 +233,19 @@ func computeShadowShifts(g1 MeshGraph, g2 MeshGraph) []ShadowShift {
 		se2, shadG2 := s2[name]
 
 		switch {
-		case shadG1 && visibleG2:
-			// emerged: was shadow in g1, now visible in g2
+		case shadG1 && visibleG2: // emerged
 			shifts = append(shifts, ShadowShift{
 				Name:        name,
 				Kind:        ShadowShiftEmerged,
 				FromReasons: copyReasons(se1.Reasons),
 			})
-		case visibleG1 && shadG2:
-			// submerged: was visible in g1, now shadow in g2
+		case visibleG1 && shadG2: // submerged
 			shifts = append(shifts, ShadowShift{
 				Name:      name,
 				Kind:      ShadowShiftSubmerged,
 				ToReasons: copyReasons(se2.Reasons),
 			})
-		case shadG1 && shadG2 && !shadowReasonsEqual(se1.Reasons, se2.Reasons):
-			// reason-changed: shadow in both, different reasons
+		case shadG1 && shadG2 && !shadowReasonsEqual(se1.Reasons, se2.Reasons): // reason-changed
 			shifts = append(shifts, ShadowShift{
 				Name:        name,
 				Kind:        ShadowShiftReasonChanged,
@@ -293,13 +281,8 @@ func Diff(g1, g2 MeshGraph) GraphDiff {
 	}
 }
 
-// --- PrintDiff ---
-
-// cutSummaryLines returns the lines describing a single cut for the PrintDiff
-// From/To sections.
+// cutSummaryLines returns the cut description lines for PrintDiff From/To sections.
 func cutSummaryLines(label string, c Cut) []string {
-	// "(all — full cut)" names the full-cut position as a deliberate choice,
-	// consistent with PrintArticulation and articulation-v1.md Decision 3.
 	obsLabel := "(all — full cut)"
 	if len(c.ObserverPositions) > 0 {
 		obsLabel = strings.Join(c.ObserverPositions, ", ")
@@ -345,9 +328,7 @@ func shadowShiftLine(s ShadowShift) string {
 func PrintDiff(w io.Writer, d GraphDiff) error {
 	lines := []string{"=== Mesh Diff (situated comparison) ===", ""}
 
-	// If this diff has been identified as an actor, print its reference so
-	// callers can cite it in subsequent traces.
-	if d.ID != "" {
+	if d.ID != "" { // only identified diffs carry a citeable reference
 		ref, _ := DiffRef(d) // error only when ID is empty; guarded above
 		lines = append(lines, fmt.Sprintf("Diff ID: %s", ref), "")
 	}

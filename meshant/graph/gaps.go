@@ -43,18 +43,14 @@ type ObserverGap struct {
 	CutB Cut
 }
 
-// AnalyseGaps compares the node sets of two already-articulated MeshGraphs
-// and returns an ObserverGap. It does not re-articulate; it reads only the
-// Nodes maps and Cut fields already present on g1 and g2.
-//
-// The returned ObserverGap is immutable — no slices alias the input graphs.
+// AnalyseGaps compares the node sets of two already-articulated MeshGraphs.
+// Does not re-articulate. Returns an immutable ObserverGap.
 func AnalyseGaps(g1, g2 MeshGraph) ObserverGap {
 	gap := ObserverGap{
 		CutA: g1.Cut,
 		CutB: g2.Cut,
 	}
 
-	// Build lookup sets for O(n) comparison.
 	inA := make(map[string]bool, len(g1.Nodes))
 	for name := range g1.Nodes {
 		inA[name] = true

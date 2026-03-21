@@ -67,24 +67,12 @@ type FieldDisagreement struct {
 	ValueB string
 }
 
-// CompareExtractions compares two named extraction sets and returns an
-// ExtractionGap. It partitions SourceSpan keys into three groups and
-// records field disagreements for shared spans.
-//
-// Algorithm:
-//  1. Index each set by SourceSpan, preserving all duplicates in a slice.
-//  2. Three-way partition into OnlyInA, OnlyInB, InBoth.
-//  3. For each shared span, emit a "(multiple-drafts)" disagreement if
-//     one side has more than one draft (or the counts differ); otherwise
-//     compare the 9 content fields and emit a FieldDisagreement for each
-//     that differs.
-//  4. Sort all output slices. Return an immutable ExtractionGap.
+// CompareExtractions partitions SourceSpan keys into three groups, records field
+// disagreements for shared spans, sorts all output slices, and returns an immutable ExtractionGap.
 func CompareExtractions(analystA string, setA []schema.TraceDraft, analystB string, setB []schema.TraceDraft) ExtractionGap {
-	// Index both sets by SourceSpan. All duplicates are preserved.
 	indexA := indexBySpan(setA)
 	indexB := indexBySpan(setB)
 
-	// Collect all keys from both indexes for three-way partition.
 	allSpans := make(map[string]bool)
 	for k := range indexA {
 		allSpans[k] = true
@@ -93,7 +81,6 @@ func CompareExtractions(analystA string, setA []schema.TraceDraft, analystB stri
 		allSpans[k] = true
 	}
 
-	// Initialise with non-nil empty slices so callers can range without nil checks.
 	gap := ExtractionGap{
 		AnalystA:      analystA,
 		AnalystB:      analystB,
@@ -114,7 +101,6 @@ func CompareExtractions(analystA string, setA []schema.TraceDraft, analystB stri
 			gap.OnlyInB = append(gap.OnlyInB, span)
 		case inA && inB:
 			gap.InBoth = append(gap.InBoth, span)
-			// Compare content for shared spans.
 			ds := compareSpan(span, indexA[span], indexB[span])
 			gap.Disagreements = append(gap.Disagreements, ds...)
 		}
@@ -134,12 +120,9 @@ func CompareExtractions(analystA string, setA []schema.TraceDraft, analystB stri
 	return gap
 }
 
-// compareSpan compares two draft slices for the same SourceSpan and returns
-// any FieldDisagreements. If either side has more than one draft (or counts
-// differ), a single "(multiple-drafts)" disagreement is returned instead of
-// field-by-field comparison.
+// compareSpan returns FieldDisagreements for a shared SourceSpan.
+// Returns a single "(multiple-drafts)" entry when either side has >1 draft.
 func compareSpan(span string, draftsA, draftsB []schema.TraceDraft) []FieldDisagreement {
-	// Guard against duplicate drafts: count mismatch or either side has >1.
 	if len(draftsA) != 1 || len(draftsB) != 1 {
 		return []FieldDisagreement{{
 			SourceSpan: span,
@@ -154,19 +137,10 @@ func compareSpan(span string, draftsA, draftsB []schema.TraceDraft) []FieldDisag
 
 	var ds []FieldDisagreement
 
-	// Compare the 9 content fields:
-	//   what_changed, source, target, mediation, observer, tags,
-	//   uncertainty_note, intentionally_blank, source_doc_ref.
-	//
-	// SourceDocRef is included because it identifies which document the span
-	// came from — a source material property, not a provenance property. Two
-	// analysts attributing the same SourceSpan to different documents is an
-	// analytically meaningful disagreement.
-	//
-	// Excluded provenance fields (ID, Timestamp, ExtractionStage, ExtractedBy,
-	// DerivedFrom, CriterionRef) describe the analytical position and are
-	// expected to differ between analyst positions.
-
+	// Compare 9 content fields. SourceDocRef is a source material property,
+	// not provenance — attributing the same span to different documents is a
+	// meaningful disagreement. Provenance fields (ID, Timestamp, ExtractionStage,
+	// ExtractedBy, DerivedFrom, CriterionRef) are expected to differ; excluded.
 	if a.WhatChanged != b.WhatChanged {
 		ds = append(ds, FieldDisagreement{
 			SourceSpan: span,
@@ -243,9 +217,7 @@ func compareSpan(span string, draftsA, draftsB []schema.TraceDraft) []FieldDisag
 	return ds
 }
 
-// indexBySpan builds a map from SourceSpan to the slice of TraceDrafts that
-// carry that span. All duplicates are preserved — a span with two drafts
-// produces a slice of length 2.
+// indexBySpan builds a SourceSpan → []TraceDraft map, preserving duplicates.
 func indexBySpan(drafts []schema.TraceDraft) map[string][]schema.TraceDraft {
 	idx := make(map[string][]schema.TraceDraft)
 	for _, d := range drafts {
@@ -254,8 +226,7 @@ func indexBySpan(drafts []schema.TraceDraft) map[string][]schema.TraceDraft {
 	return idx
 }
 
-// renderSlice sorts a copy of ss and joins with ", ". A nil or empty slice
-// renders as "(empty)" so the caller always gets a printable string.
+// renderSlice sorts a copy of ss and joins with ", ". Nil/empty → "(empty)".
 func renderSlice(ss []string) string {
 	if len(ss) == 0 {
 		return "(empty)"
@@ -266,10 +237,8 @@ func renderSlice(ss []string) string {
 	return strings.Join(cp, ", ")
 }
 
-// slicesEqual returns true when the two slices contain the same elements
-// regardless of order. Comparison is set-based: both slices are sorted before
-// comparison so ["A","B"] equals ["B","A"]. nil and []string{} are treated as
-// equivalent — both represent an absent value, not a distinct empty list.
+// slicesEqual reports whether a and b contain the same elements regardless of order.
+// nil and []string{} are equivalent.
 func slicesEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -292,13 +261,6 @@ func slicesEqual(a, b []string) bool {
 }
 
 // PrintExtractionGap writes an extraction-gap report to w.
-//
-// The report follows the ObserverGap pattern (see graph.PrintObserverGap):
-// both analyst positions are named, the three-way span partition is shown,
-// disagreements are listed per-field, and the closing note acknowledges
-// spans neither analyst extracted (the shadow). Neither position is treated
-// as authoritative.
-//
 // Returns the first write error encountered, if any.
 func PrintExtractionGap(w io.Writer, gap ExtractionGap) error {
 	lines := []string{
@@ -340,14 +302,10 @@ func PrintExtractionGap(w io.Writer, gap ExtractionGap) error {
 		}
 	}
 
-	// No-gap message when both OnlyInA and OnlyInB are empty.
 	if len(gap.OnlyInA) == 0 && len(gap.OnlyInB) == 0 {
 		lines = append(lines, "", "No extraction gap — both positions extracted the same spans.")
 	}
 
-	// Closing shadow note and authoritative disclaimer. Spans that neither
-	// analyst extracted are not visible in this report — the analysis can only
-	// see what was extracted, not what was missed.
 	lines = append(lines,
 		"",
 		"---",

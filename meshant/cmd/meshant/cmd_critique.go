@@ -13,47 +13,28 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
-// defaultCritiquePrompt is the path to the bundled critique prompt template,
-// relative to the repository root. Used when --prompt-template is not supplied.
+// defaultCritiquePrompt is the bundled critique prompt template path (repository root-relative).
 const defaultCritiquePrompt = "data/prompts/critique_pass.md"
 
-// defaultCritiqueModel is the model ID used when --model is not supplied.
+// defaultCritiqueModel is the model used when --model is not supplied.
 const defaultCritiqueModel = "claude-sonnet-4-6"
 
-// maxDraftBytes caps the size of the input drafts file read by cmdCritique.
-// 4 MiB is generous for a human-analyst-produced JSON array and consistent
-// with the cap applied to other structured inputs. A file exceeding this cap
-// produces a JSON parse error (unexpected EOF), not a distinct size error.
+// maxDraftBytes caps the input drafts file at 4 MiB, consistent with other
+// structured input caps.
 const maxDraftBytes = 4 * 1024 * 1024
 
 // cmdCritique implements the "critique" subcommand.
 //
-// It reads existing TraceDraft records from an input file, sends each to the
-// LLM with the critique prompt, and writes derived drafts with
-// ExtractionStage "critiqued" and DerivedFrom linking to the original.
+// Reads TraceDraft records from an input file, sends each to the LLM, and
+// writes derived drafts with ExtractionStage "critiqued" and DerivedFrom
+// linking to the original. Session output defaults: <output>.session.json for
+// file output; no session record when writing to stdout (user opted out).
 //
-// The LLM client is injected via the client parameter. When client is nil,
-// cmdCritique constructs a real AnthropicClient from the environment. Tests
-// pass a mock client so the critique pipeline is exercised without live API calls.
+// Returns an error when no critique drafts were produced but the input was
+// non-empty — this distinguishes a total LLM failure from an empty input.
 //
-// Session output defaulting (same rules as cmdExtract):
-//   - if --session-output is provided: write to that path
-//   - if --output is a file: write to <output>.session.json
-//   - if output is stdout: session record is not written (user opted out)
-//
-// An error is returned when no critique drafts were produced and the input
-// contained at least one draft — this distinguishes a total LLM failure from
-// a legitimate empty input.
-//
-// Flags:
-//   - --input <path>              path to TraceDraft JSON array file (required)
-//   - --prompt-template <path>    path to critique prompt template (default: data/prompts/critique_pass.md)
-//   - --model <id>                LLM model ID (default: claude-sonnet-4-6)
-//   - --source-doc-ref <ref>      document reference string for provenance (optional)
-//   - --criterion-file <path>     optional criterion JSON file (CriterionRef provenance)
-//   - --output <file>             write critique TraceDraft JSON to file (default: stdout)
-//   - --session-output <file>     write SessionRecord JSON to file (see defaulting above)
-//   - --id <id>                   critique only the draft with this ID (optional)
+// client may be nil; a real AnthropicClient is then constructed from env vars.
+// Tests inject a mock client.
 func cmdCritique(w io.Writer, client llm.LLMClient, args []string) error {
 	fs := flag.NewFlagSet("critique", flag.ContinueOnError)
 
@@ -89,15 +70,12 @@ func cmdCritique(w io.Writer, client llm.LLMClient, args []string) error {
 		return fmt.Errorf("critique: --input is required\n\nUsage: meshant critique --input <path> [--prompt-template <path>] [--model <id>] [--source-doc-ref <ref>] [--criterion-file <path>] [--output <file>] [--session-output <file>] [--id <id>]")
 	}
 
-	// Derive sessionOutputPath from outputPath when not explicitly provided.
+	// Default session output path; no session record when writing to stdout
+	// unless --session-output was explicitly provided (user-agency, not a flaw).
 	if sessionOutputPath == "" && outputPath != "" {
 		sessionOutputPath = outputPath + ".session.json"
 	}
-	// When outputPath is empty (stdout mode), session record is not written
-	// unless --session-output was explicitly provided. This is T4 from
-	// plan_thread_f.md: a user-agency decision, not a design flaw.
 
-	// Resolve criterion reference string from optional --criterion-file.
 	var criterionRef string
 	if criterionFile != "" {
 		c, err := loadCriterionFile(criterionFile)
@@ -107,8 +85,6 @@ func cmdCritique(w io.Writer, client llm.LLMClient, args []string) error {
 		criterionRef = c.Name
 	}
 
-	// Read and parse input drafts file. Reads are capped at maxDraftBytes to
-	// prevent unbounded memory allocation on unexpectedly large inputs.
 	f, err := os.Open(inputPath)
 	if err != nil {
 		return fmt.Errorf("critique: read input %q: %w", inputPath, err)
@@ -122,7 +98,6 @@ func cmdCritique(w io.Writer, client llm.LLMClient, args []string) error {
 		return fmt.Errorf("critique: parse input %q: %w", inputPath, err)
 	}
 
-	// Construct real LLM client from environment when none is injected.
 	if client == nil {
 		c, err := llm.NewAnthropicClient(modelID)
 		if err != nil {
@@ -143,7 +118,7 @@ func cmdCritique(w io.Writer, client llm.LLMClient, args []string) error {
 
 	critiqueDrafts, rec, err := llm.RunCritique(context.Background(), client, inputDrafts, opts)
 
-	// Always write the SessionRecord when a path is available — even on error.
+	// Always write the SessionRecord before returning — even on error.
 	if sessionOutputPath != "" {
 		sessionWriteErr := writeSessionRecord(sessionOutputPath, rec)
 		if sessionWriteErr != nil {
@@ -158,13 +133,10 @@ func cmdCritique(w io.Writer, client llm.LLMClient, args []string) error {
 		return fmt.Errorf("critique: %w", err)
 	}
 
-	// If the input was non-empty but no critiques were produced, the LLM failed
-	// on all drafts. Treat this as an error so the caller sees a clear signal.
 	if len(inputDrafts) > 0 && len(critiqueDrafts) == 0 {
 		return fmt.Errorf("critique: no critique drafts produced; see session record for per-draft errors")
 	}
 
-	// Write critique TraceDraft JSON array to output destination.
 	dest, err := outputWriter(w, outputPath)
 	if err != nil {
 		return fmt.Errorf("critique: %w", err)
@@ -179,7 +151,7 @@ func cmdCritique(w io.Writer, client llm.LLMClient, args []string) error {
 		return fmt.Errorf("critique: encode output: %w", err)
 	}
 
-	// Print a provenance summary to w (always stdout).
+	// Print provenance summary to w (stdout), never to the output file.
 	summary := loader.SummariseDrafts(critiqueDrafts)
 	if err := loader.PrintDraftSummary(w, summary); err != nil {
 		return fmt.Errorf("critique: %w", err)

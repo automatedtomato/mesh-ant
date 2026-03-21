@@ -12,16 +12,14 @@ import (
 )
 
 // lineageNode holds a draft and its subsequent readings in the DerivedFrom chain.
-// Used internally by cmdLineage to build and render chains.
 type lineageNode struct {
 	draft      schema.TraceDraft
 	subsequent []*lineageNode
 }
 
 // lineageResult holds the parsed chain structure returned by buildLineage.
-// anchors are drafts that start a reading sequence (no DerivedFrom, or prior
-// not in dataset). Chain order is positional — earlier readings are not more
-// authentic than later ones; they simply came first in the production sequence.
+// anchors are chain-starting drafts (no DerivedFrom, or prior not in dataset).
+// Chain order is positional — earlier readings are not more authentic.
 type lineageResult struct {
 	anchors    []*lineageNode // drafts starting a reading sequence
 	standalone int            // count of anchors with no subsequent readings
@@ -31,7 +29,6 @@ type lineageResult struct {
 // Returns an error if a cycle is detected. A cycle is detected using DFS with
 // a "currently visiting" set (grey set in standard DFS cycle detection).
 func buildLineage(drafts []schema.TraceDraft) (lineageResult, error) {
-	// Index drafts by ID for O(1) prior lookup.
 	byID := make(map[string]*lineageNode, len(drafts))
 	nodes := make([]*lineageNode, len(drafts))
 	for i := range drafts {
@@ -40,7 +37,6 @@ func buildLineage(drafts []schema.TraceDraft) (lineageResult, error) {
 		byID[drafts[i].ID] = n
 	}
 
-	// Link subsequent readings to their prior readings.
 	for _, n := range nodes {
 		if n.draft.DerivedFrom == "" {
 			continue
@@ -53,8 +49,6 @@ func buildLineage(drafts []schema.TraceDraft) (lineageResult, error) {
 		prior.subsequent = append(prior.subsequent, n)
 	}
 
-	// Identify anchors: drafts with no DerivedFrom, or whose DerivedFrom is not
-	// present in the dataset.
 	var anchors []*lineageNode
 	for _, n := range nodes {
 		if n.draft.DerivedFrom == "" {
@@ -85,7 +79,6 @@ func buildLineage(drafts []schema.TraceDraft) (lineageResult, error) {
 		}
 	}
 
-	// Count standalone anchors (no subsequent readings).
 	standalone := 0
 	for _, r := range anchors {
 		if len(r.subsequent) == 0 {
@@ -132,8 +125,7 @@ func detectCycleDFS(n *lineageNode, byID map[string]*lineageNode, visited, inPat
 	return nil
 }
 
-// idPrefix returns the first 8 characters of a draft ID for display purposes.
-// Returns the full ID if it is shorter than 8 characters.
+// idPrefix returns the first 8 characters of id, or the full id if shorter.
 func idPrefix(id string) string {
 	if len(id) <= 8 {
 		return id
@@ -141,8 +133,7 @@ func idPrefix(id string) string {
 	return id[:8]
 }
 
-// spanPreview returns the first 60 characters of a source span for display,
-// truncating with "..." if longer.
+// spanPreview returns up to 60 characters of span for display, truncating with "...".
 func spanPreview(span string) string {
 	// Replace newlines with spaces for single-line display.
 	s := strings.ReplaceAll(span, "\n", " ")
@@ -152,17 +143,12 @@ func spanPreview(span string) string {
 	return s
 }
 
-// printLineageText renders the lineage tree in text format to w.
-// Chains are rendered as indented trees with └── connectors.
-// Standalone drafts are counted at the end.
+// printLineageText renders the lineage tree as indented text with └── connectors.
 func printLineageText(w io.Writer, result lineageResult) error {
-	// Chain order is positional (production sequence), not hierarchical.
-	// Earlier readings are not more authentic than later ones.
 	if _, err := fmt.Fprintln(w, "=== DerivedFrom Chains (positional sequence) ==="); err != nil {
 		return err
 	}
 
-	// Print chains (anchors with subsequent readings).
 	for _, root := range result.anchors {
 		if len(root.subsequent) == 0 {
 			continue // standalone — printed in summary
@@ -223,9 +209,7 @@ type lineageJSONChain struct {
 	Members  []string `json:"members"`
 }
 
-// collectMembers recursively appends the IDs of n and all its descendants
-// to members in depth-first order. Used by printLineageJSON to produce a
-// complete flat list of all chain members regardless of chain depth.
+// collectMembers appends the IDs of n and all its descendants in depth-first order.
 func collectMembers(n *lineageNode, members *[]string) {
 	*members = append(*members, n.draft.ID)
 	for _, child := range n.subsequent {
@@ -233,12 +217,9 @@ func collectMembers(n *lineageNode, members *[]string) {
 	}
 }
 
-// printLineageJSON renders the lineage result as a JSON object with "chains"
-// and "standalone" keys.
-//
-// Each chain entry lists all members (anchor + all descendants at every depth)
-// in depth-first order via collectMembers. A shallow loop over root.subsequent
-// would silently drop grandchildren and deeper nodes.
+// printLineageJSON renders the lineage result as JSON with "chains" and
+// "standalone" keys. Chain members are collected depth-first via collectMembers
+// so grandchildren and deeper nodes are not silently dropped.
 func printLineageJSON(w io.Writer, result lineageResult) error {
 	type output struct {
 		Chains     []lineageJSONChain `json:"chains"`
@@ -273,17 +254,9 @@ func printLineageJSON(w io.Writer, result lineageResult) error {
 
 // cmdLineage implements the "lineage" subcommand.
 //
-// It reads a TraceDraft JSON file, walks the DerivedFrom links to build chains,
-// and prints the structure in text or JSON format. The lineage reader is a
-// chain reader, not a diff tool — it shows structure, not differences between
-// chain members (P5 in plan_m12.md, design rule 3).
-//
-// Cycle detection: if DerivedFrom forms a cycle, cmdLineage returns an error
-// naming the cycle rather than silently looping.
-//
-// Flags:
-//   - --id <id>          show lineage for a single draft (root or any member)
-//   - --format text|json output format (default: text)
+// Walks DerivedFrom links to build chains and prints the structure in text or
+// JSON format. Shows structure only, not differences (P5 in plan_m12.md).
+// Returns an error if a cycle is detected.
 func cmdLineage(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("lineage", flag.ContinueOnError)
 
@@ -297,7 +270,6 @@ func cmdLineage(w io.Writer, args []string) error {
 		return err
 	}
 
-	// Validate format before file I/O so the error is immediate.
 	switch format {
 	case "text", "json":
 		// valid
@@ -316,14 +288,12 @@ func cmdLineage(w io.Writer, args []string) error {
 		return fmt.Errorf("lineage: %w", err)
 	}
 
-	// Build full lineage to detect cycles before applying --id filter.
-	// This ensures cycles in the complete dataset are always caught.
+	// Build full lineage before applying --id filter to catch all cycles first.
 	result, err := buildLineage(drafts)
 	if err != nil {
 		return fmt.Errorf("lineage: %w", err)
 	}
 
-	// Apply --id filter: restrict output to the chain containing the specified ID.
 	if idFilter != "" {
 		filtered, err := filterLineageByID(result, idFilter)
 		if err != nil {
@@ -340,10 +310,9 @@ func cmdLineage(w io.Writer, args []string) error {
 	}
 }
 
-// filterLineageByID restricts the lineage result to the chain(s) containing
-// the draft with the given ID. Returns an error if no chain contains the ID.
+// filterLineageByID restricts the result to the chain containing id.
+// Returns an error if no chain contains the id.
 func filterLineageByID(result lineageResult, id string) (lineageResult, error) {
-	// Check if the ID is a chain anchor or a subsequent reading in any chain.
 	for _, root := range result.anchors {
 		if root.draft.ID == id {
 			standalone := 0
@@ -352,7 +321,6 @@ func filterLineageByID(result lineageResult, id string) (lineageResult, error) {
 			}
 			return lineageResult{anchors: []*lineageNode{root}, standalone: standalone}, nil
 		}
-		// Check if the ID appears in any subsequent reading of this anchor.
 		if chainContainsID(root, id) {
 			standalone := 0
 			return lineageResult{anchors: []*lineageNode{root}, standalone: standalone}, nil
@@ -361,8 +329,7 @@ func filterLineageByID(result lineageResult, id string) (lineageResult, error) {
 	return lineageResult{}, fmt.Errorf("draft with id %q not found in any chain", id)
 }
 
-// chainContainsID reports whether any subsequent reading in the chain starting
-// at n has the given ID (not including n itself).
+// chainContainsID reports whether any descendant of n has the given ID.
 func chainContainsID(n *lineageNode, id string) bool {
 	for _, child := range n.subsequent {
 		if child.draft.ID == id {

@@ -7,13 +7,8 @@ import (
 	"os"
 )
 
-// LoadPromptTemplate reads a prompt template file from disk and returns its
-// contents as a string. The file is read up to maxSourceBytes; files larger
-// than that are rejected with a clear error.
-//
-// An empty file returns an empty string without error — empty system
-// instructions are valid (the caller may supply instructions another way).
-// A missing file returns a clear error naming the path.
+// LoadPromptTemplate reads a prompt template file, capped at maxSourceBytes.
+// An empty file is valid (returns ""); a missing or oversized file returns an error.
 func LoadPromptTemplate(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {

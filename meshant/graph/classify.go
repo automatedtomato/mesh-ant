@@ -93,10 +93,8 @@ func ClassifyChain(chain TranslationChain, opts ClassifyOptions) ClassifiedChain
 		Classifications: make([]StepClassification, len(chain.Steps)),
 	}
 
-	// Carry the criterion as provenance metadata. The criterion does NOT
-	// alter the step heuristics — it is envelope metadata only (C1).
-	// Slice fields are defensively copied so the caller cannot mutate
-	// cc.Criterion.Preserve or cc.Criterion.Ignore after the call.
+	// Criterion is envelope metadata only (C1) — it does not alter step heuristics.
+	// Slice fields are defensively copied.
 	cc.Criterion = EquivalenceCriterion{
 		Name:        opts.Criterion.Name,
 		Declaration: opts.Criterion.Declaration,

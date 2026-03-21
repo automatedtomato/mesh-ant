@@ -32,19 +32,14 @@ const TagValueDraft TagValue = "draft"
 // by DerivedFrom. This makes the ingestion process itself followable and
 // inspectable — the LLM is a mediator in the chain, not a hidden extractor.
 type TraceDraft struct {
-	// Framework-assigned fields (assigned by meshant draft command).
-
-	// ID uniquely identifies this draft record. Assigned by the loader if absent.
+	// ID uniquely identifies this draft. Assigned by the loader if absent.
 	ID string `json:"id,omitempty"`
 
-	// Timestamp records when this draft was created by the loader.
+	// Timestamp records when this draft was created.
 	Timestamp time.Time `json:"timestamp,omitempty"`
 
-	// Source material fields.
-
-	// SourceSpan is the verbatim text from the source document that provoked
-	// this extraction. It is the only required field — a TraceDraft with only
-	// a source span is valid. It preserves the text without forcing resolution.
+	// SourceSpan is the verbatim text that provoked this extraction.
+	// The only required field — preserves the anchor without forcing resolution.
 	SourceSpan string `json:"source_span"`
 
 	// SourceDocRef identifies the source document (path, URL, or reference string).
@@ -56,12 +51,12 @@ type TraceDraft struct {
 	// WhatChanged is a short candidate description of the difference observed.
 	WhatChanged string `json:"what_changed,omitempty"`
 
-	// Source names candidate source elements. May be empty if attribution is
-	// genuinely unclear — do not fabricate confident assignments.
+	// Source names candidate source elements. May be empty when attribution is
+	// genuinely unclear.
 	Source []string `json:"source,omitempty"`
 
-	// Target names candidate target elements. May be empty if the effect is
-	// diffuse or not supportable from the source span.
+	// Target names candidate target elements. May be empty when the effect is
+	// diffuse or unsupportable from the source span.
 	Target []string `json:"target,omitempty"`
 
 	// Mediation names the candidate mediator between source and target.
@@ -73,85 +68,48 @@ type TraceDraft struct {
 	// Tags are candidate descriptors for this trace.
 	Tags []string `json:"tags,omitempty"`
 
-	// Uncertainty and provenance fields.
-
-	// UncertaintyNote names where the source span does not support confident
+	// UncertaintyNote records where the source span does not support confident
 	// field assignment. Prefer a non-empty note over a fabricated value.
 	UncertaintyNote string `json:"uncertainty_note,omitempty"`
 
-	// ExtractionStage records where in the pipeline this draft was produced.
+	// ExtractionStage records pipeline position of this draft.
 	// Known values: "span-harvest", "weak-draft", "critiqued", "reviewed".
-	//
-	// "critiqued" is an LLM re-articulation of an existing draft (Thread F).
-	// It names a mediating act — an LLM suggestion, not a human decision.
-	// Stages name pipeline positions, not quality levels; "critiqued" has
-	// equal standing with any other stage as an analytical object.
+	// Stages name positions, not quality levels — "critiqued" names an LLM
+	// mediating act (Thread F), not a lesser record.
 	ExtractionStage string `json:"extraction_stage,omitempty"`
 
-	// ExtractedBy is the analyst-position cut axis for the ingestion layer,
-	// parallel to Observer for the graph layer. It names an analytical
-	// position — not a person or system identity. "human", "llm-pass1",
-	// "llm-pass2", and "reviewer" are positions, not identifiers.
-	//
-	// Two drafts with different ExtractedBy values for the same SourceSpan
-	// represent two analyst positions on the same material. Their disagreement
-	// is data, not error — it is the raw material of comparative analysis and
-	// should be preserved rather than resolved away.
-	//
-	// Drafts with an empty ExtractedBy represent an undeclared position.
-	// They remain valid drafts; use loader.GroupByAnalyst to partition a
-	// draft set by this field.
+	// ExtractedBy names the analyst position — parallel to Observer for the
+	// graph layer. "human", "llm-pass1", "reviewer" are positions, not identities.
+	// Two drafts with different ExtractedBy for the same SourceSpan represent
+	// two positions on the same material; their disagreement is data, not error.
+	// Use loader.GroupByAnalyst to partition by this field.
 	ExtractedBy string `json:"extracted_by,omitempty"`
 
-	// DerivedFrom is the ID of the parent draft, linking revision records
-	// into a structurally followable chain. Empty for root drafts.
+	// DerivedFrom is the ID of the parent draft; empty for root drafts.
 	DerivedFrom string `json:"derived_from,omitempty"`
 
-	// CriterionRef is the name of the EquivalenceCriterion under which this
-	// draft was produced or reviewed. Set by meshant rearticulate --criterion-file
-	// to record the interpretive frame that governed the critique pass.
-	//
-	// CriterionRef stores the criterion's Name string — a citation, not a copy.
-	// The criterion file remains the authoritative source; CriterionRef names it
-	// so that the skeleton is self-situated: you know not just that fields were
-	// left blank, but under what interpretive conditions.
-	//
-	// Empty means no criterion was declared. Does not affect Validate(),
+	// CriterionRef names the EquivalenceCriterion under which this draft was
+	// produced or reviewed — a citation, not a copy. Records the interpretive
+	// frame so the skeleton is self-situated. Does not affect Validate(),
 	// IsPromotable(), or Promote().
 	CriterionRef string `json:"criterion_ref,omitempty"`
 
-	// SessionRef is a structural link from this draft to the ingestion session
-	// that produced it. It names the session file (or session ID) so that the
-	// conditions under which this draft was extracted — model, prompt, source —
-	// are recoverable from the draft itself, not only via file co-location.
-	//
-	// SessionRef is a draft-layer provenance field. It is preserved by
-	// deriveAccepted and deriveEdited so that session traceability survives the
-	// review pipeline. It is NOT transferred by Promote() — canonical Traces
-	// record analytical content, not ingestion mechanics.
-	//
-	// Empty means no session was recorded (pre-F.0 drafts, or manually authored
-	// drafts). Does not affect Validate(), IsPromotable(), or Promote().
+	// SessionRef links this draft to the ingestion session that produced it,
+	// so extraction conditions (model, prompt, source) are recoverable from the
+	// draft itself. Preserved by DeriveAccepted/DeriveEdited; NOT transferred by
+	// Promote() — canonical Traces record analytical content, not ingestion mechanics.
+	// Does not affect Validate(), IsPromotable(), or Promote().
 	SessionRef string `json:"session_ref,omitempty"`
 
-	// IntentionallyBlank lists the names of content fields that were
-	// deliberately left empty during a critique or review pass — not because
-	// information is missing, but because the analyst decided the field
-	// should not be filled from this source span.
-	//
-	// This distinguishes "never extracted" (field absent, no entry here) from
-	// "deliberately not filled" (field absent AND name listed here). Useful
-	// for critique-pass skeletons produced by meshant rearticulate, where
-	// blank content fields are correct, not incomplete.
-	//
-	// Known field names: "what_changed", "source", "target", "mediation",
-	// "observer", "tags".
+	// IntentionallyBlank lists content field names deliberately left empty —
+	// the analyst decided the field should not be filled from this source span.
+	// Distinguishes "never extracted" (absent, no entry here) from "deliberately
+	// not filled" (absent AND listed here). Known names: "what_changed", "source",
+	// "target", "mediation", "observer", "tags".
 	IntentionallyBlank []string `json:"intentionally_blank,omitempty"`
 }
 
-// Validate checks that the minimum required field is present.
-// Only SourceSpan is required — a TraceDraft with only a source span is valid.
-// All other fields are optional at the draft stage.
+// Validate checks that SourceSpan is present — the only required field.
 func (d TraceDraft) Validate() error {
 	if d.SourceSpan == "" {
 		return errors.New("tracedraft: source_span is required — it is the anchor text that makes this extraction inspectable")
@@ -159,15 +117,9 @@ func (d TraceDraft) Validate() error {
 	return nil
 }
 
-// IsPromotable reports whether this draft has the fields required to produce
-// a canonical Trace via Promote:
-//   - ID must be a valid lowercase UUID
-//   - WhatChanged must be non-empty
-//   - Observer must be non-empty
-//
-// IsPromotable does not call Validate — SourceSpan completeness is not
-// required for promotion because the source span is preserved in the draft,
-// not transferred to the Trace.
+// IsPromotable reports whether the draft has the fields required for Promote:
+// a valid lowercase UUID ID, non-empty WhatChanged, and non-empty Observer.
+// Does not call Validate — SourceSpan is preserved in the draft, not transferred.
 func (d TraceDraft) IsPromotable() bool {
 	if !uuidPattern.MatchString(d.ID) {
 		return false
@@ -181,20 +133,14 @@ func (d TraceDraft) IsPromotable() bool {
 	return true
 }
 
-// Promote converts this TraceDraft to a canonical Trace. It appends
-// TagValueDraft to the trace's Tags as a provenance signal that this trace
-// passed through the ingestion pipeline.
-//
-// Promote errors if IsPromotable() returns false. The error names every
-// missing or invalid field so callers can report them to the user.
-//
-// The promoted Trace will pass Trace.Validate() when Promote succeeds.
+// Promote converts this TraceDraft to a canonical Trace, appending TagValueDraft
+// as a provenance signal. Errors if IsPromotable() is false. The promoted Trace
+// passes Trace.Validate().
 func (d TraceDraft) Promote() (Trace, error) {
 	if !d.IsPromotable() {
 		return Trace{}, d.promotabilityError()
 	}
 
-	// Build tags: carry forward existing tags and append TagValueDraft.
 	tags := make([]string, len(d.Tags), len(d.Tags)+1)
 	copy(tags, d.Tags)
 	tags = append(tags, string(TagValueDraft))
@@ -211,9 +157,7 @@ func (d TraceDraft) Promote() (Trace, error) {
 	}, nil
 }
 
-// promotabilityError collects all reasons why this draft cannot be promoted
-// and returns them as a single descriptive error. It mirrors Trace.Validate
-// in spirit: all problems in one pass.
+// promotabilityError collects all reasons this draft cannot be promoted.
 func (d TraceDraft) promotabilityError() error {
 	var errs []error
 	if !uuidPattern.MatchString(d.ID) {

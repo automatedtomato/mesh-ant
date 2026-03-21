@@ -12,23 +12,10 @@ import (
 
 // cmdGaps implements the "gaps" subcommand.
 //
-// It articulates two observer-situated graphs from the same traces file and
-// prints an observer-gap report — what each position can see that the other
-// cannot. Neither position is treated as authoritative; the report names both
-// and the asymmetry between them. When --suggest is set, heuristic
-// re-articulation suggestions are printed after the gap report.
-//
-// It accepts the following flags:
-//   - --observer-a (repeatable, required) — observer positions for graph A
-//   - --observer-b (repeatable, required) — observer positions for graph B
-//   - --tag-a      (repeatable, optional) — tag filter for graph A
-//   - --tag-b      (repeatable, optional) — tag filter for graph B
-//   - --from-a, --to-a (optional, RFC3339) — time window for graph A
-//   - --from-b, --to-b (optional, RFC3339) — time window for graph B
-//   - --output (optional)                  — write output to file instead of stdout
-//
-// Returns an error if --observer-a or --observer-b is missing, a time flag
-// is not RFC3339, the path is missing or unloadable, or writing fails.
+// Articulates two observer-situated graphs from the same traces file and
+// prints a gap report — what each position sees that the other cannot.
+// Neither position is treated as authoritative. When --suggest is set,
+// heuristic re-articulation suggestions follow the gap report.
 func cmdGaps(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("gaps", flag.ContinueOnError)
 
@@ -49,7 +36,6 @@ func cmdGaps(w io.Writer, args []string) error {
 	var outputPath string
 	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. gaps.txt)")
 
-	// --suggest enables heuristic re-articulation suggestions after the gap report.
 	var suggest bool
 	fs.BoolVar(&suggest, "suggest", false, "print re-articulation suggestions after the gap report")
 
@@ -110,8 +96,6 @@ func cmdGaps(w io.Writer, args []string) error {
 		return err
 	}
 
-	// When --suggest is set, append heuristic re-articulation suggestions
-	// immediately after the gap report.
 	if suggest {
 		suggestions := graph.SuggestRearticulations(gap)
 		if err := graph.PrintRearticSuggestions(dest, gap, suggestions); err != nil {

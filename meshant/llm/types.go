@@ -74,9 +74,7 @@ type ExtractionOptions struct {
 }
 
 // AssistOptions configures a single RunAssistSession call.
-// The caller parses the spans file upstream and supplies the resulting
-// []string directly. InputPath is recorded in the SessionRecord for
-// provenance — it is optional (empty is valid).
+// InputPath is recorded in the SessionRecord for provenance; empty is valid.
 type AssistOptions struct {
 	ModelID            string
 	InputPath          string // path to spans file; recorded in SessionRecord
@@ -87,12 +85,8 @@ type AssistOptions struct {
 }
 
 // CritiqueOptions configures a single RunCritique call.
-// The caller parses the input drafts file upstream and supplies the resulting
-// []schema.TraceDraft directly. InputPath is recorded in the SessionRecord for
-// provenance — it is optional (empty is valid).
-//
-// DraftID is optional: when set, only the draft with that ID is critiqued;
-// all others are ignored. When empty, all input drafts are critiqued.
+// InputPath is recorded in the SessionRecord for provenance; empty is valid.
+// DraftID, when non-empty, restricts critique to the single draft with that ID.
 type CritiqueOptions struct {
 	ModelID            string
 	InputPath          string // path to input drafts file; recorded in SessionRecord
@@ -124,19 +118,15 @@ func (e *ErrMalformedOutput) Error() string {
 	return fmt.Sprintf("llm: malformed output: %v", e.ParseErr)
 }
 
-// frameworkUncertaintyNote is always appended to UncertaintyNote on
-// LLM-produced drafts (Decision D3 in docs/decisions/llm-as-mediator-v1.md).
-// The framework never delegates this signal to the LLM.
+// frameworkUncertaintyNote is always appended to UncertaintyNote on LLM-produced
+// drafts — the framework never delegates this signal to the LLM (D3).
 const frameworkUncertaintyNote = "LLM-produced candidate; unverified by human review"
 
-// maxSourceBytes caps source document size at 1 MiB. Documents larger than
-// this are rejected before any LLM call to prevent unexpected token costs.
+// maxSourceBytes caps source document size at 1 MiB to prevent unexpected token costs.
 const maxSourceBytes = 1 * 1024 * 1024
 
-// knownContentFields lists the TraceDraft field names valid for use in
-// IntentionallyBlank (Decision D7). Only content fields are valid; provenance
-// fields like extracted_by and session_ref are framework-assigned and cannot
-// be declared blank by the LLM.
+// knownContentFields lists TraceDraft field names valid for IntentionallyBlank (D7).
+// Provenance fields are framework-assigned and cannot be declared blank by the LLM.
 var knownContentFields = map[string]bool{
 	"what_changed": true,
 	"source":       true,
