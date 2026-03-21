@@ -1,0 +1,92 @@
+[
+  {
+    "id": "f5000001-0000-4000-8000-000000000001",
+    "timestamp": "2026-03-15T14:22:11Z",
+    "what_changed": "registry-security-team declared a Code Signing Readiness Review and issued a 30-day recommendation for mandatory package-signing enforcement, triggered by the strutil v2.1.3 supply chain compromise affecting 84,000 downstream consumers",
+    "source": ["strutil-compromise"],
+    "target": ["libvalidate-registry"],
+    "mediation": "supply-chain-incident-response-protocol",
+    "observer": "registry-security-team",
+    "tags": ["translation", "threshold", "draft"]
+  },
+  {
+    "id": "f5000001-0000-4000-8000-000000000002",
+    "timestamp": "2026-03-15T14:22:14Z",
+    "what_changed": "board-security-committee constituted governance-working-group under foundation-committee-charter article 12.4 with authority to draft and propose mandatory code-signing policy within 14 days",
+    "source": ["board-security-committee"],
+    "target": ["governance-working-group"],
+    "mediation": "foundation-committee-charter",
+    "observer": "governance-working-group",
+    "tags": ["translation", "draft"]
+  },
+  {
+    "id": "f5000001-0000-4000-8000-000000000003",
+    "timestamp": "2026-03-15T14:22:18Z",
+    "what_changed": "governance-working-group published PROPOSAL-CSRP-001 requiring GPG-signed releases from verified accounts; pre-policy releases grandfathered; enforcement deadline set to 2026-03-15",
+    "source": ["governance-working-group"],
+    "target": ["libvalidate-registry"],
+    "mediation": "proposal-drafting-process",
+    "observer": "governance-working-group",
+    "tags": ["translation", "draft"]
+  },
+  {
+    "id": "f5000001-0000-4000-8000-000000000004",
+    "timestamp": "2026-03-15T14:22:21Z",
+    "what_changed": "community-governance-process translated PROPOSAL-CSRP-001 from a working-group proposal into a binding community decision (47/52 in favor) under registry-governance-rules section 8",
+    "source": ["community-voters"],
+    "target": ["PROPOSAL-CSRP-001"],
+    "mediation": "community-governance-process",
+    "observer": "registry-security-team",
+    "tags": ["threshold", "translation", "draft"]
+  },
+  {
+    "id": "f5000001-0000-4000-8000-000000000005",
+    "timestamp": "2026-03-15T14:22:25Z",
+    "what_changed": "foundation-board ratified PROPOSAL-CSRP-001 under majority-vote-protocol, elevating the policy to legally-binding obligation for all listed packages",
+    "source": ["foundation-board"],
+    "target": ["PROPOSAL-CSRP-001"],
+    "mediation": "majority-vote-protocol",
+    "observer": "registry-security-team",
+    "tags": ["threshold", "translation", "draft"]
+  },
+  {
+    "id": "f5000002-0000-4000-8000-000000000005",
+    "timestamp": "2026-03-15T15:08:44Z",
+    "what_changed": "foundation-board ratified PROPOSAL-CSRP-001 under foundation-bylaws-article-7, elevating the policy from community-advisory to legally-binding obligation for all listed packages",
+    "source": ["foundation-board"],
+    "target": ["PROPOSAL-CSRP-001"],
+    "mediation": "foundation-bylaws-article-7",
+    "observer": "registry-security-team",
+    "tags": ["threshold", "translation", "draft"]
+  },
+  {
+    "id": "f5000001-0000-4000-8000-000000000006",
+    "timestamp": "2026-03-15T14:22:28Z",
+    "what_changed": "package-signing-gate deployed to release pipeline; unsigned release attempts rejected with SIGN-001; 847 pre-policy packages grandfathered under snapshot",
+    "source": ["registry-ops-team"],
+    "target": ["libvalidate-release-pipeline"],
+    "mediation": "package-signing-gate",
+    "observer": "registry-security-team",
+    "tags": ["threshold", "draft"]
+  },
+  {
+    "id": "f5000001-0000-4000-8000-000000000007",
+    "timestamp": "2026-03-15T14:22:32Z",
+    "what_changed": "three core maintainers formally blocked PROPOSAL-CSRP-001 implementation by registering objections under governance-rules section 9, citing GPG infrastructure requirements as a barrier",
+    "source": ["dissenting-maintainers"],
+    "target": ["PROPOSAL-CSRP-001"],
+    "mediation": "registry-governance-rules",
+    "observer": "registry-security-team",
+    "tags": ["blockage", "draft"]
+  },
+  {
+    "id": "f5000002-0000-4000-8000-000000000007",
+    "timestamp": "2026-03-15T15:10:21Z",
+    "what_changed": "dissenting-maintainers translated PROPOSAL-CSRP-001 into a different register through formal objection: re-articulating the policy as an accessibility exclusion for contributors without persistent signing infrastructure",
+    "source": ["dissenting-maintainers"],
+    "target": ["low-resource-contributors"],
+    "mediation": "registry-governance-rules",
+    "observer": "dissenting-maintainers",
+    "tags": ["translation", "draft"]
+  }
+]

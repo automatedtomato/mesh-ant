@@ -1,0 +1,193 @@
+{
+  "id": "",
+  "nodes": {
+    "PROPOSAL-CSRP-001": {
+      "name": "PROPOSAL-CSRP-001",
+      "appearance_count": 4,
+      "shadow_count": 0
+    },
+    "community-voters": {
+      "name": "community-voters",
+      "appearance_count": 1,
+      "shadow_count": 0
+    },
+    "dissenting-maintainers": {
+      "name": "dissenting-maintainers",
+      "appearance_count": 1,
+      "shadow_count": 1
+    },
+    "foundation-board": {
+      "name": "foundation-board",
+      "appearance_count": 2,
+      "shadow_count": 0
+    },
+    "libvalidate-registry": {
+      "name": "libvalidate-registry",
+      "appearance_count": 1,
+      "shadow_count": 1
+    },
+    "libvalidate-release-pipeline": {
+      "name": "libvalidate-release-pipeline",
+      "appearance_count": 1,
+      "shadow_count": 0
+    },
+    "registry-ops-team": {
+      "name": "registry-ops-team",
+      "appearance_count": 1,
+      "shadow_count": 0
+    },
+    "strutil-compromise": {
+      "name": "strutil-compromise",
+      "appearance_count": 1,
+      "shadow_count": 0
+    }
+  },
+  "edges": [
+    {
+      "trace_id": "f5000001-0000-4000-8000-000000000001",
+      "what_changed": "registry-security-team declared a Code Signing Readiness Review and issued a 30-day recommendation for mandatory package-signing enforcement, triggered by the strutil v2.1.3 supply chain compromise affecting 84,000 downstream consumers",
+      "mediation": "supply-chain-incident-response-protocol",
+      "observer": "registry-security-team",
+      "sources": [
+        "strutil-compromise"
+      ],
+      "targets": [
+        "libvalidate-registry"
+      ],
+      "tags": [
+        "translation",
+        "threshold",
+        "draft"
+      ]
+    },
+    {
+      "trace_id": "f5000001-0000-4000-8000-000000000004",
+      "what_changed": "community-governance-process translated PROPOSAL-CSRP-001 from a working-group proposal into a binding community decision (47/52 in favor) under registry-governance-rules section 8",
+      "mediation": "community-governance-process",
+      "observer": "registry-security-team",
+      "sources": [
+        "community-voters"
+      ],
+      "targets": [
+        "PROPOSAL-CSRP-001"
+      ],
+      "tags": [
+        "threshold",
+        "translation",
+        "draft"
+      ]
+    },
+    {
+      "trace_id": "f5000001-0000-4000-8000-000000000005",
+      "what_changed": "foundation-board ratified PROPOSAL-CSRP-001 under majority-vote-protocol, elevating the policy to legally-binding obligation for all listed packages",
+      "mediation": "majority-vote-protocol",
+      "observer": "registry-security-team",
+      "sources": [
+        "foundation-board"
+      ],
+      "targets": [
+        "PROPOSAL-CSRP-001"
+      ],
+      "tags": [
+        "threshold",
+        "translation",
+        "draft"
+      ]
+    },
+    {
+      "trace_id": "f5000002-0000-4000-8000-000000000005",
+      "what_changed": "foundation-board ratified PROPOSAL-CSRP-001 under foundation-bylaws-article-7, elevating the policy from community-advisory to legally-binding obligation for all listed packages",
+      "mediation": "foundation-bylaws-article-7",
+      "observer": "registry-security-team",
+      "sources": [
+        "foundation-board"
+      ],
+      "targets": [
+        "PROPOSAL-CSRP-001"
+      ],
+      "tags": [
+        "threshold",
+        "translation",
+        "draft"
+      ]
+    },
+    {
+      "trace_id": "f5000001-0000-4000-8000-000000000006",
+      "what_changed": "package-signing-gate deployed to release pipeline; unsigned release attempts rejected with SIGN-001; 847 pre-policy packages grandfathered under snapshot",
+      "mediation": "package-signing-gate",
+      "observer": "registry-security-team",
+      "sources": [
+        "registry-ops-team"
+      ],
+      "targets": [
+        "libvalidate-release-pipeline"
+      ],
+      "tags": [
+        "threshold",
+        "draft"
+      ]
+    },
+    {
+      "trace_id": "f5000001-0000-4000-8000-000000000007",
+      "what_changed": "three core maintainers formally blocked PROPOSAL-CSRP-001 implementation by registering objections under governance-rules section 9, citing GPG infrastructure requirements as a barrier",
+      "mediation": "registry-governance-rules",
+      "observer": "registry-security-team",
+      "sources": [
+        "dissenting-maintainers"
+      ],
+      "targets": [
+        "PROPOSAL-CSRP-001"
+      ],
+      "tags": [
+        "blockage",
+        "draft"
+      ]
+    }
+  ],
+  "cut": {
+    "observer_positions": [
+      "registry-security-team"
+    ],
+    "time_window": {
+      "start": null,
+      "end": null
+    },
+    "tags": [],
+    "traces_included": 6,
+    "traces_total": 9,
+    "distinct_observers_total": 3,
+    "shadow_elements": [
+      {
+        "name": "board-security-committee",
+        "seen_from": [
+          "governance-working-group"
+        ],
+        "reasons": [
+          "observer"
+        ]
+      },
+      {
+        "name": "governance-working-group",
+        "seen_from": [
+          "governance-working-group"
+        ],
+        "reasons": [
+          "observer"
+        ]
+      },
+      {
+        "name": "low-resource-contributors",
+        "seen_from": [
+          "dissenting-maintainers"
+        ],
+        "reasons": [
+          "observer"
+        ]
+      }
+    ],
+    "excluded_observer_positions": [
+      "dissenting-maintainers",
+      "governance-working-group"
+    ]
+  }
+}
