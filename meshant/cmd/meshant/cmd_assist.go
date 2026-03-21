@@ -13,45 +13,25 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
 )
 
-// maxSpansBytes caps the spans file size at 4 MiB. Spans files are plain text
-// or JSON string arrays — 4 MiB is generous for any realistic analysis session.
-// Mirroring the size-cap pattern from LoadPromptTemplate and loadCriterionFile.
+// maxSpansBytes caps the spans file size at 4 MiB, consistent with other
+// structured input caps (LoadPromptTemplate, loadCriterionFile).
 const maxSpansBytes = 4 * 1024 * 1024
 
-// defaultAssistPrompt is the path to the bundled assist prompt template,
-// relative to the repository root. Used when --prompt-template is not supplied.
+// defaultAssistPrompt is the bundled assist prompt template path (repository root-relative).
 const defaultAssistPrompt = "data/prompts/assist_pass.md"
 
-// defaultAssistModel is the model ID used when --model is not supplied.
+// defaultAssistModel is the model used when --model is not supplied.
 const defaultAssistModel = "claude-sonnet-4-6"
 
 // cmdAssist implements the "assist" subcommand.
 //
-// It reads a spans file, calls the LLM once per span to produce a candidate
-// TraceDraft, presents each draft to the user for accept/edit/skip/quit
-// decisions, and writes the resulting drafts plus a SessionRecord to disk.
+// Reads a spans file, calls the LLM once per span, presents each candidate
+// draft for accept/edit/skip/quit, and writes accepted drafts plus a
+// SessionRecord. Session output defaults mirror cmdExtract.
 //
-// The LLM client is injected via the client parameter. When client is nil,
-// cmdAssist constructs a real AnthropicClient from the environment (reading
-// MESHANT_LLM_API_KEY or ANTHROPIC_API_KEY). Tests inject a mock client.
-//
-// Session output defaulting (mirrors cmdExtract):
-//   - if --session-output is provided: write to that path
-//   - if --output is a file: write to <output>.session.json
-//   - if output is stdout: write to session_<compact-ISO8601-timestamp>.json in cwd
-//
-// The interactive prompts are written to out (w). The user's responses are
-// read from in (os.Stdin in production; a strings.Reader in tests).
-//
-// Flags:
-//   - --spans-file <path>          path to spans file (required); newline-separated
-//     text, JSON string array, or single line
-//   - --prompt-template <path>     path to assist prompt template (default: data/prompts/assist_pass.md)
-//   - --model <id>                 LLM model ID (default: claude-sonnet-4-6)
-//   - --source-doc-ref <ref>       document reference string for provenance (optional)
-//   - --criterion-file <path>      optional criterion JSON file (CriterionRef provenance)
-//   - --output <file>              write TraceDraft JSON to file (default: stdout)
-//   - --session-output <file>      write SessionRecord JSON to file (see defaulting above)
+// client may be nil; a real AnthropicClient is then constructed from env vars.
+// in is the interactive input reader (os.Stdin in production, strings.Reader
+// in tests).
 func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) error {
 	fs := flag.NewFlagSet("assist", flag.ContinueOnError)
 
@@ -84,7 +64,7 @@ func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) e
 		return fmt.Errorf("assist: --spans-file is required\n\nUsage: meshant assist --spans-file <path> [--prompt-template <path>] [--model <id>] [--source-doc-ref <ref>] [--criterion-file <path>] [--output <file>] [--session-output <file>]")
 	}
 
-	// Derive sessionOutputPath from outputPath when not explicitly provided.
+	// Default session output path when not explicitly provided.
 	if sessionOutputPath == "" {
 		if outputPath != "" {
 			sessionOutputPath = outputPath + ".session.json"
@@ -93,7 +73,6 @@ func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) e
 		}
 	}
 
-	// Resolve criterion reference string from optional --criterion-file.
 	var criterionRef string
 	if criterionFile != "" {
 		c, err := loadCriterionFile(criterionFile)
@@ -103,8 +82,6 @@ func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) e
 		criterionRef = c.Name
 	}
 
-	// Read spans file with a size cap — mirrors the pattern used by
-	// LoadPromptTemplate and loadCriterionFile to prevent unbounded reads.
 	spansData, err := readSpansFile(spansFile)
 	if err != nil {
 		return fmt.Errorf("assist: %w", err)
@@ -114,8 +91,6 @@ func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) e
 		return fmt.Errorf("assist: %w", err)
 	}
 
-	// Construct real LLM client from environment when none is injected.
-	// Tests inject a mock client so no env var is needed.
 	if client == nil {
 		c, err := llm.NewAnthropicClient(modelID)
 		if err != nil {
@@ -131,20 +106,15 @@ func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) e
 		CriterionRef:       criterionRef,
 		SourceDocRef:       sourceDocRef,
 		OutputPath:         outputPath,
-		SessionOutputPath:  sessionOutputPath,
 	}
 
 	drafts, rec, err := llm.RunAssistSession(context.Background(), client, spans, opts, in, w)
 
 	// Always write the SessionRecord before returning — even on error.
-	// When the session succeeded but the session write fails, that is a hard
-	// error: the provenance record is lost.
+	// A session-write failure after a successful session is a hard error:
+	// the provenance record is lost.
 	sessionWriteErr := writeSessionRecord(sessionOutputPath, rec)
 	if err != nil {
-		// RunAssistSession only returns non-nil here if RunEditFlow or
-		// review.DeriveEdited fails — both require loader.NewUUID to fail,
-		// which requires OS-level entropy failure. There is no injection
-		// point at the CLI level to trigger this path in unit tests.
 		// Primary session error takes precedence; demote session-write failure
 		// to a warning so the session error is not masked.
 		if sessionWriteErr != nil {
@@ -157,7 +127,6 @@ func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) e
 		return fmt.Errorf("assist: write session record: %w", sessionWriteErr)
 	}
 
-	// Write TraceDraft JSON array to output destination.
 	dest, err := outputWriter(w, outputPath)
 	if err != nil {
 		return fmt.Errorf("assist: %w", err)
@@ -172,13 +141,12 @@ func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) e
 		return fmt.Errorf("assist: encode output: %w", err)
 	}
 
-	// Print a provenance summary to w (always stdout).
+	// Print provenance summary to w (stdout), never to the output file.
 	summary := loader.SummariseDrafts(drafts)
 	if err := loader.PrintDraftSummary(w, summary); err != nil {
 		return fmt.Errorf("assist: %w", err)
 	}
 
-	// Confirm file output paths.
 	if err := confirmOutput(w, outputPath); err != nil {
 		return err
 	}
@@ -186,18 +154,15 @@ func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) e
 		return err
 	}
 
-	// Surface per-span errors after writing all output. The session record and
-	// drafts are already persisted — callers can inspect them for details.
-	// This ensures the command exit code reflects that some spans failed.
+	// Surface per-span errors after writing all output — exit code reflects
+	// partial span failures even though session record and drafts are persisted.
 	if rec.ErrorNote != "" {
 		return fmt.Errorf("assist: session completed with span errors: %s", rec.ErrorNote)
 	}
 	return nil
 }
 
-// readSpansFile opens the spans file at path and reads up to maxSpansBytes.
-// Returns a clear error if the file is missing or exceeds the cap. Mirrors
-// the size-cap pattern used by LoadPromptTemplate and loadCriterionFile.
+// readSpansFile reads up to maxSpansBytes from the spans file at path.
 func readSpansFile(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -205,8 +170,7 @@ func readSpansFile(path string) ([]byte, error) {
 	}
 	defer f.Close()
 
-	// Read one byte beyond the cap to detect oversized files.
-	limited := io.LimitReader(f, int64(maxSpansBytes)+1)
+	limited := io.LimitReader(f, int64(maxSpansBytes)+1) // +1 detects oversized files
 	data, err := io.ReadAll(limited)
 	if err != nil {
 		return nil, fmt.Errorf("read spans file %q: %w", path, err)

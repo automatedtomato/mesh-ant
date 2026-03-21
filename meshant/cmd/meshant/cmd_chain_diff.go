@@ -14,31 +14,13 @@ import (
 
 // cmdChainDiff implements the "chain-diff" subcommand.
 //
-// It loads a drafts JSON file, groups drafts by analyst (ExtractedBy), builds
-// a derivation chain for each analyst position for the requested SourceSpan,
-// classifies each chain with ClassifyDraftChain, and compares the resulting
-// classifications with CompareChainClassifications.
+// Groups drafts by analyst, builds a derivation chain per analyst for the
+// requested --span, classifies each chain, and compares classifications.
+// Steps where the two positions diverge are surfaced; length asymmetry is
+// reported when chain lengths differ.
 //
-// The comparison surfaces steps where the two positions assigned different
-// DraftStepKind values. Length asymmetry is reported when the chains have
-// different numbers of steps — steps beyond the shorter chain are not visible.
-//
-// Required flags:
-//   - --analyst-a: label for the first analyst position
-//   - --analyst-b: label for the second analyst position
-//   - --span: SourceSpan to compare classification chains for
-//
-// Optional flags:
-//   - --output: write report to file instead of stdout
-//
-// Required positional argument: path to a drafts JSON file.
-//
-// Note: the span string is treated as a shared key to align the two analyst
-// positions. Identical span strings do not guarantee that both positions
-// worked from identical source material — the comparison assumes they did.
-//
-// Returns an error if required flags are missing, the file cannot be loaded,
-// either analyst label is not found, or the span is absent from one position.
+// Note: --span is treated as a shared key. Identical span strings do not
+// guarantee identical source material — the comparison assumes they do.
 func cmdChainDiff(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("chain-diff", flag.ContinueOnError)
 
@@ -52,7 +34,6 @@ func cmdChainDiff(w io.Writer, args []string) error {
 		return err
 	}
 
-	// Validate required flags.
 	if analystA == "" {
 		return fmt.Errorf("chain-diff: --analyst-a is required")
 	}
@@ -72,16 +53,14 @@ func cmdChainDiff(w io.Writer, args []string) error {
 	}
 	path := remaining[0]
 
-	// Load and validate all draft records.
 	drafts, err := loader.LoadDrafts(path)
 	if err != nil {
 		return fmt.Errorf("chain-diff: %w", err)
 	}
 
-	// Partition drafts by analyst position (ExtractedBy field).
 	byAnalyst := loader.GroupByAnalyst(drafts)
 
-	// Look up each analyst label; report all available labels on failure.
+	// Reports all available labels on failure so the user can correct without re-running.
 	lookupAnalyst := func(label string) ([]schema.TraceDraft, error) {
 		set, ok := byAnalyst[label]
 		if !ok {
@@ -105,18 +84,11 @@ func cmdChainDiff(w io.Writer, args []string) error {
 		return err
 	}
 
-	// buildChain finds the root draft for the given span in analystDrafts,
-	// follows the derivation chain, and returns the classification of each step.
-	// The root is the span draft whose DerivedFrom is absent from this span's
-	// draft IDs — that is, the analyst's earliest draft for this span.
-	//
-	// Scope note: root-finding uses the span-scoped ID set (spanIDs), not the
-	// full analyst set. This prevents a cross-span DerivedFrom link from being
-	// mistaken for an in-span parent, which would cause the root to be placed
-	// at a mid-chain node. FollowDraftChain similarly receives only spanDrafts
-	// so the traversal cannot follow links outside this span.
+	// buildChain finds the chain root for the requested span, then classifies
+	// each step. Root-finding and traversal are scoped to spanDrafts (not the
+	// full analyst set) to prevent cross-span DerivedFrom links from displacing
+	// the root to a mid-chain node.
 	buildChain := func(analystLabel string, analystDrafts []schema.TraceDraft) ([]loader.DraftStepClassification, error) {
-		// Filter to drafts for the requested span.
 		var spanDrafts []schema.TraceDraft
 		for _, d := range analystDrafts {
 			if d.SourceSpan == span {
@@ -127,9 +99,8 @@ func cmdChainDiff(w io.Writer, args []string) error {
 			return nil, fmt.Errorf("chain-diff: span %q not found for analyst %q", span, analystLabel)
 		}
 
-		// Build a span-scoped ID set. Root candidates are span drafts whose
-		// DerivedFrom is absent from this set — their parent (if any) is outside
-		// the span, making them the starting point of this analyst's chain.
+		// Root candidates: span drafts whose DerivedFrom is absent from this set
+		// (parent is outside the span, so this draft starts the analyst's chain).
 		spanIDs := make(map[string]bool, len(spanDrafts))
 		for _, d := range spanDrafts {
 			spanIDs[d.ID] = true
@@ -146,15 +117,11 @@ func cmdChainDiff(w io.Writer, args []string) error {
 			return nil, fmt.Errorf("chain-diff: no chain root found for span %q under analyst %q (possible cycle in derivation links)", span, analystLabel)
 		}
 		if len(roots) > 1 {
-			// Multiple independent roots mean the chain is ambiguous — refuse
-			// to pick one silently, as the comparison would vary by JSON order.
+			// Refuse to pick a root silently — the comparison would vary by JSON order.
 			return nil, fmt.Errorf("chain-diff: ambiguous chain root for span %q under analyst %q: multiple root candidates %v", span, analystLabel, roots)
 		}
 		rootID := roots[0]
 
-		// Follow the derivation chain from the root within the span-scoped set.
-		// Passing spanDrafts (not analystDrafts) ensures the traversal cannot
-		// cross into a draft that belongs to a different SourceSpan.
 		chain := loader.FollowDraftChain(spanDrafts, rootID)
 		return loader.ClassifyDraftChain(chain), nil
 	}
@@ -168,7 +135,6 @@ func cmdChainDiff(w io.Writer, args []string) error {
 		return err
 	}
 
-	// Compare the two classification chains and render the report.
 	diffs := loader.CompareChainClassifications(chainA, chainB)
 
 	dest, err := outputWriter(w, outputPath)

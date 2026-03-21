@@ -14,21 +14,9 @@ import (
 
 // cmdExtractionGap implements the "extraction-gap" subcommand.
 //
-// It loads a drafts JSON file, groups drafts by analyst (ExtractedBy), looks
-// up the two requested analyst positions, compares their extraction sets, and
-// writes an ExtractionGap report to w (or an optional output file).
-//
-// Required flags:
-//   - --analyst-a: label for the first analyst position
-//   - --analyst-b: label for the second analyst position
-//
-// Optional flags:
-//   - --output: write report to file instead of stdout
-//
-// Required positional argument: path to a drafts JSON file.
-//
-// Returns an error if required flags are missing, the file cannot be loaded,
-// either analyst label is not found in the data, or writing fails.
+// Groups drafts by analyst, compares the two requested extraction sets, and
+// writes an ExtractionGap report. Requires --analyst-a, --analyst-b, and a
+// positional path to a drafts JSON file.
 func cmdExtractionGap(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("extraction-gap", flag.ContinueOnError)
 
@@ -41,7 +29,6 @@ func cmdExtractionGap(w io.Writer, args []string) error {
 		return err
 	}
 
-	// Validate required flags.
 	if analystA == "" {
 		return fmt.Errorf("extraction-gap: --analyst-a is required")
 	}
@@ -58,21 +45,17 @@ func cmdExtractionGap(w io.Writer, args []string) error {
 	}
 	path := remaining[0]
 
-	// Load and validate all draft records.
 	drafts, err := loader.LoadDrafts(path)
 	if err != nil {
 		return fmt.Errorf("extraction-gap: %w", err)
 	}
 
-	// Partition drafts by analyst position (ExtractedBy field).
 	byAnalyst := loader.GroupByAnalyst(drafts)
 
-	// Look up each analyst label; report all available labels on failure
-	// so the user can correct the invocation without re-running to discover.
+	// Reports all available labels on failure so the user can correct without re-running.
 	lookupSet := func(label string) ([]schema.TraceDraft, error) {
 		set, ok := byAnalyst[label]
 		if !ok {
-			// Build a sorted list of available labels for a helpful error.
 			available := make([]string, 0, len(byAnalyst))
 			for k := range byAnalyst {
 				available = append(available, k)
@@ -93,10 +76,8 @@ func cmdExtractionGap(w io.Writer, args []string) error {
 		return err
 	}
 
-	// Compare the two extraction positions.
 	gap := loader.CompareExtractions(analystA, setA, analystB, setB)
 
-	// Write report to output destination (file or stdout).
 	dest, err := outputWriter(w, outputPath)
 	if err != nil {
 		return fmt.Errorf("extraction-gap: %w", err)

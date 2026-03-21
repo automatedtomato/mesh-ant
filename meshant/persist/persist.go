@@ -24,15 +24,8 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/graph"
 )
 
-// WriteJSON marshals v as indented JSON and writes it to path with permissions
-// 0644. The file is created or overwritten. It works for any JSON-serialisable
-// value, including graph.MeshGraph and graph.GraphDiff.
-//
-// Indentation uses two spaces, matching the project's JSON style for human
-// readability.
-//
-// Returns an error if marshalling fails or if the file cannot be written (e.g.
-// the parent directory does not exist, or permissions are insufficient).
+// WriteJSON marshals v as indented JSON and writes it to path (0644, create or overwrite).
+// Returns an error if marshalling fails or the file cannot be written.
 func WriteJSON(path string, v any) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -44,13 +37,8 @@ func WriteJSON(path string, v any) error {
 	return nil
 }
 
-// ReadGraphJSON reads the file at path and unmarshals its contents as a
-// graph.MeshGraph. The TimeWindow custom JSON codec in the graph package handles
-// null bounds correctly — a null start or end decodes as a zero time.Time
-// (IsZero() == true), preserving the "unbounded" semantic.
-//
-// Returns an error if the file cannot be read or if the JSON is not a valid
-// MeshGraph.
+// ReadGraphJSON reads path and unmarshals it as a graph.MeshGraph.
+// TimeWindow null bounds decode as zero time.Time (unbounded).
 func ReadGraphJSON(path string) (graph.MeshGraph, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -63,12 +51,7 @@ func ReadGraphJSON(path string) (graph.MeshGraph, error) {
 	return g, nil
 }
 
-// ReadDiffJSON reads the file at path and unmarshals its contents as a
-// graph.GraphDiff. As with ReadGraphJSON, the TimeWindow codec is invoked
-// automatically for the From and To Cut fields.
-//
-// Returns an error if the file cannot be read or if the JSON is not a valid
-// GraphDiff.
+// ReadDiffJSON reads path and unmarshals it as a graph.GraphDiff.
 func ReadDiffJSON(path string) (graph.GraphDiff, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

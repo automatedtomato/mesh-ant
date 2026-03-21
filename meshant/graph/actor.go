@@ -21,45 +21,32 @@ import (
 	"fmt"
 )
 
-// Graph-reference prefix constants.
-// These are the authoritative definitions; the schema package carries matching
-// unexported copies for use in its string-level predicates (schema.IsGraphRef etc.)
-// without creating an import cycle.
+// Graph-reference prefix constants — authoritative definitions.
+// The schema package carries matching unexported copies to avoid an import cycle.
 const (
 	graphRefPrefixGraph  = "meshgraph:"
 	graphRefPrefixDiff   = "meshdiff:"
 	graphRefPrefixChain  = "meshchain:"
 )
 
-// IdentifyGraph assigns a fresh, stable UUID to g.ID and returns the updated
-// MeshGraph. The input g is not modified (immutable pattern).
-//
-// Call IdentifyGraph only when you intend to use the graph as an actor in the
-// mesh — i.e., when you plan to reference it in subsequent traces via GraphRef.
-// Most articulations produced for analysis do not need to be actors.
+// IdentifyGraph assigns a fresh UUID to g.ID and returns the updated MeshGraph.
+// The input is not modified. Call only when you intend to use the graph as an
+// actor referenced via GraphRef — most articulations do not need to be actors.
 func IdentifyGraph(g MeshGraph) MeshGraph {
 	g.ID = newUUID4()
 	return g
 }
 
-// IdentifyDiff assigns a fresh, stable UUID to d.ID and returns the updated
-// GraphDiff. The input d is not modified.
+// IdentifyDiff assigns a fresh UUID to d.ID and returns the updated GraphDiff.
+// The input is not modified.
 func IdentifyDiff(d GraphDiff) GraphDiff {
 	d.ID = newUUID4()
 	return d
 }
 
-// GraphRef returns the graph-reference string for g ("meshgraph:<g.ID>").
-// Returns an error if g.ID is empty — call IdentifyGraph first.
-//
-// The returned string can be placed in Trace.Source or Trace.Target to record
-// that this graph acted in the mesh.
-//
-// Note: the reference string is a stable handle — it carries no positional
-// information (no observer positions, time window, or shadow). The Cut is
-// held in the MeshGraph struct. If you need to recover the position from
-// which the articulation was made after the reference enters the mesh, retain
-// the identified MeshGraph alongside the reference string.
+// GraphRef returns "meshgraph:<g.ID>". Errors if g.ID is empty (call IdentifyGraph first).
+// The string carries no positional information — retain the MeshGraph alongside the
+// reference if you need to recover the Cut after it enters the mesh.
 func GraphRef(g MeshGraph) (string, error) {
 	if g.ID == "" {
 		return "", fmt.Errorf("graph.GraphRef: graph has no ID; call IdentifyGraph first")
@@ -67,12 +54,8 @@ func GraphRef(g MeshGraph) (string, error) {
 	return graphRefPrefixGraph + g.ID, nil
 }
 
-// DiffRef returns the graph-reference string for d ("meshdiff:<d.ID>").
-// Returns an error if d.ID is empty — call IdentifyDiff first.
-//
-// Same positional note as GraphRef: the string carries no Cut information.
-// Retain the identified GraphDiff if you need to access From/To cuts after
-// the reference enters the mesh.
+// DiffRef returns "meshdiff:<d.ID>". Errors if d.ID is empty (call IdentifyDiff first).
+// Same positional note as GraphRef: retain the GraphDiff to access From/To cuts.
 func DiffRef(d GraphDiff) (string, error) {
 	if d.ID == "" {
 		return "", fmt.Errorf("graph.DiffRef: diff has no ID; call IdentifyDiff first")
@@ -80,22 +63,16 @@ func DiffRef(d GraphDiff) (string, error) {
 	return graphRefPrefixDiff + d.ID, nil
 }
 
-// IdentifyChain assigns a fresh, stable UUID to c.ID and returns the updated
-// TranslationChain. The input c is not modified (immutable pattern).
-//
-// Call IdentifyChain only when you intend to use the chain as an actor in the
-// mesh — i.e., when you plan to reference it in subsequent traces via ChainRef.
-// Most chains produced for analysis do not need to be actors.
+// IdentifyChain assigns a fresh UUID to c.ID and returns the updated TranslationChain.
+// The input is not modified. Call only when you intend to reference the chain
+// via ChainRef — most chains do not need to be actors.
 func IdentifyChain(c TranslationChain) TranslationChain {
 	c.ID = newUUID4()
 	return c
 }
 
-// ChainRef returns the chain-reference string for c ("meshchain:<c.ID>").
-// Returns an error if c.ID is empty — call IdentifyChain first.
-//
-// The returned string can be placed in Trace.Source or Trace.Target to record
-// that this chain acted in the mesh, consistent with generalised symmetry.
+// ChainRef returns "meshchain:<c.ID>". Errors if c.ID is empty (call IdentifyChain first).
+// The string can appear in Trace.Source or Trace.Target, consistent with generalised symmetry.
 func ChainRef(c TranslationChain) (string, error) {
 	if c.ID == "" {
 		return "", fmt.Errorf("graph.ChainRef: chain has no ID; call IdentifyChain first")
@@ -103,20 +80,15 @@ func ChainRef(c TranslationChain) (string, error) {
 	return graphRefPrefixChain + c.ID, nil
 }
 
-// newUUID4 generates a random version-4 UUID string in lowercase hyphenated form:
-// xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx, where y is 8, 9, a, or b.
-//
-// Uses crypto/rand for randomness. Panics if the system random source is
-// unavailable — this is an unrecoverable environment failure, not a caller error.
+// newUUID4 generates a random version-4 UUID in lowercase hyphenated form.
+// Panics if crypto/rand is unavailable — that is an unrecoverable environment failure.
 func newUUID4() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		panic("graph.newUUID4: crypto/rand unavailable: " + err.Error())
 	}
-	// Set version 4 (bits 12–15 of byte 6).
-	b[6] = (b[6] & 0x0f) | 0x40
-	// Set variant bits (bits 6–7 of byte 8): 10xxxxxx.
-	b[8] = (b[8] & 0x3f) | 0x80
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 10xx
 	return fmt.Sprintf(
 		"%08x-%04x-%04x-%04x-%012x",
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16],

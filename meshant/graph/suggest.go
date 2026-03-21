@@ -84,19 +84,13 @@ type RearticSuggestion struct {
 // MeshGraph — so it cannot inspect what a re-articulation would actually
 // reveal. The Rationale field names this limit explicitly.
 func SuggestRearticulations(gap ObserverGap) []RearticSuggestion {
-	// nil means no gap — return nil to signal "no suggestions applicable".
 	if len(gap.OnlyInA) == 0 && len(gap.OnlyInB) == 0 {
-		return nil
+		return nil // nil = no gap, no suggestions applicable
 	}
 
-	// Gap exists: initialise a non-nil result so callers can distinguish
-	// "no gap" (nil) from "gap but no heuristic fired" (empty non-nil slice).
+	// Non-nil empty slice distinguishes "gap but no heuristic fired" from nil.
 	result := []RearticSuggestion{}
 
-	// Heuristic 1: observer expansion.
-	// If A has exclusive elements and B has observer positions set, suggest
-	// expanding B to include A's positions. The suggestion cannot know whether
-	// those positions would reveal the same elements or unrelated ones.
 	if len(gap.OnlyInA) > 0 && len(gap.CutB.ObserverPositions) > 0 {
 		result = append(result, RearticSuggestion{
 			Kind: SuggestionObserverExpansion,
@@ -108,8 +102,6 @@ func SuggestRearticulations(gap ObserverGap) []RearticSuggestion {
 		})
 	}
 
-	// If B has exclusive elements and A has observer positions set, suggest
-	// expanding A's observer filter.
 	if len(gap.OnlyInB) > 0 && len(gap.CutA.ObserverPositions) > 0 {
 		result = append(result, RearticSuggestion{
 			Kind: SuggestionObserverExpansion,
@@ -121,16 +113,10 @@ func SuggestRearticulations(gap ObserverGap) []RearticSuggestion {
 		})
 	}
 
-	// Heuristic 2: time-window expansion.
-	// If one cut has a non-zero TimeWindow and the other does not, and the
-	// windowed side has exclusive elements, suggest widening that window to
-	// match the full temporal scope of the other cut.
 	aHasWindow := !gap.CutA.TimeWindow.IsZero()
 	bHasWindow := !gap.CutB.TimeWindow.IsZero()
 
 	if aHasWindow && !bHasWindow && len(gap.OnlyInB) > 0 {
-		// B has no time window (full temporal cut) and has exclusive elements.
-		// Suggest expanding A's time window to investigate what B can see.
 		result = append(result, RearticSuggestion{
 			Kind: SuggestionTimeExpansion,
 			Side: "A",
@@ -142,8 +128,6 @@ func SuggestRearticulations(gap ObserverGap) []RearticSuggestion {
 	}
 
 	if bHasWindow && !aHasWindow && len(gap.OnlyInA) > 0 {
-		// A has no time window (full temporal cut) and has exclusive elements.
-		// Suggest expanding B's time window to investigate what A can see.
 		result = append(result, RearticSuggestion{
 			Kind: SuggestionTimeExpansion,
 			Side: "B",
@@ -154,15 +138,10 @@ func SuggestRearticulations(gap ObserverGap) []RearticSuggestion {
 		})
 	}
 
-	// Heuristic 3: tag relaxation.
-	// If one cut has tags and the other does not, and the tagless side has
-	// exclusive elements, suggest relaxing the tagged side's filter.
 	aHasTags := len(gap.CutA.Tags) > 0
 	bHasTags := len(gap.CutB.Tags) > 0
 
 	if aHasTags && !bHasTags && len(gap.OnlyInB) > 0 {
-		// B has no tag filter and has exclusive elements.
-		// Suggest relaxing A's tag filter to investigate what B can see.
 		result = append(result, RearticSuggestion{
 			Kind: SuggestionTagRelaxation,
 			Side: "A",
@@ -174,8 +153,6 @@ func SuggestRearticulations(gap ObserverGap) []RearticSuggestion {
 	}
 
 	if bHasTags && !aHasTags && len(gap.OnlyInA) > 0 {
-		// A has no tag filter and has exclusive elements.
-		// Suggest relaxing B's tag filter to investigate what A can see.
 		result = append(result, RearticSuggestion{
 			Kind: SuggestionTagRelaxation,
 			Side: "B",
@@ -190,23 +167,10 @@ func SuggestRearticulations(gap ObserverGap) []RearticSuggestion {
 }
 
 // PrintRearticSuggestions writes a re-articulation suggestions report to w.
-//
-// If suggestions is nil (signalling no gap), PrintRearticSuggestions returns
-// nil immediately without writing anything — nil is the no-gap sentinel.
-//
-// The report includes:
-//   - A section header
-//   - A gap summary (counts for OnlyInA, OnlyInB, InBoth)
-//   - A "no suggestions" line if the slice is non-nil but empty
-//   - Per-suggestion blocks (Kind, Side, Rationale, SuggestedParams)
-//   - A footer note encoding the epistemic constraint
-//
-// Uses its own fmt.Fprintln loop — does NOT delegate to writeLines (which
-// carries a hardcoded "PrintShadowSummary" error prefix from shadow.go).
-//
+// Returns nil immediately (writes nothing) when suggestions is nil (no gap).
+// Uses its own Fprintln loop — not writeLines (wrong error prefix).
 // Returns the first write error encountered, if any.
 func PrintRearticSuggestions(w io.Writer, gap ObserverGap, suggestions []RearticSuggestion) error {
-	// nil means no gap — print nothing.
 	if suggestions == nil {
 		return nil
 	}
@@ -244,7 +208,6 @@ func PrintRearticSuggestions(w io.Writer, gap ObserverGap, suggestions []Reartic
 			"not to element boundaries, equivalence criteria, or the trace dataset itself.",
 	)
 
-	// Own Fprintln loop — not writeLines from shadow.go (wrong error prefix).
 	for _, line := range lines {
 		if _, err := fmt.Fprintln(w, line); err != nil {
 			return fmt.Errorf("graph: PrintRearticSuggestions: %w", err)

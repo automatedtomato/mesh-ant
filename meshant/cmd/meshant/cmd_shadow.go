@@ -12,20 +12,9 @@ import (
 
 // cmdShadow implements the "shadow" subcommand.
 //
-// It articulates an observer-situated graph from the traces file and prints
-// a shadow summary — the set of elements that are shadowed (not visible from
-// the given observer position) and why. Shadow is a cut decision, not missing
-// data: a shadowed element was visible to some observer but not the one named
-// by this cut.
-//
-// It accepts the following flags:
-//   - --observer (repeatable, required) — observer position(s) for articulation
-//   - --tag      (repeatable, optional) — tag filter (any-match / OR semantics)
-//   - --from, --to (optional, RFC3339) — time window
-//   - --output (optional)             — write output to file instead of stdout
-//
-// Returns an error if --observer is missing, a time flag is not RFC3339,
-// the path is missing or unloadable, or writing fails.
+// Articulates an observer-situated graph and prints a shadow summary.
+// Shadow is a cut decision, not missing data: a shadowed element was visible
+// to some observer but not the one named by this cut.
 func cmdShadow(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("shadow", flag.ContinueOnError)
 

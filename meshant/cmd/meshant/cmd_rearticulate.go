@@ -13,26 +13,14 @@ import (
 
 // cmdRearticulate implements the "rearticulate" subcommand.
 //
-// Re-articulation is a cut, not a correction. This command reads a TraceDraft
-// JSON file and produces a skeleton JSON array: one skeleton record per draft,
-// with SourceSpan copied verbatim, DerivedFrom set to the original's ID, and
-// all content fields left blank. The critiquing agent fills in the
-// interpretation. Blank content fields are correct scaffold output — they are
-// honest abstentions, not missing data (P3 in plan_m12.md).
+// Re-articulation is a cut, not a correction. Produces a skeleton JSON array
+// from a TraceDraft file: one record per draft, with SourceSpan copied verbatim,
+// DerivedFrom set to the original's ID, and all content fields blank.
 //
-// Design constraints:
-//   - cmdRearticulate must NOT pre-fill content fields from the original (P3)
-//   - cmdRearticulate must NOT call Validate() on the skeleton output — the
-//     skeleton is intentionally incomplete (blank ID); Validate() would pass
-//     since source_span is present, but ID assignment is left to cmdDraft
-//   - "reviewed" is the extraction_stage for all skeletons (pipeline position,
-//     not a quality claim — Decision 7 in tracedraft-v1.md)
-//
-// Flags:
-//   - --id <id>             produce skeleton for a single draft by ID (default: all)
-//   - --output <path>       write skeleton JSON to file (default: stdout)
-//   - --criterion-file <path> load an EquivalenceCriterion and set its Name as
-//     CriterionRef on each skeleton, making the critique pass self-situated
+// Content fields are intentionally blank (P3 in plan_m12.md) — the critique
+// agent supplies its own interpretation. ID assignment is left to cmdDraft.
+// ExtractionStage is "reviewed" as a pipeline position, not a quality claim
+// (Decision 7 in tracedraft-v1.md).
 func cmdRearticulate(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("rearticulate", flag.ContinueOnError)
 
@@ -55,13 +43,11 @@ func cmdRearticulate(w io.Writer, args []string) error {
 	}
 	path := remaining[0]
 
-	// Load originals. LoadDrafts assigns UUIDs and validates SourceSpan.
 	originals, err := loader.LoadDrafts(path)
 	if err != nil {
 		return fmt.Errorf("rearticulate: %w", err)
 	}
 
-	// Apply --id filter if provided.
 	if idFilter != "" {
 		var found *schema.TraceDraft
 		for i := range originals {
@@ -76,7 +62,6 @@ func cmdRearticulate(w io.Writer, args []string) error {
 		originals = []schema.TraceDraft{*found}
 	}
 
-	// Load criterion if provided. criterionName is empty when no flag was given.
 	var criterionName string
 	if criterionFile != "" {
 		c, err := loadCriterionFile(criterionFile)
@@ -86,14 +71,6 @@ func cmdRearticulate(w io.Writer, args []string) error {
 		criterionName = c.Name
 	}
 
-	// Build skeleton records. Each skeleton:
-	//   - copies SourceSpan verbatim (the invariant, Decision 2)
-	//   - copies SourceDocRef if present (ground truth provenance, not interpretation)
-	//   - sets DerivedFrom to the original's ID
-	//   - sets ExtractionStage to "reviewed" (pipeline position, not quality)
-	//   - leaves all content fields blank (P3: no pre-filling)
-	//   - leaves ID and ExtractedBy blank (to be assigned by meshant draft)
-	//   - sets CriterionRef when --criterion-file was provided (self-situated skeleton)
 	skeletons := make([]schema.TraceDraft, len(originals))
 	for i, orig := range originals {
 		skeletons[i] = schema.TraceDraft{
@@ -102,9 +79,8 @@ func cmdRearticulate(w io.Writer, args []string) error {
 			DerivedFrom:     orig.ID,
 			ExtractionStage: "reviewed",
 			CriterionRef:    criterionName,
-			// IntentionallyBlank declares which content fields were
-			// deliberately left empty by this cut — the critique agent
-			// provides its own interpretation. Blank is correct, not incomplete.
+			// IntentionallyBlank: content fields are honest abstentions —
+			// the critique agent supplies its own interpretation.
 			IntentionallyBlank: []string{
 				"what_changed", "source", "target",
 				"mediation", "observer", "tags",
@@ -112,7 +88,6 @@ func cmdRearticulate(w io.Writer, args []string) error {
 		}
 	}
 
-	// Determine output destination: file or stdout.
 	dest, err := outputWriter(w, outputPath)
 	if err != nil {
 		return fmt.Errorf("rearticulate: %w", err)

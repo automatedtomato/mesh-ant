@@ -24,75 +24,38 @@ import (
 const maxFileBytes = 50 * 1024 * 1024 // 50 MB
 
 // MeshSummary holds a provisional first-pass reading of a trace dataset.
-// It is named "summary" rather than "report" or "analysis" to signal that
-// this is a cut made from a particular position at a particular time —
-// not a finished account. It should remain revisable as more traces are
-// followed.
+// Named "summary" (not "report") to signal a cut from one position, not a finished account.
 type MeshSummary struct {
-	// Elements maps every string that appeared in any Source or Target
-	// slice across all traces to the total number of times it appeared.
-	// An element can accumulate count from both source and target roles
-	// across different traces. This counts involvement, not unique presence —
-	// consistent with ANT's interest in what is actively making a difference,
-	// not just what exists.
+	// Elements maps every Source/Target string to total appearance count.
+	// Counts involvement, not unique presence.
 	Elements map[string]int
 
-	// Mediations is a deduplicated list of all non-empty Mediation values
-	// observed across the dataset, in the order they were first encountered.
-	// Encounter order is preserved intentionally: the sequence in which
-	// mediations appear is part of what the dataset is saying about the
-	// network's structure.
+	// Mediations is a deduplicated list of non-empty Mediation values in encounter order.
 	Mediations []string
 
-	// MediatedTraceCount is the number of traces that had a non-empty
-	// Mediation field. This may differ from len(Mediations) if the same
-	// mediation string appears in more than one trace.
+	// MediatedTraceCount is the number of traces with a non-empty Mediation field.
 	MediatedTraceCount int
 
-	// FlaggedTraces is the subset of traces that carry a "delay" or
-	// "threshold" tag. These were selected as proxies for measurable,
-	// quantifiable friction: delay marks duration cost; threshold marks
-	// capacity limit.
-	//
-	// This is a provisional cut, not a taxonomy. Other tag types — blockage,
-	// redirection, amplification, translation — are equally significant ANT
-	// conditions (see Principle 7). They are accessible through the full trace
-	// records and through the Elements map. The selection of delay and threshold
-	// here reflects this summary's analytical emphasis, not a claim that the
-	// others are less real or less consequential.
+	// FlaggedTraces contains traces with a "delay" or "threshold" tag — proxies for
+	// measurable friction. A provisional cut, not a taxonomy; other tag types are
+	// equally significant and accessible via the full trace records.
 	FlaggedTraces []FlaggedTrace
 
-	// GraphRefs is the deduplicated list of graph-reference strings found
-	// across all Source and Target slices, in the order they were first
-	// encountered. A graph-reference is a string of the form "meshgraph:<uuid>"
-	// or "meshdiff:<uuid>" — it indicates that an identified MeshGraph or
-	// GraphDiff appeared as an actor in the recorded traces.
-	//
-	// Encounter order is preserved intentionally: the first appearance of a
-	// graph-reference marks when that graph became an actor in the mesh.
+	// GraphRefs is the deduplicated list of graph-reference strings from Source/Target
+	// slices in encounter order (meshgraph:/meshdiff: prefixes).
 	GraphRefs []string
 }
 
-// FlaggedTrace is a minimal projection of a Trace that carries a delay or
-// threshold tag. It carries only the fields needed to identify the trace
-// and describe what happened, signalling that a summary view is not the
-// same as the full trace record.
-//
-// Tags is a copy of the source trace's Tags slice, not a reference to it.
-// Callers may safely modify FlaggedTrace.Tags without affecting the original.
+// FlaggedTrace is a minimal projection of a delay/threshold-tagged Trace.
+// Tags is a copy — callers may modify it without affecting the original.
 type FlaggedTrace struct {
 	ID          string
 	WhatChanged string
 	Tags        []string
 }
 
-// Load reads a JSON file at path, decodes each Trace, and validates it via
-// schema.Validate(). If any trace fails validation, Load returns nil and an
-// error wrapping the validation message along with the trace's index and ID.
-// Load stops at the first invalid trace.
-//
-// An empty JSON array is valid and returns an empty (non-nil) slice.
-// Files larger than 50 MB are rejected before decoding.
+// Load reads a JSON file at path, validates each Trace, and returns the slice.
+// Stops at the first invalid trace. Empty array is valid. Files >50 MB are rejected.
 func Load(path string) ([]schema.Trace, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -100,7 +63,6 @@ func Load(path string) ([]schema.Trace, error) {
 	}
 	defer f.Close()
 
-	// Limit reads to maxFileBytes to prevent memory exhaustion on large inputs.
 	limited := io.LimitReader(f, maxFileBytes)
 
 	var traces []schema.Trace
@@ -108,9 +70,7 @@ func Load(path string) ([]schema.Trace, error) {
 		return nil, fmt.Errorf("loader: decode %q: %w", path, err)
 	}
 
-	// json.Decode sets a []T target to nil when the JSON value is null.
-	// Normalise to an empty non-nil slice to honour the documented postcondition.
-	if traces == nil {
+	if traces == nil { // json.Decode sets target to nil for JSON null
 		traces = []schema.Trace{}
 	}
 
@@ -123,15 +83,8 @@ func Load(path string) ([]schema.Trace, error) {
 	return traces, nil
 }
 
-// Summarise builds a MeshSummary from a slice of already-validated traces.
-// It does not call Validate() — that responsibility belongs to Load.
-//
-// Elements counts each string's total appearances across all Source and
-// Target slices (not unique traces). Mediations are deduplicated and listed
-// in encounter order. MediatedTraceCount records how many traces had a
-// non-empty Mediation field. FlaggedTraces includes any trace with a "delay"
-// or "threshold" tag; each such trace appears at most once regardless of how
-// many triggering tags it carries.
+// Summarise builds a MeshSummary from already-validated traces. Does not call Validate.
+// Each flagged trace appears at most once, regardless of how many triggering tags it carries.
 func Summarise(traces []schema.Trace) MeshSummary {
 	elements := make(map[string]int)
 	var mediations []string
@@ -142,8 +95,6 @@ func Summarise(traces []schema.Trace) MeshSummary {
 	graphRefSeen := make(map[string]bool)
 
 	for _, t := range traces {
-		// Count element appearances from Source and Target slices, and extract
-		// any graph-reference strings (meshgraph:/meshdiff:) into GraphRefs.
 		for _, s := range t.Source {
 			elements[s]++
 			if schema.IsGraphRef(s) && !graphRefSeen[s] {
@@ -159,7 +110,6 @@ func Summarise(traces []schema.Trace) MeshSummary {
 			}
 		}
 
-		// Track mediation presence and deduplicate in encounter order.
 		if t.Mediation != "" {
 			mediatedCount++
 			if !mediationSeen[t.Mediation] {
@@ -168,9 +118,6 @@ func Summarise(traces []schema.Trace) MeshSummary {
 			}
 		}
 
-		// Flag traces carrying a delay or threshold tag. Break after the
-		// first match so a trace with both tags appears exactly once.
-		// Copy Tags to avoid sharing the backing array with the source trace.
 		for _, tag := range t.Tags {
 			if tag == string(schema.TagDelay) || tag == string(schema.TagThreshold) {
 				tags := make([]string, len(t.Tags))
@@ -194,27 +141,10 @@ func Summarise(traces []schema.Trace) MeshSummary {
 	}
 }
 
-// PrintSummary writes a provisional mesh summary to w. It takes an io.Writer
-// rather than printing directly to os.Stdout so the output can be captured
-// and tested without redirecting standard output.
-//
-// Elements are sorted by descending frequency, then alphabetically within
-// the same frequency. Mediations are listed in encounter order. Flagged
-// traces are listed in dataset order.
-//
-// The footer note is mandatory output — it encodes the methodological
-// commitment that the element list is not an actor list, and that this
-// summary is a provisional cut, not a finished ontology.
-//
-// Note: trace field values (element names, mediations, WhatChanged strings)
-// are written to w as-is. If w is a terminal writer, values containing ANSI
-// control sequences from an untrusted dataset could affect terminal state.
-// For trusted local datasets this is not a concern; re-evaluate if the tool
-// is ever exposed to external or user-supplied data.
-//
+// PrintSummary writes a provisional mesh summary to w.
+// Elements sorted by descending frequency then alphabetically; mediations in encounter order.
 // Returns the first write error encountered, if any.
 func PrintSummary(w io.Writer, s MeshSummary) error {
-	// Build a sortable slice from the elements map.
 	type entry struct {
 		name  string
 		count int
@@ -223,7 +153,6 @@ func PrintSummary(w io.Writer, s MeshSummary) error {
 	for name, count := range s.Elements {
 		entries = append(entries, entry{name, count})
 	}
-	// Sort descending by count, then ascending by name within the same count.
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].count != entries[j].count {
 			return entries[i].count > entries[j].count
@@ -251,9 +180,7 @@ func PrintSummary(w io.Writer, s MeshSummary) error {
 		lines = append(lines, fmt.Sprintf("  %s  %v  %s", ft.ID, ft.Tags, ft.WhatChanged))
 	}
 	lines = append(lines, "")
-	// Graph-refs are also counted in Elements above (ANT symmetry: identified
-	// graphs are actants like any other source/target). This section names them
-	// additionally as graph references so their structure is visible.
+	// Graph-refs also appear in Elements (ANT symmetry: identified graphs are actants).
 	lines = append(lines, fmt.Sprintf("Graph references (%d, also counted in Elements above):", len(s.GraphRefs)))
 	if len(s.GraphRefs) == 0 {
 		lines = append(lines, "  (none)")

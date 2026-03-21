@@ -12,21 +12,11 @@ import (
 
 // cmdDraft implements the "draft" subcommand.
 //
-// It reads an extraction JSON file produced by an external LLM tool (the
-// ingestion contract: source_span required, all other fields optional),
-// assigns UUIDs and timestamps to records that lack them, applies optional
-// field overrides, validates each record, writes the resulting TraceDraft JSON
-// array to --output (or stdout), and prints a provenance summary.
-//
-// The command does not make LLM calls — the LLM's transformation is a named,
-// inspectable file on disk, consistent with treating the LLM as a mediator
-// rather than a hidden intermediary. See docs/decisions/tracedraft-v1.md.
-//
-// Flags:
-//   - --source-doc <ref>     stamp SourceDocRef on all drafts
-//   - --extracted-by <label> override ExtractedBy on all drafts
-//   - --stage <stage>        override ExtractionStage on all drafts
-//   - --output <file>        write TraceDraft JSON to file (default: stdout)
+// Reads an extraction JSON file (source_span required, all other fields
+// optional), assigns UUIDs and timestamps, applies optional field overrides,
+// and writes a TraceDraft JSON array. Does not make LLM calls — the LLM's
+// transformation is a named, inspectable file on disk (see
+// docs/decisions/tracedraft-v1.md).
 func cmdDraft(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("draft", flag.ContinueOnError)
 
@@ -61,7 +51,6 @@ func cmdDraft(w io.Writer, args []string) error {
 		return fmt.Errorf("draft: %q contains no records", path)
 	}
 
-	// Apply optional field overrides to all drafts.
 	for i := range drafts {
 		if sourceDoc != "" {
 			drafts[i].SourceDocRef = sourceDoc
@@ -74,7 +63,6 @@ func cmdDraft(w io.Writer, args []string) error {
 		}
 	}
 
-	// Determine output destination: file or stdout.
 	dest, err := outputWriter(w, outputPath)
 	if err != nil {
 		return fmt.Errorf("draft: %w", err)
@@ -83,15 +71,13 @@ func cmdDraft(w io.Writer, args []string) error {
 		defer f.Close()
 	}
 
-	// Write TraceDraft JSON array to output destination.
 	enc := json.NewEncoder(dest)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(drafts); err != nil {
 		return fmt.Errorf("draft: encode output: %w", err)
 	}
 
-	// Print provenance summary to w (stdout) regardless of --output.
-	// When --output is stdout, the summary follows the JSON on the same stream.
+	// Print provenance summary to w (stdout), never to the output file.
 	summary := loader.SummariseDrafts(drafts)
 	if err := loader.PrintDraftSummary(w, summary); err != nil {
 		return fmt.Errorf("draft: %w", err)

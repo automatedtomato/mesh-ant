@@ -41,14 +41,9 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
 )
 
-// defaultDatasetPath is used when no argument is supplied. It is relative
-// to the package source directory (meshant/cmd/demo/), so three levels up
-// reaches the repository root before descending into data/examples/.
-//
-// This path is only correct when the working directory is the package
-// source directory — which is what `go run ./cmd/demo` from meshant/ and
-// `go test` both ensure. A compiled binary placed elsewhere must receive
-// the path as an explicit argument (os.Args[1]).
+// defaultDatasetPath is correct when the working directory is the package source
+// directory (as with `go run ./cmd/demo` from meshant/). Compiled binaries must
+// supply the path as os.Args[1].
 const defaultDatasetPath = "../../../data/examples/evacuation_order.json"
 
 func main() {
@@ -61,10 +56,7 @@ func main() {
 	}
 }
 
-// run executes the full demo pipeline and writes all output to w.
-// Accepting io.Writer keeps the function independently testable.
-//
-// Pipeline: Load → Summary → Articulate A → Articulate B → Diff → Closing note.
+// run executes the full demo pipeline and writes output to w.
 func run(w io.Writer, datasetPath string) error {
 	traces, err := loader.Load(datasetPath)
 	if err != nil {
@@ -75,7 +67,6 @@ func run(w io.Writer, datasetPath string) error {
 		return fmt.Errorf("print summary: %w", err)
 	}
 
-	// Cut A: meteorological-analyst, 2026-04-14 (T-72h).
 	optsA := graph.ArticulationOptions{
 		ObserverPositions: []string{"meteorological-analyst"},
 		TimeWindow: graph.TimeWindow{
@@ -83,9 +74,7 @@ func run(w io.Writer, datasetPath string) error {
 			End:   time.Date(2026, 4, 14, 23, 59, 59, 0, time.UTC),
 		},
 	}
-	// Guard: an inverted window silently produces a zero-trace graph;
-	// validates these date literals against accidental transposition.
-	if err := optsA.TimeWindow.Validate(); err != nil {
+	if err := optsA.TimeWindow.Validate(); err != nil { // guard: inverted window → zero-trace graph
 		return fmt.Errorf("cut A time window: %w", err)
 	}
 	gA := graph.Articulate(traces, optsA)
@@ -93,7 +82,6 @@ func run(w io.Writer, datasetPath string) error {
 		return fmt.Errorf("print articulation A: %w", err)
 	}
 
-	// Cut B: local-mayor, 2026-04-16 (T-24h).
 	optsB := graph.ArticulationOptions{
 		ObserverPositions: []string{"local-mayor"},
 		TimeWindow: graph.TimeWindow{
@@ -101,8 +89,7 @@ func run(w io.Writer, datasetPath string) error {
 			End:   time.Date(2026, 4, 16, 23, 59, 59, 0, time.UTC),
 		},
 	}
-	// Same guard as Cut A.
-	if err := optsB.TimeWindow.Validate(); err != nil {
+	if err := optsB.TimeWindow.Validate(); err != nil { // guard: inverted window → zero-trace graph
 		return fmt.Errorf("cut B time window: %w", err)
 	}
 	gB := graph.Articulate(traces, optsB)
@@ -120,9 +107,7 @@ func run(w io.Writer, datasetPath string) error {
 	return nil
 }
 
-// printClosingNote writes the methodological coda: what the demo shows,
-// what it leaves open, and where the work goes next. It names the Principle 8
-// gap explicitly so the shadow does not pass unobserved.
+// printClosingNote writes the methodological coda, naming the Principle 8 gap explicitly.
 func printClosingNote(w io.Writer) error {
 	const note = `
 === Note on this articulation ===

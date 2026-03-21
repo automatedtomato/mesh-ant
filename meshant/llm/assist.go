@@ -1,16 +1,8 @@
-// assist.go implements RunAssistSession — the interactive per-span LLM assist
-// operation.
+// assist.go implements RunAssistSession — the interactive per-span LLM assist operation.
 //
-// RunAssistSession presents one LLM-produced TraceDraft candidate per span to
-// the user, who can accept, edit, skip, or quit. Every LLM draft is preserved
-// in the results regardless of disposition (skip is not absence — the shadow
-// record is retained). Accept appends the draft as-is; edit appends both the
-// original LLM draft and a derived "reviewed" draft; skip appends the draft
-// with its original "weak-draft" stage.
-//
-// ParseSpans handles three input formats: JSON string array, newline-separated
-// text, and plain text (single span). Callers read a spans file and pass its
-// bytes directly to ParseSpans.
+// Every LLM draft is preserved regardless of disposition (skip is not absence).
+// Accept appends the draft as-is; edit appends the LLM draft and a derived "reviewed"
+// draft; skip appends the draft at its original "weak-draft" stage.
 package llm
 
 import (
@@ -28,23 +20,15 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
-// ParseSpans decodes a spans file into a slice of span strings.
-//
-// Three formats are tried in order:
-//  1. JSON string array (e.g. `["span A","span B"]`)
-//  2. Newline-separated text (each non-blank line is one span)
-//  3. Plain text (the entire trimmed content as a single span)
-//
-// Blank strings and whitespace-only strings are always dropped.
-// Returns an error if data is empty (after trimming whitespace) or if no
-// non-blank spans remain after parsing.
+// ParseSpans decodes a spans file into a slice of span strings, trying in order:
+// JSON string array, newline-separated text, then plain text as a single span.
+// Blank strings are dropped; errors if no non-blank spans remain.
 func ParseSpans(data []byte) ([]string, error) {
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) == 0 {
 		return nil, fmt.Errorf("ParseSpans: input is empty")
 	}
 
-	// Attempt 1: JSON string array.
 	if trimmed[0] == '[' {
 		var raw []string
 		if err := json.Unmarshal(trimmed, &raw); err == nil {
@@ -52,7 +36,6 @@ func ParseSpans(data []byte) ([]string, error) {
 		}
 	}
 
-	// Attempt 2 & 3: newline-separated or single-line text.
 	lines := strings.Split(string(trimmed), "\n")
 	spans := filterBlanks(lines)
 	if len(spans) == 0 {
@@ -61,8 +44,7 @@ func ParseSpans(data []byte) ([]string, error) {
 	return spans, nil
 }
 
-// filterBlanks returns a new slice containing only the non-blank (after
-// TrimSpace) strings from src.
+// filterBlanks returns only the non-blank (after TrimSpace) strings from src.
 func filterBlanks(src []string) []string {
 	var result []string
 	for _, s := range src {
@@ -73,27 +55,9 @@ func filterBlanks(src []string) []string {
 	return result
 }
 
-// RunAssistSession presents each span to the user in turn with an LLM-produced
-// draft, collecting accept/edit/skip/quit decisions.
-//
-// For each span:
-//  1. Call client.Complete(ctx, systemInstructions, span) to produce one draft.
-//  2. Parse and stamp the draft with provenance (UUID, ExtractedBy=ModelID,
-//     ExtractionStage="weak-draft", SessionRef, UncertaintyNote).
-//  3. Present the draft to the user and read one action:
-//     - Accept ("a"): append the LLM draft; disposition="accepted".
-//     - Edit ("e"): run RunEditFlow, derive edited draft via
-//     review.DeriveEdited(llmDraft, edited, "meshant-assist"); append both;
-//     disposition="edited".
-//     - Skip ("s"): append the LLM draft (shadow is not absence);
-//     disposition="skipped".
-//     - Quit ("q"): break the loop; return results collected so far (not an
-//     error).
-//
-// A SessionRecord is always returned, even on error. On LLM error the
-// SessionRecord carries a non-empty ErrorNote and the error is propagated.
-//
-// EOF on in is treated as quit: results so far are returned with nil error.
+// RunAssistSession presents each span with an LLM-produced draft, collecting
+// accept/edit/skip/quit decisions. Always returns a non-nil SessionRecord.
+// EOF on in is treated as quit; results collected so far are returned with nil error.
 func RunAssistSession(
 	ctx context.Context,
 	client LLMClient,
@@ -109,9 +73,7 @@ func RunAssistSession(
 
 	now := time.Now().UTC()
 
-	// Load prompt template if provided. An empty path skips the load — callers
-	// can provide inline instructions via future options; today an empty
-	// template produces an empty system message.
+	// Empty path is valid — produces an empty system message.
 	var systemInstructions string
 	if opts.PromptTemplatePath != "" {
 		systemInstructions, err = LoadPromptTemplate(opts.PromptTemplatePath)
@@ -137,35 +99,28 @@ func RunAssistSession(
 			SourceDocRef:       opts.SourceDocRef,
 			Timestamp:          now,
 		},
-		InputPath:  opts.InputPath,  // spans file path for provenance tracing
+		InputPath:  opts.InputPath,
 		OutputPath: opts.OutputPath,
 		Timestamp:  now,
 	}
 
 	if len(spans) == 0 {
-		// No spans to process — return an empty but valid session.
 		return nil, rec, nil
 	}
 
 	scanner := bufio.NewScanner(in)
 	var results []schema.TraceDraft
 
-	// spanLoop processes each span in order. A "quit" action breaks out of
-	// the loop; results collected so far are returned with nil error.
 spanLoop:
 	for _, span := range spans {
-		// Call the LLM for this span.
 		rawResponse, spanErr := client.Complete(ctx, systemInstructions, span)
 		var llmDraft schema.TraceDraft
 		if spanErr == nil {
-			// Parse the single-draft response.
 			llmDraft, spanErr = parseSingleDraft(rawResponse, opts.ModelID, sessionID, opts.SourceDocRef, now)
 		}
 
-		// On LLM error or parse failure: display the error, offer [s]kip / [q]uit.
-		// The session continues rather than terminating — one bad span should not
-		// kill an interactive session over a potentially large span set.
-		// Use span length in the error note (not content) — spans may carry PII.
+		// On LLM/parse error: offer [s]kip/[q]uit. One bad span should not kill the session.
+		// Use span length in the error note, not content — spans may carry PII.
 		if spanErr != nil {
 			errNotes := append(splitErrNotes(rec.ErrorNote),
 				fmt.Sprintf("span (len=%d): %v", len(span), spanErr))
@@ -192,24 +147,20 @@ spanLoop:
 			continue
 		}
 
-		// Render the draft and prompt the user.
 		fmt.Fprintf(out, "\n--- Span ---\n%s\n\n", span)
 		fmt.Fprint(out, review.RenderDraft(llmDraft, 1, 1))
 		fmt.Fprintf(out, "Ambiguities:\n")
 		fmt.Fprint(out, review.RenderAmbiguities(review.DetectAmbiguities(llmDraft)))
 
-		// Inner prompt loop: re-prompt on unknown input.
 	promptLoop:
 		for {
 			fmt.Fprintf(out, "[a]ccept  [e]dit  [s]kip  [q]uit > ")
 			if !scanner.Scan() {
-				// EOF or scanner error — treat as quit.
-				break spanLoop
+				break spanLoop // EOF → quit
 			}
 			action := strings.TrimSpace(strings.ToLower(scanner.Text()))
 			switch action {
 			case "a":
-				// Accept: append the LLM draft; disposition="accepted".
 				results = append(results, llmDraft)
 				rec.Dispositions = append(rec.Dispositions, DraftDisposition{
 					DraftID: llmDraft.ID,
@@ -218,16 +169,13 @@ spanLoop:
 				break promptLoop
 
 			case "e":
-				// Edit: run field-by-field edit flow, then derive an edited draft.
 				edited, completed, err := review.RunEditFlow(llmDraft, scanner, out)
 				if err != nil {
 					return results, rec, err
 				}
 				if !completed {
-					// EOF during edit — distinct from an explicit skip. The draft
-					// is preserved (shadow is not absence) but the disposition is
-					// "abandoned" so provenance auditors can distinguish an
-					// edit-interrupted-by-EOF from a deliberate user skip.
+					// "abandoned" distinguishes EOF-interrupted edit from a deliberate skip.
+					// The draft is still preserved (shadow is not absence).
 					results = append(results, llmDraft)
 					rec.Dispositions = append(rec.Dispositions, DraftDisposition{
 						DraftID: llmDraft.ID,
@@ -239,7 +187,6 @@ spanLoop:
 				if err != nil {
 					return results, rec, fmt.Errorf("llm: assist: derive edited: %w", err)
 				}
-				// Append both: LLM draft preserved, edited draft added.
 				results = append(results, llmDraft, derivedDraft)
 				rec.Dispositions = append(rec.Dispositions, DraftDisposition{
 					DraftID: llmDraft.ID,
@@ -248,9 +195,7 @@ spanLoop:
 				break promptLoop
 
 			case "s":
-				// Skip: preserve the LLM draft (shadow is not absence) with
-				// its original "weak-draft" stage.
-				results = append(results, llmDraft)
+				results = append(results, llmDraft) // shadow is not absence
 				rec.Dispositions = append(rec.Dispositions, DraftDisposition{
 					DraftID: llmDraft.ID,
 					Action:  "skipped",
@@ -258,7 +203,6 @@ spanLoop:
 				break promptLoop
 
 			case "q":
-				// Quit: return results collected so far with nil error.
 				break spanLoop
 
 			default:
@@ -267,11 +211,8 @@ spanLoop:
 		}
 	}
 
-	// Populate final SessionRecord fields. Note: DraftCount and DraftIDs count
-	// ALL output drafts, including edit-derived drafts. Dispositions has one
-	// entry per span processed (not per output draft), so len(Dispositions)
-	// may be less than DraftCount when any span was edited (2 drafts, 1 entry).
-	// Downstream tools should not assume DraftCount == len(Dispositions).
+	// DraftCount counts all output drafts including edit-derived ones, so
+	// len(Dispositions) may be less than DraftCount when edits occurred.
 	rec.DraftCount = len(results)
 	rec.DraftIDs = make([]string, len(results))
 	for i, d := range results {
@@ -281,8 +222,7 @@ spanLoop:
 	return results, rec, nil
 }
 
-// splitErrNotes splits a semicolon-separated ErrorNote string into individual
-// notes. Returns nil for an empty string.
+// splitErrNotes splits a semicolon-separated ErrorNote into individual notes.
 func splitErrNotes(s string) []string {
 	if s == "" {
 		return nil
@@ -290,27 +230,14 @@ func splitErrNotes(s string) []string {
 	return strings.Split(s, "; ")
 }
 
-// joinErrNotes joins individual error notes with "; " for storage in ErrorNote.
+// joinErrNotes joins error notes with "; " for storage in ErrorNote.
 func joinErrNotes(notes []string) string {
 	return strings.Join(notes, "; ")
 }
 
-// parseSingleDraft parses an LLM response expected to contain exactly one
-// TraceDraft and stamps it with provenance fields following F.1 conventions.
-//
-// The LLM response may be:
-//   - A JSON array with one object: `[{...}]`
-//   - A JSON object: `{...}`
-//   - Either form with preamble text before the JSON
-//
-// Provenance fields set:
-//   - ID: fresh UUID
-//   - Timestamp: now
-//   - ExtractedBy: modelID (D2)
-//   - ExtractionStage: "weak-draft" (D4)
-//   - SessionRef: sessionID (F.0)
-//   - UncertaintyNote: frameworkUncertaintyNote appended (D3)
-//   - SourceDocRef: sourceDocRef
+// parseSingleDraft parses one TraceDraft from an LLM response and stamps it
+// with F.1 provenance (D2/D3/D4/F.0). Accepts JSON array, JSON object, or
+// either with leading preamble text.
 func parseSingleDraft(
 	raw string,
 	modelID string,
@@ -323,15 +250,10 @@ func parseSingleDraft(
 	var draft schema.TraceDraft
 	arrayParsed := false
 
-	// Try to decode as a JSON array first (most common LLM response format).
-	// Use a boolean sentinel to track parse success — not a content field,
-	// so that a validly-parsed draft with an empty source_span is not silently
-	// discarded and retried.
+	// Boolean sentinel avoids retrying a validly-parsed draft with an empty source_span.
 	if idx := strings.Index(s, "["); idx >= 0 {
 		arraySeg := s[idx:]
 		var arr []schema.TraceDraft
-		// json.Decoder reads exactly one JSON value — handles preamble correctly
-		// and stops at the matching ']' without string-scanning for the last ']'.
 		dec := json.NewDecoder(strings.NewReader(arraySeg))
 		if err := dec.Decode(&arr); err == nil && len(arr) > 0 {
 			draft = arr[0]
@@ -339,12 +261,8 @@ func parseSingleDraft(
 		}
 	}
 
-	// Fall back to JSON object if array parse did not succeed.
 	if !arrayParsed {
-		// Locate the start of the outermost JSON object. Use json.Decoder on
-		// the substring starting at '{' so that nested braces are handled
-		// correctly — no manual LastIndex scan that could match a brace in
-		// preamble or trailing text.
+		// json.Decoder on s[start:] handles nested braces correctly without manual scanning.
 		start := strings.Index(s, "{")
 		if start < 0 {
 			return schema.TraceDraft{}, fmt.Errorf("parseSingleDraft: no JSON object found in response")
@@ -355,19 +273,13 @@ func parseSingleDraft(
 		}
 	}
 
-	// Sanitise LLM-controlled fields that should not propagate into the
-	// output record. DerivedFrom is a derivation-chain foreign key — if the
-	// LLM fabricates a UUID it would create a false derivation link in
-	// FollowDraftChain. Zero it before stamping framework provenance.
+	// Zero DerivedFrom — an LLM-fabricated UUID would create a false derivation link.
 	draft.DerivedFrom = ""
 
-	// Validate IntentionallyBlank entries: only known content field names
-	// are valid (D7). The LLM cannot declare provenance fields as blank.
-	if err := validateIntentionallyBlank(draft.IntentionallyBlank); err != nil {
+	if err := validateIntentionallyBlank(draft.IntentionallyBlank); err != nil { // D7
 		return schema.TraceDraft{}, fmt.Errorf("parseSingleDraft: %w", err)
 	}
 
-	// Assign a fresh UUID.
 	id, err := loader.NewUUID()
 	if err != nil {
 		return schema.TraceDraft{}, fmt.Errorf("parseSingleDraft: generate UUID: %w", err)
@@ -375,20 +287,19 @@ func parseSingleDraft(
 	draft.ID = id
 	draft.Timestamp = now
 
-	// Set framework-assigned provenance (D2, D4, F.0).
+	// Framework-assigned provenance (D2, D4, F.0).
 	draft.ExtractedBy = modelID
 	draft.ExtractionStage = "weak-draft"
 	draft.SessionRef = sessionID
 	draft.SourceDocRef = sourceDocRef
 
-	// Append framework uncertainty note (D3).
+	// Append framework uncertainty note (D3); preserve any LLM-set note.
 	if draft.UncertaintyNote != "" {
 		draft.UncertaintyNote = draft.UncertaintyNote + " " + frameworkUncertaintyNote
 	} else {
 		draft.UncertaintyNote = frameworkUncertaintyNote
 	}
 
-	// Validate: SourceSpan is required.
 	if err := draft.Validate(); err != nil {
 		return schema.TraceDraft{}, fmt.Errorf("parseSingleDraft: validation: %w", err)
 	}

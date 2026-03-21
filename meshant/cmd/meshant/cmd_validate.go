@@ -8,14 +8,7 @@ import (
 )
 
 // cmdValidate implements the "validate" subcommand.
-//
-// It expects args[0] to be a path to a JSON traces file. loader.Load already
-// validates every trace during decoding — if it returns without error, all
-// traces are valid. On success, cmdValidate writes a one-line confirmation
-// message to w naming the trace count.
-//
-// Returns an error if no path is provided, if the file cannot be loaded, or
-// if any trace fails validation (surfaced by loader.Load).
+// Loads and validates all traces from args[0]; prints a count on success.
 func cmdValidate(w io.Writer, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("validate: path to traces.json required\n\nUsage: meshant validate <traces.json>")

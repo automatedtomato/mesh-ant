@@ -12,22 +12,9 @@ import (
 
 // cmdBottleneck implements the "bottleneck" subcommand.
 //
-// It articulates an observer-situated graph from the traces file, calls
-// IdentifyBottlenecks to surface provisionally central elements, and prints
-// the notes via PrintBottleneckNotes.
-//
-// Unlike cmdShadow, --observer is optional here. Omitting it means a full
-// cut (all traces included, no observer filter), which is a deliberate
-// analytical choice — not an error.
-//
-// It accepts the following flags:
-//   - --observer (repeatable, optional) — observer position(s) for articulation
-//   - --tag      (repeatable, optional) — tag filter (any-match / OR semantics)
-//   - --from, --to (optional, RFC3339) — time window
-//   - --output (optional)             — write output to file instead of stdout
-//
-// Returns an error if a time flag is not RFC3339, the path is missing or
-// unloadable, or writing fails.
+// Articulates an observer-situated graph and surfaces provisionally central
+// elements via IdentifyBottlenecks. --observer is optional: omitting it is a
+// deliberate analytical choice (full cut, no observer filter), not an error.
 func cmdBottleneck(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("bottleneck", flag.ContinueOnError)
 

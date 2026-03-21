@@ -44,40 +44,23 @@ const (
 	DraftTranslation DraftStepKind = "translation"
 )
 
-// DraftStepClassification records the classification of one derivation step.
-// A step is the passage from chain[i-1] to chain[i].
+// DraftStepClassification records the classification of one derivation step (chain[i-1]→chain[i]).
 type DraftStepClassification struct {
-	// StepIndex is the index of the destination draft in the chain slice
-	// (i.e., the draft that was derived). StepIndex 1 means the first
-	// derivation step: from chain[0] to chain[1].
+	// StepIndex is the destination draft's index in the chain (1 = first step).
 	StepIndex int
 
 	// Kind is the classification: intermediary, mediator, or translation.
 	Kind DraftStepKind
 
-	// Reason is a human-readable justification. Always non-empty. Makes the
-	// judgment inspectable and contestable.
+	// Reason is a human-readable justification. Always non-empty.
 	Reason string
 }
 
-// FollowDraftChain traverses DerivedFrom links through drafts starting from
-// the draft with ID from. It returns the drafts in derivation order — the root
-// draft first, then each successive derivation.
-//
-// When a parent has more than one child (a fork in the derivation tree),
-// FollowDraftChain follows the first child by encounter order in the drafts
-// slice. Sibling branches are not traversed. The result is always a single
-// linear path, not a tree. Callers that need the full tree should use cmdLineage
-// or build their own traversal from the DerivedFrom links.
-//
-// Cycle detection is performed via a visited set: if a draft's DerivedFrom
-// points to an already-visited ID the traversal stops (the cycle-closing draft
-// is NOT included, consistent with the traversal stopping before re-entry).
-//
-// Returns an empty slice if from is not found in drafts.
-// Returns a single-element slice if the root has no derived drafts.
+// FollowDraftChain traverses DerivedFrom links starting from from, returning drafts
+// in derivation order (root first). Follows first child on forks (first-match).
+// Stops on cycle detection; cycle-closing draft excluded.
+// Returns empty slice if from not found; single-element slice if no children.
 func FollowDraftChain(drafts []schema.TraceDraft, from string) []schema.TraceDraft {
-	// Index drafts by ID for O(1) lookup.
 	byID := make(map[string]schema.TraceDraft, len(drafts))
 	for _, d := range drafts {
 		if d.ID != "" {
@@ -85,8 +68,6 @@ func FollowDraftChain(drafts []schema.TraceDraft, from string) []schema.TraceDra
 		}
 	}
 
-	// Build reverse index: parentID → []child to traverse forward from root.
-	// DerivedFrom is the parent link; we want to walk parent → child.
 	children := make(map[string][]string) // parentID → []childID
 	for _, d := range drafts {
 		if d.DerivedFrom != "" {
@@ -106,21 +87,17 @@ func FollowDraftChain(drafts []schema.TraceDraft, from string) []schema.TraceDra
 	for {
 		kids, ok := children[current]
 		if !ok || len(kids) == 0 {
-			// No further derivations from current node.
 			break
 		}
 
-		// First-match: follow the first child by encounter order.
 		next := kids[0]
 		if visited[next] {
-			// Cycle detected — stop before re-entry.
-			break
+			break // cycle — stop before re-entry
 		}
 
 		nextDraft, ok := byID[next]
 		if !ok {
-			// Child ID references a draft not in the set — stop.
-			break
+			break // child not in set
 		}
 
 		chain = append(chain, nextDraft)
@@ -131,19 +108,10 @@ func FollowDraftChain(drafts []schema.TraceDraft, from string) []schema.TraceDra
 	return chain
 }
 
-// ClassifyDraftChain classifies each derivation step in chain. It returns one
-// DraftStepClassification per step (len(chain)-1 entries). Returns nil if
-// chain has fewer than two drafts (no steps to classify).
-//
-// v1 heuristics (provisional):
-//   - DraftTranslation: content fields changed AND extraction_stage changed
-//   - DraftMediator (content): content fields changed, extraction_stage unchanged
-//   - DraftMediator (endorsement): extraction_stage advanced, no content fields changed
-//   - DraftIntermediary: no content fields changed and extraction_stage unchanged
-//
-// Content fields are: what_changed, source, target, mediation, observer, tags.
-// Provenance fields (uncertainty_note, extracted_by, intentionally_blank) are
-// not content — they do not constitute mediation on their own.
+// ClassifyDraftChain classifies each derivation step in chain (len(chain)-1 entries).
+// Returns nil for chains shorter than 2. v1 heuristics: content+stage → translation;
+// content only → mediator; stage only → mediator (endorsement); neither → intermediary.
+// Content fields: what_changed, source, target, mediation, observer, tags.
 func ClassifyDraftChain(chain []schema.TraceDraft) []DraftStepClassification {
 	if len(chain) < 2 {
 		return nil
@@ -184,9 +152,8 @@ func classifyDraftStep(prev, curr schema.TraceDraft) (DraftStepKind, string) {
 	}
 }
 
-// draftContentChanged reports whether any candidate content field differs
-// between prev and curr. Content fields are: what_changed, source, target,
-// mediation, observer, tags. Provenance fields are excluded.
+// draftContentChanged reports whether any content field differs between prev and curr.
+// Provenance fields (uncertainty_note, extracted_by, intentionally_blank) are excluded.
 func draftContentChanged(prev, curr schema.TraceDraft) bool {
 	if prev.WhatChanged != curr.WhatChanged {
 		return true
@@ -209,16 +176,13 @@ func draftContentChanged(prev, curr schema.TraceDraft) bool {
 	return false
 }
 
-// draftStageChanged reports whether extraction_stage changed between prev and
-// curr. A non-empty curr.ExtractionStage that differs from prev is a stage
-// change. An empty curr.ExtractionStage is not counted as a stage change —
-// it is more likely an unpopulated field than a deliberate advancement.
+// draftStageChanged reports whether extraction_stage changed. Empty curr stage
+// is not counted — more likely an unpopulated field than a deliberate advancement.
 func draftStageChanged(prev, curr schema.TraceDraft) bool {
 	return curr.ExtractionStage != "" && curr.ExtractionStage != prev.ExtractionStage
 }
 
-// stringSlicesEqual reports whether two string slices have the same length and
-// the same elements in the same order. Nil and empty are considered equal.
+// stringSlicesEqual reports element-wise equality; nil and empty are equal.
 func stringSlicesEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

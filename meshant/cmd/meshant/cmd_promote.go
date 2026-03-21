@@ -13,14 +13,8 @@ import (
 
 // cmdPromote implements the "promote" subcommand.
 //
-// It reads a TraceDraft JSON file, calls IsPromotable on each draft, promotes
-// those that qualify to canonical Traces (each carries the "draft" tag as a
-// provenance signal), and writes the promoted traces to --output (or stdout).
-// A summary reports how many were promoted and names the reasons non-promotable
-// drafts were skipped.
-//
-// Flags:
-//   - --output <file>  write promoted traces JSON to file (default: stdout)
+// Promotes qualifying TraceDraft records to canonical Traces and writes a
+// summary of promoted/skipped counts with skip reasons.
 func cmdPromote(w io.Writer, args []string) error {
 	fs := flag.NewFlagSet("promote", flag.ContinueOnError)
 
@@ -59,7 +53,6 @@ func cmdPromote(w io.Writer, args []string) error {
 		promoted = append(promoted, tr)
 	}
 
-	// Determine output destination: file or stdout.
 	dest, err := outputWriter(w, outputPath)
 	if err != nil {
 		return fmt.Errorf("promote: %w", err)
@@ -68,7 +61,6 @@ func cmdPromote(w io.Writer, args []string) error {
 		defer f.Close()
 	}
 
-	// Write promoted traces JSON (empty array if none promoted).
 	out := promoted
 	if out == nil {
 		out = []schema.Trace{}
@@ -79,7 +71,6 @@ func cmdPromote(w io.Writer, args []string) error {
 		return fmt.Errorf("promote: encode output: %w", err)
 	}
 
-	// Print promotion summary to w (stdout).
 	fmt.Fprintf(w, "\nPromotion summary: %d promoted, %d not promotable (out of %d)\n",
 		len(promoted), len(failures), len(drafts))
 	for _, f := range failures {

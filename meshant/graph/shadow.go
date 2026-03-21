@@ -46,9 +46,8 @@ type ShadowSummary struct {
 	Cut Cut
 }
 
-// SummariseShadow reads the shadow of g and returns a ShadowSummary.
-// It does not re-articulate — it operates on data already present in g.Cut.
-// The returned summary is immutable; slices are copied from the MeshGraph.
+// SummariseShadow reads the shadow of g without re-articulating.
+// Returns an immutable ShadowSummary; slices are copied from the MeshGraph.
 func SummariseShadow(g MeshGraph) ShadowSummary {
 	s := ShadowSummary{
 		TotalShadowed:  len(g.Cut.ShadowElements),
@@ -57,17 +56,13 @@ func SummariseShadow(g MeshGraph) ShadowSummary {
 		Cut:            g.Cut,
 	}
 
-	// Copy elements to decouple the summary from the source graph.
 	s.Elements = make([]ShadowElement, len(g.Cut.ShadowElements))
 	copy(s.Elements, g.Cut.ShadowElements)
 
 	for _, elem := range g.Cut.ShadowElements {
-		// Count by each reason (an element with multiple reasons is counted
-		// once per reason — consistent with ANT: multiple causes can coexist).
 		for _, r := range elem.Reasons {
 			s.ByReason[string(r)]++
 		}
-		// Count how often each observer appears in SeenFrom.
 		for _, obs := range elem.SeenFrom {
 			s.SeenFromCounts[obs]++
 		}
@@ -87,7 +82,6 @@ func PrintShadowSummary(w io.Writer, s ShadowSummary) error {
 		"",
 	}
 
-	// Cut context.
 	if len(s.Cut.ObserverPositions) > 0 {
 		lines = append(lines, fmt.Sprintf("Observer:    %s", joinStrings(s.Cut.ObserverPositions, ", ")))
 	} else {
@@ -110,8 +104,6 @@ func PrintShadowSummary(w io.Writer, s ShadowSummary) error {
 		return writeLines(w, lines)
 	}
 
-	// Breakdown by reason — iterate over all keys in ByReason so any future
-	// ShadowReason values appear automatically without a code change here.
 	lines = append(lines, "", "By exclusion reason:")
 	reasonKeys := make([]string, 0, len(s.ByReason))
 	for r := range s.ByReason {
@@ -122,10 +114,8 @@ func PrintShadowSummary(w io.Writer, s ShadowSummary) error {
 		lines = append(lines, fmt.Sprintf("  %-20s %d", r, s.ByReason[r]))
 	}
 
-	// Observer coverage of the shadow: who sees what this cut cannot.
 	if len(s.SeenFromCounts) > 0 {
 		lines = append(lines, "", "Shadow visible from (observer positions that un-shadow elements):")
-		// Sort observers by descending count, then alphabetically for ties.
 		type obsCount struct {
 			obs   string
 			count int
@@ -145,7 +135,6 @@ func PrintShadowSummary(w io.Writer, s ShadowSummary) error {
 		}
 	}
 
-	// List all shadow elements with their reasons.
 	lines = append(lines, "", "Shadow elements:")
 	for _, elem := range s.Elements {
 		reasonStrs := make([]string, len(elem.Reasons))
@@ -165,7 +154,8 @@ func PrintShadowSummary(w io.Writer, s ShadowSummary) error {
 	return writeLines(w, lines)
 }
 
-// writeLines writes each line followed by a newline to w.
+// writeLines writes each line to w. The error prefix is hard-coded as
+// "graph: PrintShadowSummary" regardless of the call site.
 func writeLines(w io.Writer, lines []string) error {
 	for _, line := range lines {
 		if _, err := fmt.Fprintln(w, line); err != nil {

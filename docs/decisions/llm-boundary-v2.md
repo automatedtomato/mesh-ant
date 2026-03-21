@@ -247,3 +247,4 @@ quality reading.
 | `ExtractionCut` type | Deferred pending evidence that extraction positions need to be compared across sessions (see Decision 9). |
 | CVE example directory migration | `data/examples/cve_response_*.json` pre-dates the subdirectory convention; low-priority cleanup. |
 | Assist session record in example directory | `data/examples/llm_assisted_extraction/` includes `extraction_session.json` but not the assist session record; the assist session ref is hardcoded in tests. A complete example would include both. |
+| `ExtractionConditions` bifurcation | `ExtractionConditions` is shared across `extract`, `assist`, and `critique`. For critique, the "source" is existing drafts, not a document; `SourceDocRef` may carry the original document reference or be empty. If future analysis shows that critique conditions (e.g., input draft criterion, original extraction position) need distinct fields, the type should bifurcate. |

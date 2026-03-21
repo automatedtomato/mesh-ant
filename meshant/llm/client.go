@@ -1,15 +1,8 @@
 // client.go defines the LLMClient interface and AnthropicClient implementation.
 //
-// The interface has a single method — Complete — that sends system instructions
-// and a user prompt and returns the LLM's text response. The single-method
-// design makes the LLM's analytical boundary explicit: what enters, what exits.
-// The LLM's internal transformations are not visible through this boundary
-// (T2 in docs/decisions/llm-as-mediator-v1.md).
-//
-// AnthropicClient implements LLMClient using the Anthropic Messages API via
-// net/http. No external SDK is used; the project maintains zero external
-// dependencies. The API key is consumed at construction time and never exposed
-// through any exported field or method.
+// The single-method interface makes the LLM's analytical boundary explicit:
+// what enters, what exits — internal transformations are not visible (T2 in
+// docs/decisions/llm-as-mediator-v1.md). No external SDK; zero external dependencies.
 package llm
 
 import (
@@ -24,26 +17,20 @@ import (
 	"time"
 )
 
-// LLMClient is the interface for LLM completion calls. Implementing this
-// interface is sufficient for all llm package operations; tests inject a
-// mock, production code uses AnthropicClient.
+// LLMClient is the interface for LLM completion calls. Tests inject a mock;
+// production code uses AnthropicClient.
 type LLMClient interface {
 	Complete(ctx context.Context, system, prompt string) (string, error)
 }
 
-// httpTimeout is the end-to-end timeout for a single Anthropic API call.
-// Large extraction responses (max_tokens: 4096) can be slow; 180 s is generous
-// without allowing a network hang to block indefinitely.
+// httpTimeout is generous for large extraction responses while bounding network hangs.
 const httpTimeout = 180 * time.Second
 
-// maxResponseBytes caps the response body read from the Anthropic API.
-// 8 MiB comfortably exceeds the maximum expected response size for a
-// 4096-token completion while bounding memory use if the server misbehaves.
+// maxResponseBytes caps the Anthropic API response body to bound memory use.
 const maxResponseBytes = 8 * 1024 * 1024
 
 // AnthropicClient implements LLMClient using the Anthropic Messages API.
-// The API key is held in an unexported field and is never serialised,
-// logged, or returned through any exported method.
+// The API key is held unexported and never serialised, logged, or returned.
 type AnthropicClient struct {
 	apiKey     string       // unexported: never in SessionRecord or any output
 	model      string
@@ -51,10 +38,8 @@ type AnthropicClient struct {
 	httpClient *http.Client // private client with explicit timeout; never http.DefaultClient
 }
 
-// NewAnthropicClient constructs a client ready to call the Anthropic API.
-// It reads the API key from the environment: MESHANT_LLM_API_KEY is checked
-// first; ANTHROPIC_API_KEY is used as a fallback. Returns a descriptive
-// error if both are absent or empty.
+// NewAnthropicClient constructs an AnthropicClient, reading the API key from
+// MESHANT_LLM_API_KEY (falling back to ANTHROPIC_API_KEY). Errors if both are absent.
 func NewAnthropicClient(model string) (*AnthropicClient, error) {
 	key := os.Getenv("MESHANT_LLM_API_KEY")
 	if key == "" {
@@ -71,12 +56,8 @@ func NewAnthropicClient(model string) (*AnthropicClient, error) {
 	}, nil
 }
 
-// Complete sends a Messages API request to Anthropic and returns the text
-// content of the first content block in the response. It uses the model
-// specified at construction time.
-//
-// The system parameter is sent as the system prompt (extraction instructions);
-// the prompt parameter is sent as the single user message (source document).
+// Complete sends a Messages API request and returns the text of the first
+// content block. system is the system prompt; prompt is the user message.
 func (c *AnthropicClient) Complete(ctx context.Context, system, prompt string) (string, error) {
 	reqBody, err := json.Marshal(map[string]any{
 		"model":      c.model,
@@ -105,24 +86,20 @@ func (c *AnthropicClient) Complete(ctx context.Context, system, prompt string) (
 	}
 	defer resp.Body.Close()
 
-	// Cap the response body to prevent unbounded memory use if the server
-	// sends an unexpectedly large or malformed response.
+	// Cap the response body to bound memory use on malformed/oversized responses.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return "", fmt.Errorf("llm: read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		// Do not include the response body for authentication failures: the
-		// body may echo sensitive request details. For other error codes the
-		// truncated body is useful diagnostic text.
+		// Omit body on auth failures — it may echo sensitive request details.
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			return "", fmt.Errorf("llm: API authentication error %d (check MESHANT_LLM_API_KEY)", resp.StatusCode)
 		}
 		return "", fmt.Errorf("llm: API error %d: %s", resp.StatusCode, truncate(string(body), 200))
 	}
 
-	// Parse the Messages API response envelope.
 	var result struct {
 		Content []struct {
 			Type string `json:"type"`
@@ -140,8 +117,7 @@ func (c *AnthropicClient) Complete(ctx context.Context, system, prompt string) (
 	return "", nil
 }
 
-// truncate returns s truncated to at most n bytes, with "..." appended if
-// truncation occurred. Used to limit error message lengths.
+// truncate returns s truncated to at most n bytes with "..." appended on truncation.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
