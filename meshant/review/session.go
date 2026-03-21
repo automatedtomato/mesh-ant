@@ -5,10 +5,14 @@
 // accept/edit/skip/quit decisions.
 //
 // Each accepted or edited draft produces a new derived TraceDraft via
-// deriveAccepted or deriveEdited respectively. The derivation records
-// provenance: DerivedFrom names the parent, ExtractedBy is "meshant-review"
-// (the session is the cut, not a person), and ExtractionStage advances to
-// "reviewed".
+// DeriveAccepted or DeriveEdited respectively. The derivation records
+// provenance: DerivedFrom names the parent, ExtractedBy is supplied by the
+// caller (e.g. "meshant-review" or "meshant-assist"), and ExtractionStage
+// advances to "reviewed".
+//
+// DeriveAccepted, DeriveEdited, and RunEditFlow are exported so that the llm
+// package can reuse them in the assist session without duplicating derivation
+// logic.
 package review
 
 import (
@@ -30,7 +34,7 @@ import (
 // in the slice has any ExtractionStage set, all drafts are presented (fallback
 // for datasets without stage metadata).
 //
-// Accept: calls deriveAccepted to produce a new derived draft and appends it
+// Accept: calls DeriveAccepted to produce a new derived draft and appends it
 // to the results. Skip: advances without producing a draft. Quit: returns
 // results collected so far with nil error. Unknown input re-prompts.
 //
@@ -76,7 +80,7 @@ draftLoop:
 			switch strings.TrimSpace(strings.ToLower(scanner.Text())) {
 			case "a":
 				// Accept: derive a new reviewed draft from the parent.
-				derived, err := deriveAccepted(d)
+				derived, err := DeriveAccepted(d, "meshant-review")
 				if err != nil {
 					return results, err
 				}
@@ -87,7 +91,7 @@ draftLoop:
 				// when all 8 fields were read without hitting EOF. On EOF
 				// mid-flow, completed is false — break draftLoop immediately
 				// without appending a partial draft.
-				edited, completed, err := runEditFlow(d, scanner, out)
+				edited, completed, err := RunEditFlow(d, scanner, out)
 				if err != nil {
 					return results, err
 				}
@@ -95,7 +99,7 @@ draftLoop:
 					// EOF during edit — treat as quit; do not append a draft.
 					break draftLoop
 				}
-				derived, err := deriveEdited(d, edited)
+				derived, err := DeriveEdited(d, edited, "meshant-review")
 				if err != nil {
 					return results, err
 				}
@@ -117,22 +121,23 @@ draftLoop:
 	return results, nil
 }
 
-// deriveAccepted creates a new TraceDraft derived from parent.
+// DeriveAccepted creates a new TraceDraft derived from parent.
 // The new draft copies all candidate content fields from parent and sets
-// provenance fields to record that the review session accepted it:
+// provenance fields to record that the session accepted it:
 //   - DerivedFrom: parent.ID (derivation link)
 //   - ExtractionStage: "reviewed" (stage advanced)
-//   - ExtractedBy: "meshant-review" (the session is the cut, not a person)
+//   - ExtractedBy: extractedBy (the session that made the cut — e.g.
+//     "meshant-review" or "meshant-assist"; never a person)
 //   - ID: fresh UUID
 //   - Timestamp: time.Now()
 //
 // Slice fields (Source, Target, Tags, IntentionallyBlank) are deep-copied so
 // the derived draft is independent of the parent. Mutations to either do not
 // affect the other.
-func deriveAccepted(parent schema.TraceDraft) (schema.TraceDraft, error) {
+func DeriveAccepted(parent schema.TraceDraft, extractedBy string) (schema.TraceDraft, error) {
 	id, err := loader.NewUUID()
 	if err != nil {
-		return schema.TraceDraft{}, fmt.Errorf("deriveAccepted: generate UUID: %w", err)
+		return schema.TraceDraft{}, fmt.Errorf("DeriveAccepted: generate UUID: %w", err)
 	}
 
 	return schema.TraceDraft{
@@ -152,7 +157,7 @@ func deriveAccepted(parent schema.TraceDraft) (schema.TraceDraft, error) {
 		IntentionallyBlank: cloneStrings(parent.IntentionallyBlank),
 		DerivedFrom:        parent.ID,
 		ExtractionStage:    "reviewed",
-		ExtractedBy:        "meshant-review",
+		ExtractedBy:        extractedBy,
 	}, nil
 }
 
@@ -174,7 +179,7 @@ func parseCommaSeparated(s string) []string {
 	return result
 }
 
-// deriveEdited creates a new TraceDraft that combines the reviewer's edits
+// DeriveEdited creates a new TraceDraft that combines the reviewer's edits
 // with provenance drawn from the parent draft.
 //
 // Content fields (WhatChanged, Source, Target, Mediation, Observer, Tags,
@@ -184,12 +189,16 @@ func parseCommaSeparated(s string) []string {
 // material and are not editable in the review session. A fresh UUID and the
 // current timestamp are assigned. DerivedFrom is set to parent.ID.
 //
+// extractedBy identifies the session that produced this derivation (e.g.
+// "meshant-review" or "meshant-assist"). This is a framework-assigned value,
+// not a person.
+//
 // All slice fields are deep-copied from edited so the derived draft is
 // independent of both parent and edited.
-func deriveEdited(parent schema.TraceDraft, edited schema.TraceDraft) (schema.TraceDraft, error) {
+func DeriveEdited(parent schema.TraceDraft, edited schema.TraceDraft, extractedBy string) (schema.TraceDraft, error) {
 	id, err := loader.NewUUID()
 	if err != nil {
-		return schema.TraceDraft{}, fmt.Errorf("deriveEdited: generate UUID: %w", err)
+		return schema.TraceDraft{}, fmt.Errorf("DeriveEdited: generate UUID: %w", err)
 	}
 
 	return schema.TraceDraft{
@@ -216,11 +225,11 @@ func deriveEdited(parent schema.TraceDraft, edited schema.TraceDraft) (schema.Tr
 		// Derivation chain fields — the session is the cut.
 		DerivedFrom:     parent.ID,
 		ExtractionStage: "reviewed",
-		ExtractedBy:     "meshant-review",
+		ExtractedBy:     extractedBy,
 	}, nil
 }
 
-// runEditFlow presents each editable field of d in sequence and reads a
+// RunEditFlow presents each editable field of d in sequence and reads a
 // replacement value from scanner. An empty line (after TrimSpace) keeps the
 // current value. A non-empty line replaces the field: string fields are set
 // directly; slice fields (source, target, tags) are parsed via
@@ -236,7 +245,7 @@ func deriveEdited(parent schema.TraceDraft, edited schema.TraceDraft) (schema.Tr
 // completed), false when the scanner hit EOF before all fields were read
 // (edit was abandoned). The caller must only derive a new draft when the
 // bool is true.
-func runEditFlow(d schema.TraceDraft, scanner *bufio.Scanner, out io.Writer) (schema.TraceDraft, bool, error) {
+func RunEditFlow(d schema.TraceDraft, scanner *bufio.Scanner, out io.Writer) (schema.TraceDraft, bool, error) {
 	// working is a local copy; d is never mutated.
 	working := d
 

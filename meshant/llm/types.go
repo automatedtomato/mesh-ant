@@ -29,9 +29,19 @@ type ExtractionConditions struct {
 // DraftDisposition records the fate of a single draft within a session.
 // Used by assist and critique sessions; empty in extract sessions (all
 // drafts from extract are implicitly "accepted" into the output).
+//
+// Action values:
+//   - "accepted"  — reviewer confirmed the LLM draft as-is
+//   - "edited"    — reviewer modified the draft via RunEditFlow
+//   - "skipped"   — reviewer deliberately chose not to engage
+//   - "abandoned" — reviewer entered edit mode but EOF interrupted before completion
+//
+// "skipped" and "abandoned" are distinct: skip is a deliberate non-engagement;
+// abandon is an interrupted articulation. Both preserve the LLM draft in
+// the output (shadow is not absence).
 type DraftDisposition struct {
 	DraftID string `json:"draft_id"`
-	Action  string `json:"action"` // "accepted", "edited", "skipped"
+	Action  string `json:"action"`
 }
 
 // SessionRecord is the mandatory companion to every LLM interaction. It is
@@ -57,6 +67,20 @@ type SessionRecord struct {
 type ExtractionOptions struct {
 	ModelID            string
 	InputPath          string
+	PromptTemplatePath string
+	CriterionRef       string
+	SourceDocRef       string
+	OutputPath         string
+	SessionOutputPath  string
+}
+
+// AssistOptions configures a single RunAssistSession call.
+// The caller parses the spans file upstream and supplies the resulting
+// []string directly. InputPath is recorded in the SessionRecord for
+// provenance — it is optional (empty is valid).
+type AssistOptions struct {
+	ModelID            string
+	InputPath          string // path to spans file; recorded in SessionRecord
 	PromptTemplatePath string
 	CriterionRef       string
 	SourceDocRef       string

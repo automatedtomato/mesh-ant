@@ -83,7 +83,7 @@ session record carries the full prompt and conditions — but the field itself c
 
 ## Decision 3: UncertaintyNote is set by framework code
 
-The framework appends `"LLM-extracted; unverified by human review"` to the `UncertaintyNote`
+The framework appends `"LLM-produced candidate; unverified by human review"` to the `UncertaintyNote`
 field on every LLM-produced draft. The LLM may suggest uncertainty content in response to the
 prompt, but the framework always appends its own note. The LLM cannot override this; the
 framework code is the final writer.
