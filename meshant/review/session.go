@@ -342,8 +342,12 @@ func RunEditFlow(d schema.TraceDraft, scanner *bufio.Scanner, out io.Writer) (sc
 }
 
 // filterReviewable returns the subset of drafts that should be presented in
-// the review session. Drafts with ExtractionStage == "weak-draft" are always
-// included.
+// the review session. Drafts with ExtractionStage "weak-draft" or "critiqued"
+// are included.
+//
+// "critiqued" drafts are included because they are LLM suggestions that
+// benefit from human review — the LLM's suggestion is an input to the human's
+// decision, not a substitute for it (Decision 5, llm-as-mediator-v1.md).
 //
 // If no draft in the slice has any ExtractionStage set (i.e., no stage
 // metadata exists in the dataset), all drafts are returned as a fallback so
@@ -370,10 +374,12 @@ func filterReviewable(drafts []schema.TraceDraft) []schema.TraceDraft {
 		return result
 	}
 
-	// Stage metadata present: include only "weak-draft" records.
+	// Stage metadata present: include "weak-draft" and "critiqued" records.
+	// "reviewed" and "span-harvest" drafts are excluded — they are either
+	// already actioned or not yet ready for the review step.
 	var result []schema.TraceDraft
 	for _, d := range drafts {
-		if d.ExtractionStage == "weak-draft" {
+		if d.ExtractionStage == "weak-draft" || d.ExtractionStage == "critiqued" {
 			result = append(result, d)
 		}
 	}
