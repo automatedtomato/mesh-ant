@@ -144,7 +144,7 @@ instructions, timestamp) alongside every draft ID produced.
 **API key setup:**
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+export MESHANT_LLM_API_KEY=sk-ant-...   # or ANTHROPIC_API_KEY as fallback
 ```
 
 **Example pipeline:**

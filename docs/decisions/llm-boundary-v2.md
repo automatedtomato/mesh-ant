@@ -128,8 +128,8 @@ the core design question of what a span boundary means analytically. Deferred to
 
 ## Decision 6: API key from environment only
 
-The `LLMClient` reads the API key from `ANTHROPIC_API_KEY` (primary) or `MESHANT_LLM_API_KEY`
-(secondary). No config file, no keyring, no interactive prompt. The constructor validates at
+The `LLMClient` reads the API key from `MESHANT_LLM_API_KEY` (primary) or `ANTHROPIC_API_KEY`
+(fallback). No config file, no keyring, no interactive prompt. The constructor validates at
 construction time that the key is present and non-empty.
 
 The `ExtractionConditions` struct never holds the API key. Two runs with different keys but the
