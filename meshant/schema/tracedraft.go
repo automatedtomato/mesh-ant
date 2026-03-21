@@ -80,7 +80,12 @@ type TraceDraft struct {
 	UncertaintyNote string `json:"uncertainty_note,omitempty"`
 
 	// ExtractionStage records where in the pipeline this draft was produced.
-	// Known values: "span-harvest", "weak-draft", "reviewed".
+	// Known values: "span-harvest", "weak-draft", "critiqued", "reviewed".
+	//
+	// "critiqued" is an LLM re-articulation of an existing draft (Thread F).
+	// It names a mediating act — an LLM suggestion, not a human decision.
+	// Stages name pipeline positions, not quality levels; "critiqued" has
+	// equal standing with any other stage as an analytical object.
 	ExtractionStage string `json:"extraction_stage,omitempty"`
 
 	// ExtractedBy is the analyst-position cut axis for the ingestion layer,
@@ -149,7 +154,7 @@ type TraceDraft struct {
 // All other fields are optional at the draft stage.
 func (d TraceDraft) Validate() error {
 	if d.SourceSpan == "" {
-		return errors.New("tracedraft: source_span is required — it is the ground truth that provoked this extraction")
+		return errors.New("tracedraft: source_span is required — it is the anchor text that makes this extraction inspectable")
 	}
 	return nil
 }

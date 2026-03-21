@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-21 (F.0: SessionRef field on TraceDraft — schema, draftloader, review/session.go)
+**Last Updated:** 2026-03-21 (F.1: LLM mediator convention — decision record, extraction prompt, critiqued stage)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -599,7 +599,8 @@ cmd/demo/
 
 | File | Purpose |
 |------|---------|
-| `data/prompts/critique_pass.md` | Extraction contract for the critique step: what to preserve (SourceSpan verbatim), what to question (stable actor attributions, imputed intentions), what honest abstention looks like, DerivedFrom semantics, worked E3 example |
+| `data/prompts/critique_pass.md` | Extraction contract for the critique (re-articulation) step: what to preserve (SourceSpan verbatim), what to question (stable actor attributions, imputed intentions), what honest abstention looks like, DerivedFrom semantics, worked E3 example. Updated F.1: `extraction_stage: "critiqued"`, model ID strings for `extracted_by`, `intentionally_blank` in field guide. |
+| `data/prompts/extraction_pass.md` | System instructions for `meshant extract` (Thread F). Enforces trace-first vocabulary: candidate drafts not facts, `intentionally_blank` requirement, honest abstention, worked network-operations example (F.1). |
 
 **Dataset M8 (Incident Response):**
 - **Observers:** monitoring-service, on-call-engineer, incident-commander, product-manager, customer-support
@@ -620,10 +621,11 @@ cmd/demo/
 - `docs/decisions/m10-tag-filter-diff-export-cli-v1.md` — Tag-filter axis, diff visual export, CLI integration (M10)
 - `docs/decisions/translation-chain-v2.md` — Translation chain traversal, classification heuristics, first-match branching (M10.5)
 - `docs/decisions/equivalence-criterion-v1.md` — Equivalence criterion design, three-layer model, v1 implicit criterion, second-order shadow (M10.5+)
-- `docs/decisions/tracedraft-v2.md` — TraceDraft design, ingestion pipeline as analytical object, source span as ground truth, promotion criterion, provenance chain (M11)
+- `docs/decisions/tracedraft-v2.md` — TraceDraft design, ingestion pipeline as analytical object, source span as anchor text, promotion criterion, provenance chain (M11)
 - `docs/decisions/rearticulation-v1.md` — Re-articulation as cut not correction, SourceSpan invariant, blank scaffold as correct output, DerivedFrom positional vocabulary, cmdLineage as first-class CLI output, E3/E14 as demonstration material (M12)
 - `docs/decisions/shadow-analysis-v1.md` — Shadow as cut decision, ObserverGap composability, FollowDraftChain design, CriterionRef as citation metadata, DraftStepKind v1 heuristics, shadow/gaps CLI-first design (M13)
 - `docs/decisions/interactive-review-v1.md` — Interactive review CLI design: session as cut, render-as-string, ExtractedBy sameness, provenance/content partition, stdin/stderr separation, main.go size debt (Thread A)
+- `docs/decisions/llm-as-mediator-v1.md` — 7 conventions for LLM participation in the ingestion pipeline: mediator framing, model ID strings, framework-imposed UncertaintyNote, ExtractionStage values (incl. "critiqued"), SessionRecord mandate, IntentionallyBlank requirement; 3 named ANT tensions (F.1)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 
