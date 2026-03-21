@@ -227,7 +227,7 @@ meshant lineage     [--id <id>] [--format text|json] drafts.json
 
 **LLM-assisted ingestion (v2.0.0)**
 
-Requires `ANTHROPIC_API_KEY` set in the environment.
+Requires `MESHANT_LLM_API_KEY` (or `ANTHROPIC_API_KEY` as fallback) set in the environment.
 
 ```
 meshant extract     --source-doc <path> [--source-doc-ref <ref>] [--prompt-template <path>] [--model <id>] [--criterion-file <path>] [--output <file>] [--session-output <file>]
