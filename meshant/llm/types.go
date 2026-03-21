@@ -88,6 +88,24 @@ type AssistOptions struct {
 	SessionOutputPath  string
 }
 
+// CritiqueOptions configures a single RunCritique call.
+// The caller parses the input drafts file upstream and supplies the resulting
+// []schema.TraceDraft directly. InputPath is recorded in the SessionRecord for
+// provenance — it is optional (empty is valid).
+//
+// DraftID is optional: when set, only the draft with that ID is critiqued;
+// all others are ignored. When empty, all input drafts are critiqued.
+type CritiqueOptions struct {
+	ModelID            string
+	InputPath          string // path to input drafts file; recorded in SessionRecord
+	PromptTemplatePath string
+	CriterionRef       string
+	SourceDocRef       string
+	OutputPath         string
+	SessionOutputPath  string
+	DraftID            string // empty = critique all; non-empty = single draft by ID
+}
+
 // ErrLLMRefusal indicates the LLM explicitly declined to produce output.
 // The RefusalText carries whatever the LLM returned for debugging.
 type ErrLLMRefusal struct {

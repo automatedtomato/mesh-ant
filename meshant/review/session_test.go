@@ -901,3 +901,63 @@ func TestDeriveEdited_PreservesSessionRef(t *testing.T) {
 		t.Errorf("deriveEdited: SessionRef: want %q, got %q", "sess-002", results[0].SessionRef)
 	}
 }
+
+// TestFilterReviewable_IncludesCritiqued verifies that "critiqued" drafts are
+// included in the review queue alongside "weak-draft" drafts, and that
+// "reviewed" and "span-harvest" drafts are excluded.
+//
+// filterReviewable is unexported; this test exercises it through
+// RunReviewSession by counting how many times the prompt is rendered (each
+// draft in the queue produces at least one prompt line in the output).
+func TestFilterReviewable_IncludesCritiqued(t *testing.T) {
+	weak := schema.TraceDraft{
+		ID: "w-1", SourceSpan: "span-weak", ExtractionStage: "weak-draft",
+	}
+	critiqued := schema.TraceDraft{
+		ID: "c-1", SourceSpan: "span-critiqued", ExtractionStage: "critiqued",
+	}
+	reviewed := schema.TraceDraft{
+		ID: "r-1", SourceSpan: "span-reviewed", ExtractionStage: "reviewed",
+	}
+	harvest := schema.TraceDraft{
+		ID: "h-1", SourceSpan: "span-harvest", ExtractionStage: "span-harvest",
+	}
+
+	drafts := []schema.TraceDraft{weak, critiqued, reviewed, harvest}
+
+	// Skip first draft, then quit — ensures both queued drafts are rendered
+	// so we can assert their IDs appear in the output.
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("s\nq\n"), &out)
+	if err != nil {
+		t.Fatalf("RunReviewSession: unexpected error: %v", err)
+	}
+	// Quit before accepting: no results.
+	if len(results) != 0 {
+		t.Errorf("want 0 results (quit immediately), got %d", len(results))
+	}
+
+	rendered := out.String()
+
+	// The session must have rendered both "weak-draft" and "critiqued" drafts.
+	// RenderChain shows ids in the format "id:w-1" / "id:c-1".
+	if !strings.Contains(rendered, "w-1") {
+		t.Error("session must render weak-draft draft (id w-1)")
+	}
+	if !strings.Contains(rendered, "c-1") {
+		t.Error("session must render critiqued draft (id c-1)")
+	}
+	// "reviewed" (r-1) and "span-harvest" (h-1) must NOT appear in the queue.
+	if strings.Contains(rendered, "r-1") {
+		t.Error("session must not render reviewed draft (id r-1)")
+	}
+	if strings.Contains(rendered, "h-1") {
+		t.Error("session must not render span-harvest draft (id h-1)")
+	}
+
+	// The prompt header must indicate 2 drafts in the queue (weak + critiqued).
+	// RenderDraft uses "Draft [N/M]" format.
+	if !strings.Contains(rendered, "/2]") {
+		t.Errorf("session must show 2 total drafts, output:\n%s", rendered)
+	}
+}

@@ -16,6 +16,7 @@
 //   - chain-diff:      compare derivation-chain classifications across two analyst positions (C.3)
 //   - extract:         call an LLM to produce TraceDraft records from a source document (F.2)
 //   - assist:          interactively refine span text into TraceDraft records with LLM assistance (F.3)
+//   - critique:        call an LLM to produce "critiqued" derived drafts from existing TraceDrafts (F.4)
 //
 // The testable logic lives in run() and each cmd* function. main() itself is
 // a thin wrapper that wires os.Stdout and os.Args, then exits non-zero on
@@ -237,6 +238,10 @@ func run(w io.Writer, args []string) error {
 		// os.Stdin so the interactive prompts can read from the terminal. The
 		// extra in parameter keeps the session testable without a real terminal.
 		return cmdAssist(w, nil, os.Stdin, args[1:])
+	case "critique":
+		// cmdCritique receives a nil client so the real AnthropicClient is
+		// constructed from env vars at runtime. Tests inject a mock client.
+		return cmdCritique(w, nil, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
@@ -267,6 +272,7 @@ Commands:
   chain-diff      compare derivation-chain classifications across two analyst positions (flags: --analyst-a, --analyst-b, --span, --output)
   extract         call LLM to produce TraceDraft records from a source document (flags: --source-doc, --source-doc-ref, --prompt-template, --model, --criterion-file, --output, --session-output)
   assist          interactively refine spans into TraceDraft records with LLM assistance (flags: --spans-file, --prompt-template, --model, --source-doc-ref, --criterion-file, --output, --session-output)
+  critique        call LLM to produce "critiqued" derived drafts from existing TraceDrafts (flags: --input, --prompt-template, --model, --source-doc-ref, --criterion-file, --output, --session-output, --id)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }
