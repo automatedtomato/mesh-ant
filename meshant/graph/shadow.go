@@ -154,7 +154,8 @@ func PrintShadowSummary(w io.Writer, s ShadowSummary) error {
 	return writeLines(w, lines)
 }
 
-// writeLines writes each line to w.
+// writeLines writes each line to w. The error prefix is hard-coded as
+// "graph: PrintShadowSummary" regardless of the call site.
 func writeLines(w io.Writer, lines []string) error {
 	for _, line := range lines {
 		if _, err := fmt.Fprintln(w, line); err != nil {

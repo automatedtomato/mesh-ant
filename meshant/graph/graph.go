@@ -143,9 +143,7 @@ type Node struct {
 type Edge struct {
 	TraceID     string   `json:"trace_id"`
 	WhatChanged string   `json:"what_changed"`
-	// Mediation names what transformed the action. Empty if none was observed.
-	// A mediator changes what passes through it — not a neutral conduit.
-	Mediation   string   `json:"mediation"`
+	Mediation   string   `json:"mediation"` // empty if no mediation was observed
 	Observer    string   `json:"observer"`
 	Sources     []string `json:"sources"`
 	Targets     []string `json:"targets"`

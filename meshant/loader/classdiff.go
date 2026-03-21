@@ -69,8 +69,9 @@ func CompareChainClassifications(chainA, chainB []DraftStepClassification) []Cla
 }
 
 // PrintClassificationDiffs writes a classification-diff report to w.
+// lenA and lenB are the total step counts of each chain — used to flag
+// length asymmetry (steps beyond the shorter chain were not compared).
 // Neither position is treated as authoritative.
-// Returns the first write error encountered, if any.
 func PrintClassificationDiffs(w io.Writer, analystA, analystB string, lenA, lenB int, diffs []ClassificationDiff) error {
 	lines := []string{
 		"=== Classification Diff ===",

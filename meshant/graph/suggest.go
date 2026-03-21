@@ -91,7 +91,6 @@ func SuggestRearticulations(gap ObserverGap) []RearticSuggestion {
 	// Non-nil empty slice distinguishes "gap but no heuristic fired" from nil.
 	result := []RearticSuggestion{}
 
-	// Heuristic 1: observer expansion.
 	if len(gap.OnlyInA) > 0 && len(gap.CutB.ObserverPositions) > 0 {
 		result = append(result, RearticSuggestion{
 			Kind: SuggestionObserverExpansion,
@@ -114,7 +113,6 @@ func SuggestRearticulations(gap ObserverGap) []RearticSuggestion {
 		})
 	}
 
-	// Heuristic 2: time-window expansion.
 	aHasWindow := !gap.CutA.TimeWindow.IsZero()
 	bHasWindow := !gap.CutB.TimeWindow.IsZero()
 
@@ -140,7 +138,6 @@ func SuggestRearticulations(gap ObserverGap) []RearticSuggestion {
 		})
 	}
 
-	// Heuristic 3: tag relaxation.
 	aHasTags := len(gap.CutA.Tags) > 0
 	bHasTags := len(gap.CutB.Tags) > 0
 
