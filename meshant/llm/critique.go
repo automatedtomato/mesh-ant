@@ -17,9 +17,9 @@
 //     docs/decisions/llm-as-mediator-v1.md, Decision 4.
 //
 // parseCritiqueDraft is a package-private helper that shares logic with
-// parseSingleDraft in assist.go. When F.3 merges to develop, the two can be
-// factored into a shared parse.go; until then they are parallel implementations
-// in the same package.
+// parseSingleDraft in assist.go. The two are parallel implementations in the
+// same package; factoring into a shared parse.go is deferred (see deferred
+// items in docs/decisions/llm-boundary-v2.md).
 package llm
 
 import (
@@ -198,8 +198,8 @@ func buildCritiquePrompt(orig schema.TraceDraft) string {
 //   - IntentionallyBlank is validated against knownContentFields (D7)
 //   - Provenance fields are stamped (D2/D3/D4/D6)
 //
-// This function is parallel to parseSingleDraft in assist.go. When F.3 merges
-// to develop, the two can be factored into a shared helper in parse.go.
+// This function is parallel to parseSingleDraft in assist.go. Factoring into
+// a shared helper in parse.go is deferred (see docs/decisions/llm-boundary-v2.md).
 func parseCritiqueDraft(raw, modelID, sessionID, sourceDocRef string, now time.Time) (schema.TraceDraft, error) {
 	s := strings.TrimSpace(raw)
 

@@ -131,7 +131,6 @@ func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) e
 		CriterionRef:       criterionRef,
 		SourceDocRef:       sourceDocRef,
 		OutputPath:         outputPath,
-		SessionOutputPath:  sessionOutputPath,
 	}
 
 	drafts, rec, err := llm.RunAssistSession(context.Background(), client, spans, opts, in, w)

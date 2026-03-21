@@ -138,7 +138,6 @@ func cmdCritique(w io.Writer, client llm.LLMClient, args []string) error {
 		CriterionRef:       criterionRef,
 		SourceDocRef:       sourceDocRef,
 		OutputPath:         outputPath,
-		SessionOutputPath:  sessionOutputPath,
 		DraftID:            draftID,
 	}
 

@@ -71,7 +71,6 @@ type ExtractionOptions struct {
 	CriterionRef       string
 	SourceDocRef       string
 	OutputPath         string
-	SessionOutputPath  string
 }
 
 // AssistOptions configures a single RunAssistSession call.
@@ -85,7 +84,6 @@ type AssistOptions struct {
 	CriterionRef       string
 	SourceDocRef       string
 	OutputPath         string
-	SessionOutputPath  string
 }
 
 // CritiqueOptions configures a single RunCritique call.
@@ -102,7 +100,6 @@ type CritiqueOptions struct {
 	CriterionRef       string
 	SourceDocRef       string
 	OutputPath         string
-	SessionOutputPath  string
 	DraftID            string // empty = critique all; non-empty = single draft by ID
 }
 

@@ -121,7 +121,6 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 		CriterionRef:       criterionRef,
 		SourceDocRef:       sourceDocRef,
 		OutputPath:         outputPath,
-		SessionOutputPath:  sessionOutputPath,
 	}
 
 	drafts, rec, err := llm.RunExtraction(context.Background(), client, opts)
@@ -177,7 +176,7 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 // writeSessionRecord serialises rec as indented JSON to path.
 // It encodes to a buffer before creating the file so that a serialisation
 // failure does not leave an empty or truncated file on disk.
-// Used only by cmdExtract; move to main.go when other commands need session persistence.
+// Shared by cmdExtract, cmdAssist, and cmdCritique.
 func writeSessionRecord(path string, rec llm.SessionRecord) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
