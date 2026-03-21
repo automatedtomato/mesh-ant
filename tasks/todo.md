@@ -700,7 +700,7 @@ Parent issue: #115
 - [x] **Phase 0 (#116) — CLI file split** — `main.go` 2003 → 259 lines; 15 `cmd_*.go` files; PR #123 merged to develop
 - [x] **F.0 (#114) — `SessionRef` on TraceDraft** — `SessionRef string` on `TraceDraft`; `WithSessionRef` in `DraftSummary`; preserved by `deriveAccepted`/`deriveEdited`; not transferred by `Promote()`; 7 new tests; PR #124 merged to develop
 - [x] **F.1 (#117) — LLM mediator convention** — `docs/decisions/llm-as-mediator-v1.md` (7 decisions + 3 ANT tensions); `"critiqued"` added to `ExtractionStage` doc comment; `data/prompts/extraction_pass.md`; `critique_pass.md` updated to align with Decision 5; PR #125 merged to develop
-- [ ] **F.2 (#118) — `meshant extract`** — new `meshant/llm` package; `LLMClient` interface; `ExtractionConditions`; `SessionRecord`; `RunExtraction`; `cmdExtract`
+- [x] **F.2 (#118) — `meshant extract`** — new `meshant/llm` package; `LLMClient` interface; `ExtractionConditions`; `SessionRecord`; `RunExtraction`; `cmdExtract`; HTTP timeout + response size cap + auth error scrubbing; 27 tests (18 unit + 9 CLI); PR #126 merged to develop
 - [ ] **F.3 (#119) — `meshant assist`** — interactive authoring companion; LLM suggests per span; user confirms/edits/skips; skipped drafts preserved; `RunAssistSession`; per-draft dispositions in SessionRecord
 - [ ] **F.4 (#120) — `meshant critique`** — `RunCritique`; `"critiqued"` stage; `filterReviewable` updated; `cmdCritique`
 - [ ] **F.5 (#121) — Real-world LLM-assisted extraction example** — `data/examples/llm_assisted_extraction/`; full pipeline documented
