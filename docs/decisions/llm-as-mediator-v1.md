@@ -239,6 +239,11 @@ A downstream analyst comparing two drafts with the same `ExtractedBy` but differ
 `SessionRef` values may be comparing different analytical positions that happen to share a
 model version. This is a real ambiguity in the data. Thread F names it; it does not resolve it.
 
+*T4 and T5 from `tasks/plan_thread_f.md` — session record storage not structurally enforced,
+and the implicit quality-hierarchy risk introduced by `"critiqued"` — are implementation
+tensions whose resolutions depend on F.2–F.4 code decisions. They will be named in the F.6
+decision record.*
+
 ---
 
 ## References
