@@ -16,6 +16,8 @@ package loader_test
 import (
 	"encoding/json"
 	"os"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -33,6 +35,19 @@ type sessionRecordStub struct {
 	DraftIDs   []string  `json:"draft_ids"`
 	DraftCount int       `json:"draft_count"`
 	Timestamp  time.Time `json:"timestamp"`
+}
+
+// articulationStub is a minimal local struct for decoding articulation_output.json.
+// The top-level id field is intentionally empty for articulations produced by
+// meshant articulate — MeshGraph.ID is user-assigned and never auto-populated
+// by the articulate command itself. Tests assert structural content, not the ID.
+type articulationStub struct {
+	Nodes map[string]json.RawMessage `json:"nodes"`
+	Edges []json.RawMessage          `json:"edges"`
+	Cut   struct {
+		TracesIncluded int `json:"traces_included"`
+		TracesTotal    int `json:"traces_total"`
+	} `json:"cut"`
 }
 
 // loadSessionRecord decodes extraction_session.json into a sessionRecordStub.
@@ -130,9 +145,9 @@ func TestLLMExtractionExample_RawDrafts(t *testing.T) {
 	}
 }
 
-// TestLLMExtractionExample_ReviewedDrafts checks that reviewed_drafts.json
-// is a valid TraceDraft array and that derived (human-edited) drafts have
-// DerivedFrom pointing to a draft in raw_drafts.json.
+// TestLLMExtractionExample_ReviewedDrafts checks that reviewed_drafts.json is a
+// valid TraceDraft array with the expected total count, correct provenance on
+// human-derived drafts, and the analytical signals for each divergence.
 func TestLLMExtractionExample_ReviewedDrafts(t *testing.T) {
 	rawDrafts, err := loader.LoadDrafts(llmExampleDir + "raw_drafts.json")
 	if err != nil {
@@ -144,14 +159,26 @@ func TestLLMExtractionExample_ReviewedDrafts(t *testing.T) {
 		t.Fatalf("LoadDrafts reviewed_drafts.json: %v", err)
 	}
 
-	// Build index of raw draft IDs.
+	// reviewed_drafts.json contains all 7 carried-forward LLM drafts plus 2
+	// human-derived corrections (Divergences B and C).
+	if len(reviewed) != 9 {
+		t.Fatalf("reviewed_drafts: want 9 drafts (7 LLM + 2 human-derived), got %d", len(reviewed))
+	}
+
+	// Build index of raw draft IDs and a map for looking up reviewed drafts by ID.
 	rawIDs := make(map[string]bool, len(rawDrafts))
 	for _, d := range rawDrafts {
 		rawIDs[d.ID] = true
 	}
+	reviewedByID := make(map[string]schema.TraceDraft, len(reviewed))
+	for _, d := range reviewed {
+		reviewedByID[d.ID] = d
+	}
 
-	// reviewed_drafts.json contains both carried-forward LLM drafts (accepted/skipped)
-	// and human-derived drafts (edited). Count each kind.
+	// assistSessionRef is the session ID stamped on human-derived reviewed drafts
+	// by the meshant assist session (separate from the extract session).
+	const assistSessionRef = "f5000000-0000-4000-8000-000000000002"
+
 	humanDraftCount := 0
 	for i, d := range reviewed {
 		if d.ID == "" {
@@ -160,7 +187,6 @@ func TestLLMExtractionExample_ReviewedDrafts(t *testing.T) {
 		if d.SourceSpan == "" {
 			t.Errorf("reviewed_drafts[%d] (%s): source_span must not be empty", i, d.ID)
 		}
-		// Human-derived drafts must have DerivedFrom pointing to a raw draft.
 		if d.ExtractionStage == "reviewed" {
 			humanDraftCount++
 			if d.DerivedFrom == "" {
@@ -173,25 +199,111 @@ func TestLLMExtractionExample_ReviewedDrafts(t *testing.T) {
 			if d.ExtractedBy == "" {
 				t.Errorf("reviewed_drafts[%d] (%s): reviewed-stage draft must have extracted_by set", i, d.ID)
 			}
+			// Reviewed drafts carry the assist session ref, not the extract session ref.
+			if d.SessionRef != assistSessionRef {
+				t.Errorf("reviewed_drafts[%d] (%s): reviewed-stage draft session_ref: want %q, got %q",
+					i, d.ID, assistSessionRef, d.SessionRef)
+			}
 		}
 	}
 
-	// The example includes at least 2 human-edited spans (divergences B and C).
-	if humanDraftCount < 2 {
-		t.Errorf("reviewed_drafts: want at least 2 reviewed-stage drafts (divergences B and C), got %d", humanDraftCount)
+	// The example includes exactly 2 human-edited spans (Divergences B and C).
+	if humanDraftCount != 2 {
+		t.Errorf("reviewed_drafts: want exactly 2 reviewed-stage drafts (divergences B and C), got %d", humanDraftCount)
+	}
+
+	// --- Divergence A (span 2): LLM reading accepted without editing ---
+	// The structural signal of Divergence A is the absence of a reviewed-stage
+	// derived draft for span 2. If span 2 had been edited, a reviewed draft with
+	// derived_from == span2LLMId would appear in reviewed_drafts.json.
+	const span2LLMId = "f5000001-0000-4000-8000-000000000002"
+	for _, d := range reviewed {
+		if d.ExtractionStage == "reviewed" && d.DerivedFrom == span2LLMId {
+			t.Errorf("Divergence A: span 2 (%s) should have been accepted without editing; "+
+				"found a reviewed-stage derived draft %s pointing to it", span2LLMId, d.ID)
+		}
+	}
+	// Span 2's LLM draft must be present in reviewed_drafts (accepted, carried through).
+	if _, ok := reviewedByID[span2LLMId]; !ok {
+		t.Errorf("Divergence A: span 2 LLM draft (%s) must appear in reviewed_drafts (accepted)", span2LLMId)
+	}
+
+	// --- Divergence B (span 5): LLM generalized mediation; reviewer corrected it ---
+	const (
+		span5LLMId    = "f5000001-0000-4000-8000-000000000005"
+		span5HumanId  = "f5000002-0000-4000-8000-000000000005"
+		llmMediation  = "majority-vote-protocol"
+		goodMediation = "foundation-bylaws-article-7"
+	)
+	if d, ok := reviewedByID[span5LLMId]; ok {
+		if d.Mediation != llmMediation {
+			t.Errorf("Divergence B: LLM draft (%s) mediation: want %q (LLM reading), got %q",
+				span5LLMId, llmMediation, d.Mediation)
+		}
+	} else {
+		t.Errorf("Divergence B: LLM progenitor draft (%s) missing from reviewed_drafts", span5LLMId)
+	}
+	if d, ok := reviewedByID[span5HumanId]; ok {
+		if d.Mediation != goodMediation {
+			t.Errorf("Divergence B: human-derived draft (%s) mediation: want %q, got %q",
+				span5HumanId, goodMediation, d.Mediation)
+		}
+		if d.DerivedFrom != span5LLMId {
+			t.Errorf("Divergence B: human-derived draft (%s) derived_from: want %q, got %q",
+				span5HumanId, span5LLMId, d.DerivedFrom)
+		}
+	} else {
+		t.Errorf("Divergence B: human-derived draft (%s) missing from reviewed_drafts", span5HumanId)
+	}
+
+	// --- Divergence C (span 7): LLM read dissent as blockage; reviewer read it as translation ---
+	const (
+		span7LLMId   = "f5000001-0000-4000-8000-000000000007"
+		span7HumanId = "f5000002-0000-4000-8000-000000000007"
+	)
+	if d, ok := reviewedByID[span7LLMId]; ok {
+		wantTags := []string{"blockage"}
+		if !reflect.DeepEqual(d.Tags, wantTags) {
+			t.Errorf("Divergence C: LLM draft (%s) tags: want %v, got %v", span7LLMId, wantTags, d.Tags)
+		}
+	} else {
+		t.Errorf("Divergence C: LLM progenitor draft (%s) missing from reviewed_drafts", span7LLMId)
+	}
+	if d, ok := reviewedByID[span7HumanId]; ok {
+		wantTags := []string{"translation"}
+		if !reflect.DeepEqual(d.Tags, wantTags) {
+			t.Errorf("Divergence C: human-derived draft (%s) tags: want %v (translation, not blockage), got %v",
+				span7HumanId, wantTags, d.Tags)
+		}
+		wantTarget := []string{"low-resource-contributors"}
+		if !reflect.DeepEqual(d.Target, wantTarget) {
+			t.Errorf("Divergence C: human-derived draft (%s) target: want %v, got %v",
+				span7HumanId, wantTarget, d.Target)
+		}
+		if d.Observer != "dissenting-maintainers" {
+			t.Errorf("Divergence C: human-derived draft (%s) observer: want %q, got %q",
+				span7HumanId, "dissenting-maintainers", d.Observer)
+		}
+		if d.DerivedFrom != span7LLMId {
+			t.Errorf("Divergence C: human-derived draft (%s) derived_from: want %q, got %q",
+				span7HumanId, span7LLMId, d.DerivedFrom)
+		}
+	} else {
+		t.Errorf("Divergence C: human-derived draft (%s) missing from reviewed_drafts", span7HumanId)
 	}
 }
 
-// TestLLMExtractionExample_PromotedTraces checks that promoted_traces.json
-// is a valid Trace array where every trace carries the TagValueDraft provenance tag.
+// TestLLMExtractionExample_PromotedTraces checks that promoted_traces.json is a
+// valid Trace array of the expected size where every trace carries TagValueDraft.
 func TestLLMExtractionExample_PromotedTraces(t *testing.T) {
 	traces, err := loader.Load(llmExampleDir + "promoted_traces.json")
 	if err != nil {
 		t.Fatalf("Load promoted_traces.json: %v", err)
 	}
 
-	if len(traces) == 0 {
-		t.Fatal("promoted_traces: want at least 1 trace, got 0")
+	// All 9 drafts in reviewed_drafts.json are promotable; all 9 are promoted.
+	if len(traces) != 9 {
+		t.Fatalf("promoted_traces: want 9 traces (all reviewedDrafts promoted), got %d", len(traces))
 	}
 
 	for i, tr := range traces {
@@ -213,7 +325,11 @@ func TestLLMExtractionExample_PromotedTraces(t *testing.T) {
 }
 
 // TestLLMExtractionExample_ArticulationOutput checks that articulation_output.json
-// is valid JSON containing the expected top-level fields for an articulated graph.
+// is a well-formed articulated graph with the expected structural content for
+// the registry-security-team observer cut.
+//
+// The top-level "id" field is empty by design — MeshGraph.ID is user-assigned and
+// meshant articulate does not auto-populate it. Tests assert structural content.
 func TestLLMExtractionExample_ArticulationOutput(t *testing.T) {
 	f, err := os.Open(llmExampleDir + "articulation_output.json")
 	if err != nil {
@@ -221,15 +337,35 @@ func TestLLMExtractionExample_ArticulationOutput(t *testing.T) {
 	}
 	defer f.Close()
 
-	var articulationJSON map[string]json.RawMessage
-	if err := json.NewDecoder(f).Decode(&articulationJSON); err != nil {
+	var art articulationStub
+	if err := json.NewDecoder(f).Decode(&art); err != nil {
 		t.Fatalf("decode articulation_output.json: %v", err)
 	}
 
-	for _, field := range []string{"nodes", "edges"} {
-		if _, ok := articulationJSON[field]; !ok {
-			t.Errorf("articulation_output.json: missing required field %q", field)
-		}
+	// The registry-security-team cut includes 6 of the 9 promoted traces
+	// (the 3 traces from governance-working-group and dissenting-maintainers observer
+	// positions are excluded). 8 distinct actor nodes are visible.
+	wantEdges := 6
+	if len(art.Edges) != wantEdges {
+		t.Errorf("articulation_output: edges: want %d, got %d", wantEdges, len(art.Edges))
+	}
+	wantNodes := 8
+	if len(art.Nodes) != wantNodes {
+		t.Errorf("articulation_output: nodes: want %d, got %d", wantNodes, len(art.Nodes))
+	}
+
+	// PROPOSAL-CSRP-001 appears as a target in 4 edges from this cut.
+	if _, ok := art.Nodes["PROPOSAL-CSRP-001"]; !ok {
+		t.Error("articulation_output: nodes: expected PROPOSAL-CSRP-001 to be present")
+	}
+
+	// The cut records traces_included (6) vs traces_total (9), confirming the
+	// observer-position filter was applied.
+	if art.Cut.TracesIncluded != 6 {
+		t.Errorf("articulation_output: cut.traces_included: want 6, got %d", art.Cut.TracesIncluded)
+	}
+	if art.Cut.TracesTotal != 9 {
+		t.Errorf("articulation_output: cut.traces_total: want 9, got %d", art.Cut.TracesTotal)
 	}
 }
 
@@ -261,6 +397,25 @@ func TestLLMExtractionExample_ProvenanceChainIntegrity(t *testing.T) {
 		}
 	}
 
+	// The 2 reviewed-stage (human-derived) drafts carry the assist session ref,
+	// not the extract session ref. Verify the assist session ref is stamped
+	// consistently across both.
+	const assistSessionRef = "f5000000-0000-4000-8000-000000000002"
+	assistRefSeen := make(map[string]bool)
+	for _, d := range reviewed {
+		if d.ExtractionStage == "reviewed" {
+			if d.SessionRef != assistSessionRef {
+				t.Errorf("chain integrity: reviewed draft (%s) session_ref: want assist session %q, got %q",
+					d.ID, assistSessionRef, d.SessionRef)
+			}
+			assistRefSeen[d.SessionRef] = true
+		}
+	}
+	// Confirm the assist session ref is distinct from the extract session ref.
+	if assistRefSeen[rec.ID] {
+		t.Errorf("chain integrity: assist session ref %q must differ from extract session ref %q", assistSessionRef, rec.ID)
+	}
+
 	// Build reviewed draft ID set.
 	reviewedIDs := make(map[string]bool, len(reviewed))
 	for _, d := range reviewed {
@@ -272,5 +427,31 @@ func TestLLMExtractionExample_ProvenanceChainIntegrity(t *testing.T) {
 		if !reviewedIDs[tr.ID] {
 			t.Errorf("chain integrity: promoted_traces[%d] (%s) ID not found in reviewed_drafts.json", i, tr.ID)
 		}
+	}
+
+	// All promoted trace IDs are distinct.
+	traceIDSeen := make(map[string]bool, len(traces))
+	for i, tr := range traces {
+		if traceIDSeen[tr.ID] {
+			t.Errorf("chain integrity: promoted_traces[%d] (%s) duplicate ID", i, tr.ID)
+		}
+		traceIDSeen[tr.ID] = true
+	}
+
+	// The set of promoted trace IDs equals the set of reviewed draft IDs —
+	// confirm no draft was silently dropped or duplicated.
+	traceIDs := make([]string, 0, len(traces))
+	for id := range traceIDSeen {
+		traceIDs = append(traceIDs, id)
+	}
+	sort.Strings(traceIDs)
+	reviewedIDList := make([]string, 0, len(reviewedIDs))
+	for id := range reviewedIDs {
+		reviewedIDList = append(reviewedIDList, id)
+	}
+	sort.Strings(reviewedIDList)
+	if !reflect.DeepEqual(traceIDs, reviewedIDList) {
+		t.Errorf("chain integrity: promoted trace IDs do not match reviewed draft IDs\n  promoted: %v\n  reviewed: %v",
+			traceIDs, reviewedIDList)
 	}
 }
