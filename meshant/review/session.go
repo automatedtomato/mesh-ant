@@ -148,6 +148,7 @@ func deriveAccepted(parent schema.TraceDraft) (schema.TraceDraft, error) {
 		Tags:               cloneStrings(parent.Tags),
 		UncertaintyNote:    parent.UncertaintyNote,
 		CriterionRef:       parent.CriterionRef,
+		SessionRef:         parent.SessionRef,
 		IntentionallyBlank: cloneStrings(parent.IntentionallyBlank),
 		DerivedFrom:        parent.ID,
 		ExtractionStage:    "reviewed",
@@ -199,6 +200,7 @@ func deriveEdited(parent schema.TraceDraft, edited schema.TraceDraft) (schema.Tr
 		// Provenance from parent — the source material is unchanged.
 		SourceSpan:         parent.SourceSpan,
 		SourceDocRef:       parent.SourceDocRef,
+		SessionRef:         parent.SessionRef,
 		IntentionallyBlank: cloneStrings(parent.IntentionallyBlank),
 
 		// Content from edited — the reviewer's articulation.

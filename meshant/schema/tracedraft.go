@@ -115,6 +115,20 @@ type TraceDraft struct {
 	// IsPromotable(), or Promote().
 	CriterionRef string `json:"criterion_ref,omitempty"`
 
+	// SessionRef is a structural link from this draft to the ingestion session
+	// that produced it. It names the session file (or session ID) so that the
+	// conditions under which this draft was extracted — model, prompt, source —
+	// are recoverable from the draft itself, not only via file co-location.
+	//
+	// SessionRef is a draft-layer provenance field. It is preserved by
+	// deriveAccepted and deriveEdited so that session traceability survives the
+	// review pipeline. It is NOT transferred by Promote() — canonical Traces
+	// record analytical content, not ingestion mechanics.
+	//
+	// Empty means no session was recorded (pre-F.0 drafts, or manually authored
+	// drafts). Does not affect Validate(), IsPromotable(), or Promote().
+	SessionRef string `json:"session_ref,omitempty"`
+
 	// IntentionallyBlank lists the names of content fields that were
 	// deliberately left empty during a critique or review pass — not because
 	// information is missing, but because the analyst decided the field

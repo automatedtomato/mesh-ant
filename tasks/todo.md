@@ -698,7 +698,7 @@ Parent issue: #115
 **Full plan:** `tasks/plan_thread_f.md`
 
 - [x] **Phase 0 (#116) — CLI file split** — `main.go` 2003 → 259 lines; 15 `cmd_*.go` files; PR #123 merged to develop
-- [ ] **F.0 (#114) — `SessionRef` on TraceDraft** — add `session_ref` field (schema, draftloader, review/session.go)
+- [x] **F.0 (#114) — `SessionRef` on TraceDraft** — `SessionRef string` on `TraceDraft`; `WithSessionRef` in `DraftSummary`; preserved by `deriveAccepted`/`deriveEdited`; not transferred by `Promote()`; 7 new tests; PR #124 merged to develop
 - [ ] **F.1 (#117) — LLM mediator convention** — `docs/decisions/llm-as-mediator-v1.md`; `"critiqued"` ExtractionStage; extraction prompt template
 - [ ] **F.2 (#118) — `meshant extract`** — new `meshant/llm` package; `LLMClient` interface; `ExtractionConditions`; `SessionRecord`; `RunExtraction`; `cmdExtract`
 - [ ] **F.3 (#119) — `meshant assist`** — interactive authoring companion; LLM suggests per span; user confirms/edits/skips; skipped drafts preserved; `RunAssistSession`; per-draft dispositions in SessionRecord

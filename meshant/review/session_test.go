@@ -202,6 +202,7 @@ func TestRunReviewSession_ContentFieldsCopied(t *testing.T) {
 		Tags:               []string{"tag1", "tag2"},
 		UncertaintyNote:    "somewhat uncertain",
 		CriterionRef:       "c-001",
+		SessionRef:         "sess-preserve",
 		IntentionallyBlank: []string{"observer"},
 		ExtractionStage:    "weak-draft",
 		ExtractedBy:        "llm-v1",
@@ -249,6 +250,9 @@ func TestRunReviewSession_ContentFieldsCopied(t *testing.T) {
 	}
 	if r.CriterionRef != parent.CriterionRef {
 		t.Errorf("CriterionRef: want %q, got %q", parent.CriterionRef, r.CriterionRef)
+	}
+	if r.SessionRef != parent.SessionRef {
+		t.Errorf("SessionRef: want %q, got %q", parent.SessionRef, r.SessionRef)
 	}
 	if !reflect.DeepEqual(r.IntentionallyBlank, parent.IntentionallyBlank) {
 		t.Errorf("IntentionallyBlank: want %v, got %v", parent.IntentionallyBlank, r.IntentionallyBlank)
@@ -839,5 +843,61 @@ func TestRunReviewSession_EditWhitespaceOnlyKeepsCurrent(t *testing.T) {
 	}
 	if results[0].WhatChanged != "original-ws" {
 		t.Errorf("WhatChanged: whitespace-only input should keep %q, got %q", "original-ws", results[0].WhatChanged)
+	}
+}
+
+// --- SessionRef preservation ---
+
+// TestDeriveAccepted_PreservesSessionRef verifies that deriveAccepted copies
+// SessionRef from the parent draft. SessionRef is a provenance field that
+// links a draft to its ingestion session — it must survive the accept path.
+func TestDeriveAccepted_PreservesSessionRef(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "id-accept-sess",
+		SourceSpan:      "span-accept",
+		WhatChanged:     "something",
+		Observer:        "analyst-1",
+		SessionRef:      "sess-001",
+		ExtractionStage: "weak-draft",
+	}
+
+	var out bytes.Buffer
+	results, err := review.RunReviewSession([]schema.TraceDraft{parent}, strings.NewReader("a\n"), &out)
+	if err != nil {
+		t.Fatalf("RunReviewSession: unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].SessionRef != "sess-001" {
+		t.Errorf("deriveAccepted: SessionRef: want %q, got %q", "sess-001", results[0].SessionRef)
+	}
+}
+
+// TestDeriveEdited_PreservesSessionRef verifies that deriveEdited copies
+// SessionRef from the parent draft. SessionRef is provenance, not editable
+// content — the reviewer cannot change which session produced the draft.
+func TestDeriveEdited_PreservesSessionRef(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "id-edit-sess",
+		SourceSpan:      "span-edit",
+		WhatChanged:     "something",
+		Observer:        "analyst-1",
+		SessionRef:      "sess-002",
+		ExtractionStage: "weak-draft",
+	}
+
+	// "e\n" triggers edit flow; subsequent empty lines keep all field defaults.
+	input := "e\n\n\n\n\n\n\n\n\n"
+	var out bytes.Buffer
+	results, err := review.RunReviewSession([]schema.TraceDraft{parent}, strings.NewReader(input), &out)
+	if err != nil {
+		t.Fatalf("RunReviewSession: unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].SessionRef != "sess-002" {
+		t.Errorf("deriveEdited: SessionRef: want %q, got %q", "sess-002", results[0].SessionRef)
 	}
 }
