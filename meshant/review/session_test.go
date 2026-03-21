@@ -202,6 +202,7 @@ func TestRunReviewSession_ContentFieldsCopied(t *testing.T) {
 		Tags:               []string{"tag1", "tag2"},
 		UncertaintyNote:    "somewhat uncertain",
 		CriterionRef:       "c-001",
+		SessionRef:         "sess-preserve",
 		IntentionallyBlank: []string{"observer"},
 		ExtractionStage:    "weak-draft",
 		ExtractedBy:        "llm-v1",
@@ -249,6 +250,9 @@ func TestRunReviewSession_ContentFieldsCopied(t *testing.T) {
 	}
 	if r.CriterionRef != parent.CriterionRef {
 		t.Errorf("CriterionRef: want %q, got %q", parent.CriterionRef, r.CriterionRef)
+	}
+	if r.SessionRef != parent.SessionRef {
+		t.Errorf("SessionRef: want %q, got %q", parent.SessionRef, r.SessionRef)
 	}
 	if !reflect.DeepEqual(r.IntentionallyBlank, parent.IntentionallyBlank) {
 		t.Errorf("IntentionallyBlank: want %v, got %v", parent.IntentionallyBlank, r.IntentionallyBlank)

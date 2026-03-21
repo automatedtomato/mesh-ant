@@ -390,6 +390,21 @@ func TestSummariseDrafts_SessionRef_counted(t *testing.T) {
 	}
 }
 
+// TestSummariseDrafts_SessionRef_ZeroWhenNoneSet verifies that WithSessionRef
+// is zero when no draft in the dataset carries a SessionRef.
+func TestSummariseDrafts_SessionRef_ZeroWhenNoneSet(t *testing.T) {
+	s := loader.SummariseDrafts([]schema.TraceDraft{
+		{SourceSpan: "a"},
+		{SourceSpan: "b"},
+	})
+	if s.WithSessionRef != 0 {
+		t.Errorf("WithSessionRef: want 0, got %d", s.WithSessionRef)
+	}
+	if s.FieldFillRate["session_ref"] != 0 {
+		t.Errorf("FieldFillRate[session_ref]: want 0, got %d", s.FieldFillRate["session_ref"])
+	}
+}
+
 // TestPrintDraftSummary_SessionRef_line verifies that PrintDraftSummary
 // includes a session_ref line in the output when WithSessionRef is non-zero.
 func TestPrintDraftSummary_SessionRef_line(t *testing.T) {

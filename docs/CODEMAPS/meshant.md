@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-20 (Phase 0: split main.go into per-subcommand cmd_*.go files — no behavioral changes)
+**Last Updated:** 2026-03-21 (F.0: SessionRef field on TraceDraft — schema, draftloader, review/session.go)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -33,7 +33,7 @@
 |------|-----------|---------|
 | `Trace` | `ID` (uuid), `Timestamp` (time), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Tags` ([]string), `Observer` (string, required) | Fundamental unit of record: a moment where something made a difference in a network. |
 | `TagValue` | (string constant type) | Vocabulary for trace descriptors: `TagDelay`, `TagThreshold`, `TagBlockage`, `TagAmplification`, `TagRedirection`, `TagTranslation`, `TagValueArticulation`, `TagValueDraft` (M11). |
-| `TraceDraft` | `ID` (uuid, optional), `Timestamp` (time), `SourceSpan` (string, required), `SourceDocRef` (string), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Observer` (string), `Tags` ([]string), `UncertaintyNote` (string), `ExtractionStage` (string), `ExtractedBy` (string), `DerivedFrom` (string), `CriterionRef` (string, M13), `IntentionallyBlank` ([]string, M12.5) | Provisional, provenance-bearing record from ingestion pipeline. Minimal requirement: `SourceSpan`. May be promoted to canonical `Trace` when sufficiently complete (M11). `CriterionRef` names the EquivalenceCriterion governing a critique skeleton (citation, not copy). `IntentionallyBlank` names content fields deliberately left empty (honest abstention, not missing data). |
+| `TraceDraft` | `ID` (uuid, optional), `Timestamp` (time), `SourceSpan` (string, required), `SourceDocRef` (string), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Observer` (string), `Tags` ([]string), `UncertaintyNote` (string), `ExtractionStage` (string), `ExtractedBy` (string), `DerivedFrom` (string), `CriterionRef` (string, M13), `SessionRef` (string, F.0), `IntentionallyBlank` ([]string, M12.5) | Provisional, provenance-bearing record from ingestion pipeline. Minimal requirement: `SourceSpan`. May be promoted to canonical `Trace` when sufficiently complete (M11). `CriterionRef` names the EquivalenceCriterion governing a critique skeleton (citation, not copy). `SessionRef` names the ingestion session that produced this draft — preserved through the review pipeline, not transferred by `Promote()`. `IntentionallyBlank` names content fields deliberately left empty (honest abstention, not missing data). |
 
 ### Functions
 
@@ -54,7 +54,7 @@
 | File | Contains |
 |------|----------|
 | `loader.go` | `Load`, `Summarise`, `PrintSummary`; `MeshSummary`, `FlaggedTrace` types. |
-| `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; `NewUUID` (exported, Thread A.1). `WithIntentionallyBlank` and `WithCriterionRef` counts added (M12.5, M13). |
+| `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; `NewUUID` (exported, Thread A.1). `WithIntentionallyBlank`, `WithCriterionRef`, and `WithSessionRef` counts added (M12.5, M13, F.0). |
 | `draftchain.go` | `FollowDraftChain`, `ClassifyDraftChain`; `DraftStepKind`, `DraftStepClassification` types (M13). |
 | `analyst.go` | `GroupByAnalyst`; analyst-position partitioning for multi-analyst comparison (C.1). |
 | `extractiongap.go` | `CompareExtractions`, `PrintExtractionGap`; `ExtractionGap`, `FieldDisagreement` types (C.2). |
@@ -66,7 +66,7 @@
 |------|-----------|---------|
 | `MeshSummary` | `Elements` (map[string]int), `Mediations` ([]string), `MediatedTraceCount` (int), `FlaggedTraces` ([]FlaggedTrace), `GraphRefs` ([]string) | Provisional first-pass reading of a trace dataset. |
 | `FlaggedTrace` | `ID` (string), `WhatChanged` (string), `Tags` ([]string) | Minimal projection of traces tagged delay or threshold. |
-| `DraftSummary` | `Total` (int), `Promotable` (int), `ByStage` (map[string]int), `ByExtractedBy` (map[string]int), `FieldFillRate` (map[string]int), `WithIntentionallyBlank` (int, M12.5), `WithCriterionRef` (int, M13) | Provenance-aware reading of a TraceDraft dataset. Reveals ingestion pipeline breakdown and field fill rates (M11). Counts critique skeletons and self-situated skeletons. |
+| `DraftSummary` | `Total` (int), `Promotable` (int), `ByStage` (map[string]int), `ByExtractedBy` (map[string]int), `FieldFillRate` (map[string]int), `WithIntentionallyBlank` (int, M12.5), `WithCriterionRef` (int, M13), `WithSessionRef` (int, F.0) | Provenance-aware reading of a TraceDraft dataset. Reveals ingestion pipeline breakdown and field fill rates (M11). Counts critique skeletons, self-situated skeletons, and session-linked drafts. |
 | `DraftStepKind` | (string constant: `DraftIntermediary`, `DraftMediator`, `DraftTranslation`) | Classification of a draft chain step; mirrors `StepKind` from graph package. Heuristics are v1 and provisional (M13). |
 | `DraftStepClassification` | `StepIndex` (int), `Kind` (DraftStepKind), `Reason` (string) | Classification and justification for a single draft chain step (M13). |
 | `ExtractionGap` | `AnalystA` (string), `AnalystB` (string), `OnlyInA` ([]string), `OnlyInB` ([]string), `InBoth` ([]string), `Disagreements` ([]FieldDisagreement) | Comparison of two named extraction positions: partitions drafts by SourceSpan into three visibility groups; records field-level disagreements across 9 content fields (C.2). |
