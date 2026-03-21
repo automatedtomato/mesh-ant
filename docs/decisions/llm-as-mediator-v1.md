@@ -173,7 +173,7 @@ is always visible. A session that silently produces no record when it errors mak
 analytical position unrecoverable from the output. Mandatory `SessionRecord` means the LLM's
 position is always named, even when the session fails.
 
-The write location is governed by `--session-output`. See T4 (below, from the Thread F plan):
+The write location is governed by `--session-output`. See T4 in `tasks/plan_thread_f.md`:
 if the user pipes output to stdout without `--session-output`, the record is not written.
 Thread F names this as a user-agency decision, not a design flaw.
 

@@ -136,11 +136,11 @@ deliberate analytical choice.
 If the source span does not support naming a source, leave `source` empty and list it in
 `intentionally_blank`. The same applies to every other candidate field.
 
-Blank is the correct answer when the span does not support the attribution — not a
-placeholder for missing information. An empty field with an `uncertainty_note` is
-analytically informative: it records that this reading of this span found no supportable
-attribution, which is a different claim than "we do not know". It names your reading's
-limit, not the world's.
+Leaving a field blank is the appropriate response when the span does not support the
+attribution — not a placeholder for missing information. An empty field with an
+`uncertainty_note` is analytically informative: it records that this reading of this span
+did not produce a supportable attribution, which is a different claim than "we do not know".
+It names your reading's limit, not the world's.
 
 Common cases for honest abstention:
 - The span describes a condition, mechanism, or state — not an act with an attributable

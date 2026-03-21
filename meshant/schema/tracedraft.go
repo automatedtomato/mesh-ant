@@ -154,7 +154,7 @@ type TraceDraft struct {
 // All other fields are optional at the draft stage.
 func (d TraceDraft) Validate() error {
 	if d.SourceSpan == "" {
-		return errors.New("tracedraft: source_span is required — it is the ground truth that provoked this extraction")
+		return errors.New("tracedraft: source_span is required — it is the anchor text that makes this extraction inspectable")
 	}
 	return nil
 }
