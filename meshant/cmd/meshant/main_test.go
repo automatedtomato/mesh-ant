@@ -3561,3 +3561,18 @@ func TestCmdChainDiff_CyclicDerivation(t *testing.T) {
 		t.Errorf("cmdChainDiff(): error should mention cycle or no-root; got: %v", err)
 	}
 }
+
+// TestRun_PromoteSession_dispatch verifies that run() routes "promote-session"
+// to cmdPromoteSession. Uses a missing --session-file flag to confirm dispatch
+// reaches the command (error comes from cmdPromoteSession, not the router).
+func TestRun_PromoteSession_dispatch(t *testing.T) {
+	var buf bytes.Buffer
+	err := run(&buf, []string{"promote-session", "--observer", "analyst-alice"})
+	if err == nil {
+		t.Fatal("run([\"promote-session\"]) with no --session-file: want error, got nil")
+	}
+	// Error must come from cmdPromoteSession, not the "unknown command" path.
+	if strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("run() routed promote-session to unknown command handler; want cmdPromoteSession")
+	}
+}
