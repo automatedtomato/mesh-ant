@@ -10,8 +10,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -125,49 +123,6 @@ func RunExtraction(ctx context.Context, client LLMClient, opts ExtractionOptions
 	}
 
 	return processed, rec, nil
-}
-
-// readSourceDoc reads the source document at path, enforcing the maxSourceBytes cap.
-func readSourceDoc(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", fmt.Errorf("llm: open source doc %q: %w", path, err)
-	}
-	defer f.Close()
-
-	limited := io.LimitReader(f, int64(maxSourceBytes)+1) // +1 to detect oversized files
-	data, err := io.ReadAll(limited)
-	if err != nil {
-		return "", fmt.Errorf("llm: read source doc %q: %w", path, err)
-	}
-	if len(data) > maxSourceBytes {
-		return "", fmt.Errorf("llm: source doc %q exceeds %d bytes", path, maxSourceBytes)
-	}
-	return string(data), nil
-}
-
-// isRefusal reports whether the response looks like an explicit refusal.
-// Conservative heuristic — undetected refusals fall through to the malformed-output path.
-func isRefusal(response string) bool {
-	trimmed := strings.TrimSpace(response)
-	if trimmed == "" {
-		return false // empty → malformed, not refusal
-	}
-	prefixes := []string{
-		"I cannot",
-		"I'm sorry",
-		"I am sorry",
-		"I apologize",
-		"I'm unable",
-		"I am unable",
-	}
-	lower := strings.ToLower(trimmed)
-	for _, p := range prefixes {
-		if strings.HasPrefix(lower, strings.ToLower(p)) {
-			return true
-		}
-	}
-	return false
 }
 
 // parseResponse parses the LLM's text as a JSON array of TraceDraft,

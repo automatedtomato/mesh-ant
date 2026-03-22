@@ -159,7 +159,7 @@ func writeSessionRecord(path string, rec llm.SessionRecord) error {
 	if err := enc.Encode(rec); err != nil {
 		return fmt.Errorf("encode session record: %w", err)
 	}
-	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("write %q: %w", path, err)
 	}
 	return nil

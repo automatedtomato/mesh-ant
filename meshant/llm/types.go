@@ -52,8 +52,11 @@ type DraftDisposition struct {
 // was produced (FM4 from plan_thread_f.md).
 type SessionRecord struct {
 	ID           string               `json:"id"`
-	Command      string               `json:"command"` // "extract", "assist", "critique"
+	Command      string               `json:"command"` // "extract", "assist", "critique", "split"
 	Conditions   ExtractionConditions `json:"conditions"`
+	// DraftIDs holds the UUIDs of TraceDraft records produced in this session.
+	// Nil (serialized as null) is intentional for "split" sessions — spans are
+	// not TraceDraft records. Use DraftCount to determine span count for split.
 	DraftIDs     []string             `json:"draft_ids"`
 	Dispositions []DraftDisposition   `json:"dispositions,omitempty"`
 	InputPath    string               `json:"input_path"`
@@ -97,6 +100,16 @@ type CritiqueOptions struct {
 	DraftID            string // empty = critique all; non-empty = single draft by ID
 }
 
+// SplitOptions configures a single RunSplit call.
+// No CriterionRef: split is boundary detection only, not analytical classification.
+type SplitOptions struct {
+	ModelID            string
+	InputPath          string // path to source document
+	PromptTemplatePath string
+	SourceDocRef       string
+	OutputPath         string
+}
+
 // ErrLLMRefusal indicates the LLM explicitly declined to produce output.
 // The RefusalText carries whatever the LLM returned for debugging.
 type ErrLLMRefusal struct {
@@ -121,9 +134,6 @@ func (e *ErrMalformedOutput) Error() string {
 // frameworkUncertaintyNote is always appended to UncertaintyNote on LLM-produced
 // drafts — the framework never delegates this signal to the LLM (D3).
 const frameworkUncertaintyNote = "LLM-produced candidate; unverified by human review"
-
-// maxSourceBytes caps source document size at 1 MiB to prevent unexpected token costs.
-const maxSourceBytes = 1 * 1024 * 1024
 
 // knownContentFields lists TraceDraft field names valid for IntentionallyBlank (D7).
 // Provenance fields are framework-assigned and cannot be declared blank by the LLM.
