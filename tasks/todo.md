@@ -70,6 +70,8 @@ Small items deferred during v2.0.0 threads. Not yet assigned to a phase.
 Open GitHub issues (deferred, lower priority):
 - [#95](https://github.com/automatedtomato/mesh-ant/issues/95) — Govern `classifyDraftChain` heuristic with `EquivalenceCriterion`
 - [#96](https://github.com/automatedtomato/mesh-ant/issues/96) — sub-kind field for stage-only endorsement steps in draft chain
+- [#150](https://github.com/automatedtomato/mesh-ant/issues/150) — `PromptHash` in `ExtractionConditions` (reproducibility)
+- [#151](https://github.com/automatedtomato/mesh-ant/issues/151) — `ExtractionConditions` bifurcation (extract vs critique conditions)
 
 ---
 
