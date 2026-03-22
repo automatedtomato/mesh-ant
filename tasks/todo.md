@@ -710,26 +710,34 @@ Parent issue: #115
 ## Post-v2.0.0 — ANT-like Knowledge Graph
 
 **Full plan:** `tasks/plan_post_v2.md`
-**Status:** Planning phase (2026-03-22)
+**Status:** Issues open (2026-03-22)
 
 Direction confirmed in design discussion (2026-03-22). The next major form is an ANT-like Knowledge Graph — persistent, queryable, interactive. "Actors act" simulation comes much later, after the graph substrate exists.
 
-### Immediate (deferred items + ingestion gaps)
+### Phase 1 — Deferred items and ingestion gaps (parent: #132)
 
-- [ ] **`meshant split`** — LLM-assisted span splitting; removes the biggest `assist` friction
-- [ ] **Session records → Traces** — a session is an observation act; closes the ANT reflexivity gap
-- [ ] **Multi-document ingestion** — `meshant extract` across several source documents in one session
-- [ ] **Non-text source adapters** — PDF, HTML, structured logs → text → existing LLM pipeline
+- [ ] **#137 — `meshant split`** — LLM-assisted span splitting; removes the biggest `assist` friction
+- [ ] **#138 — Session records → Traces** — a session is an observation act; closes the ANT reflexivity gap
+- [ ] **#139 — Multi-document ingestion** — `meshant extract` across several source documents in one session
+- [ ] **#140 — Non-text source adapters** — PDF, HTML, structured logs → text → existing LLM pipeline
 
-### Thread D — Real-World Datasets
+### Phase 2 — Form 3 scoping document (parent: #133)
 
-- [ ] **D.1** — software incident dataset (`data/examples/software_incident.json`)
-- [ ] **D.2** — multi-agent pipeline dataset (`data/examples/multi_agent_pipeline.json`)
-- [ ] **D.3** — policy/procurement dataset (`data/examples/policy_process.json`)
+- [ ] **#141 — KG scoping document** — storage adapter contract, query model, Web UI shape, Layer 1/2/3 boundaries
 
-### Form 3 — ANT-like Knowledge Graph
+### Phase 3 — Layer 1: Trace substrate (parent: #134)
 
-- [ ] **Form 3 scoping document** — storage adapter contract, query model, Web UI shape, Layer 1/2/3 boundaries
-- [ ] **Layer 1 — Trace substrate** — GraphDB storage adapter (Neo4j-compatible); persistent traces; temporal indexing; provenance-preserving; Go analytical engine unchanged (Choice B hybrid)
-- [ ] **Layer 3 — Interactive graph output** — `meshant serve`; localhost Web UI (D3.js or Cytoscape.js); cut-first rendering; shadow explicit; provenance never stripped
-- [ ] **Thread D datasets** — showcase the full stack across multiple domains
+- [ ] **#142 — DB adapter interface** — `TraceStore` interface in `meshant/store`; JSON loader implements it
+- [ ] **#143 — Neo4j adapter** — implement `TraceStore` against Neo4j-compatible backend
+- [ ] **#144 — `meshant store` + `--db` flag** — ingest JSON to DB; `--db` flag on all analytical commands
+
+### Phase 4 — Layer 3: Interactive graph output (parent: #135)
+
+- [ ] **#145 — `meshant serve`** — localhost HTTP server; cut endpoints; provenance enforcement
+- [ ] **#146 — Web UI + provenance panel** — D3.js/Cytoscape.js; observer selector required; shadow named
+
+### Phase 5 — Thread D datasets (parent: #136)
+
+- [ ] **#147 — D.1 Software incident** — multi-service outage; competing observer positions; full LLM pipeline
+- [ ] **#148 — D.2 Multi-agent pipeline** — agents as actants; AI workflow domain
+- [ ] **#149 — D.3 Policy/procurement** — institutional non-human actants; regulatory/procurement domain
