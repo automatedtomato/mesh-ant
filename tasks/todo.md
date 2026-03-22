@@ -694,14 +694,14 @@ Items identified during review but deferred to future work:
 
 ### Thread F — v2.0.0: LLM-Internal Boundary
 
+Parent issue: #115
 **Full plan:** `tasks/plan_thread_f.md`
 
-**Prerequisite:** Phase 0 — CLI file split (`main.go` ~2010 lines → per-subcommand files; standalone PR before F.0)
-
-- [ ] **F.0 — `SessionRef` on TraceDraft** — add `session_ref` field (schema, draftloader, review/session.go); prerequisite for all F issues
-- [ ] **F.1 — LLM mediator convention** — `docs/decisions/llm-as-mediator-v1.md`; ExtractedBy + UncertaintyNote discipline; `"critiqued"` ExtractionStage; extraction prompt template
-- [ ] **F.2 — `meshant extract`** — new `meshant/llm` package; `LLMClient` interface; `ExtractionConditions`; `SessionRecord`; `RunExtraction`; `cmdExtract`
-- [ ] **F.3 — `meshant assist`** — interactive authoring companion; LLM suggests per span; user confirms/edits/skips; skipped drafts preserved; `RunAssistSession`; per-draft dispositions in SessionRecord
-- [ ] **F.4 — `meshant critique`** — `RunCritique`; `"critiqued"` stage; `filterReviewable` updated; `cmdCritique`
-- [ ] **F.5 — Real-world LLM-assisted extraction example** — `data/examples/llm_assisted_extraction/`; full pipeline documented
-- [ ] **F.6 — Decision record + docs + v2.0.0 release** — `docs/decisions/llm-boundary-v2.md`; codemap; README; v2.0.0 tag
+- [x] **Phase 0 (#116) — CLI file split** — `main.go` 2003 → 259 lines; 15 `cmd_*.go` files; PR #123 merged to develop
+- [x] **F.0 (#114) — `SessionRef` on TraceDraft** — `SessionRef string` on `TraceDraft`; `WithSessionRef` in `DraftSummary`; preserved by `deriveAccepted`/`deriveEdited`; not transferred by `Promote()`; 7 new tests; PR #124 merged to develop
+- [x] **F.1 (#117) — LLM mediator convention** — `docs/decisions/llm-as-mediator-v1.md` (7 decisions + 3 ANT tensions); `"critiqued"` added to `ExtractionStage` doc comment; `data/prompts/extraction_pass.md`; `critique_pass.md` updated to align with Decision 5; PR #125 merged to develop
+- [x] **F.2 (#118) — `meshant extract`** — new `meshant/llm` package; `LLMClient` interface; `ExtractionConditions`; `SessionRecord`; `RunExtraction`; `cmdExtract`; HTTP timeout + response size cap + auth error scrubbing; 27 tests (18 unit + 9 CLI); PR #126 merged to develop
+- [x] **F.3 (#119) — `meshant assist`** — interactive authoring companion; LLM suggests per span; user confirms/edits/skips; skipped drafts preserved; `RunAssistSession`; per-draft dispositions in SessionRecord; `ParseSpans`; exported `DeriveAccepted`/`DeriveEdited`/`RunEditFlow` from review; 27 tests (21 unit + 6 CLI); PR #127 merged to develop
+- [x] **F.4 (#120) — `meshant critique`** — `RunCritique`; `"critiqued"` stage; `filterReviewable` updated; `cmdCritique`; SourceSpan integrity hard check; partial-results semantics; DerivedFrom + ExtractionStage injection guards; 14 unit tests + 10 CLI tests; PR #128 merged to develop
+- [x] **F.5 (#121) — Real-world LLM-assisted extraction example** — `data/examples/llm_assisted_extraction/` (7 spans, open source governance domain); 3 analytical divergences documented (A: LLM more faithful, B: mediation correction, C: blockage→translation re-reading); 6 provenance validation tests; PR #129 merged to develop
+- [x] **F.6 (#122) — Decision record + docs + v2.0.0 release** — `docs/decisions/llm-boundary-v2.md` (9 decisions + 5 ANT tensions + deferred items); README v2.0.0 section; codemap updated; v2.0.0 tagged on main

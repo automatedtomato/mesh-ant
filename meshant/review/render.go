@@ -17,12 +17,7 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
-// RenderDraft formats d for display in the review session.
-//
-// index is the 1-based position of this draft in the session queue; total is
-// the total queue length. Output is a multi-line string containing all
-// candidate and provenance fields. Empty values are shown as "(empty)" so the
-// reviewer can see at a glance which fields need attention.
+// RenderDraft formats d for review display. Empty values shown as "(empty)".
 func RenderDraft(d schema.TraceDraft, index, total int) string {
 	var b strings.Builder
 
@@ -43,11 +38,7 @@ func RenderDraft(d schema.TraceDraft, index, total int) string {
 	return b.String()
 }
 
-// RenderAmbiguities formats warnings for display below a rendered draft.
-//
-// Each warning is shown on its own line as "[field] message". Returns
-// "(none)" when warnings is empty or nil, so the reviewer always sees an
-// explicit no-ambiguity signal rather than blank space.
+// RenderAmbiguities formats warnings for display. Returns "(none)\n" for empty/nil input.
 func RenderAmbiguities(warnings []AmbiguityWarning) string {
 	if len(warnings) == 0 {
 		return "(none)\n"
@@ -60,19 +51,10 @@ func RenderAmbiguities(warnings []AmbiguityWarning) string {
 	return b.String()
 }
 
-// chainIDLen is the maximum number of runes shown for a draft ID in RenderChain.
-// Eight characters are enough to distinguish siblings within a typical chain.
-const chainIDLen = 8
+const chainIDLen = 8          // truncated ID rune length for RenderChain
+const chainWhatChangedLen = 60 // truncated what_changed rune length for RenderChain
 
-// chainWhatChangedLen is the maximum number of runes shown for what_changed
-// in RenderChain. Longer values are truncated with "..." to keep each line
-// readable at a standard terminal width.
-const chainWhatChangedLen = 60
-
-// truncateString returns s unchanged when its rune length is <= maxLen.
-// Otherwise it returns the first maxLen runes followed by "...".
-// Rune slicing is used instead of byte slicing so that multi-byte UTF-8
-// codepoints are never split.
+// truncateString returns the first maxLen runes of s followed by "..." when exceeded.
 func truncateString(s string, maxLen int) string {
 	runes := []rune(s)
 	if len(runes) <= maxLen {
@@ -81,24 +63,13 @@ func truncateString(s string, maxLen int) string {
 	return string(runes[:maxLen]) + "..."
 }
 
-// RenderChain formats a derivation chain for display in the review session.
-//
-// Each draft is shown with its 1-based index, truncated ID (first 8 chars),
-// extraction_stage, extracted_by, and truncated what_changed (first 60 chars).
-// The last draft in the chain is marked as the current draft under review.
-// Between consecutive drafts the matching DraftStepClassification is shown
-// with its Kind and Reason.
-//
-// Returns "(no derivation chain)\n" if chain is empty or nil.
-// Classifications may be nil or shorter than len(chain)-1 — missing steps
-// are silently omitted.
+// RenderChain formats a derivation chain for review display.
+// Returns "(no derivation chain)\n" for empty/nil input.
 func RenderChain(chain []schema.TraceDraft, classifications []loader.DraftStepClassification) string {
 	if len(chain) == 0 {
 		return "(no derivation chain)\n"
 	}
 
-	// Index classifications by StepIndex for O(1) lookup.
-	// StepIndex is 1-based: StepIndex=1 means chain[0]→chain[1].
 	byStep := make(map[int]loader.DraftStepClassification, len(classifications))
 	for _, c := range classifications {
 		byStep[c.StepIndex] = c
@@ -106,7 +77,6 @@ func RenderChain(chain []schema.TraceDraft, classifications []loader.DraftStepCl
 
 	var b strings.Builder
 	for i, d := range chain {
-		// Mark the final draft so the reviewer knows it is the one under review.
 		current := ""
 		if i == len(chain)-1 {
 			current = "  <-- current"
@@ -120,8 +90,6 @@ func RenderChain(chain []schema.TraceDraft, classifications []loader.DraftStepCl
 		)
 		fmt.Fprintf(&b, "      what_changed: %s\n", truncateString(valueOrEmpty(d.WhatChanged), chainWhatChangedLen))
 
-		// If there is a next draft, show the classification for this step.
-		// byStep key i+1 = StepIndex for the transition from chain[i] to chain[i+1].
 		if i < len(chain)-1 {
 			if c, ok := byStep[i+1]; ok {
 				fmt.Fprintf(&b, "    | %s: %s\n", string(c.Kind), c.Reason)
@@ -131,8 +99,7 @@ func RenderChain(chain []schema.TraceDraft, classifications []loader.DraftStepCl
 	return b.String()
 }
 
-// valueOrEmpty returns s if non-empty, or the placeholder "(empty)".
-// Used by RenderDraft to make absent fields visible to the reviewer.
+// valueOrEmpty returns s if non-empty, or "(empty)".
 func valueOrEmpty(s string) string {
 	if s == "" {
 		return "(empty)"
@@ -141,8 +108,6 @@ func valueOrEmpty(s string) string {
 }
 
 // sliceOrEmpty returns a comma-joined string of ss if non-empty, or "(empty)".
-// Used by RenderDraft to render slice fields (source, target, tags,
-// intentionally_blank) in a single readable line.
 func sliceOrEmpty(ss []string) string {
 	if len(ss) == 0 {
 		return "(empty)"

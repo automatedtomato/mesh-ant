@@ -202,6 +202,7 @@ func TestRunReviewSession_ContentFieldsCopied(t *testing.T) {
 		Tags:               []string{"tag1", "tag2"},
 		UncertaintyNote:    "somewhat uncertain",
 		CriterionRef:       "c-001",
+		SessionRef:         "sess-preserve",
 		IntentionallyBlank: []string{"observer"},
 		ExtractionStage:    "weak-draft",
 		ExtractedBy:        "llm-v1",
@@ -249,6 +250,9 @@ func TestRunReviewSession_ContentFieldsCopied(t *testing.T) {
 	}
 	if r.CriterionRef != parent.CriterionRef {
 		t.Errorf("CriterionRef: want %q, got %q", parent.CriterionRef, r.CriterionRef)
+	}
+	if r.SessionRef != parent.SessionRef {
+		t.Errorf("SessionRef: want %q, got %q", parent.SessionRef, r.SessionRef)
 	}
 	if !reflect.DeepEqual(r.IntentionallyBlank, parent.IntentionallyBlank) {
 		t.Errorf("IntentionallyBlank: want %v, got %v", parent.IntentionallyBlank, r.IntentionallyBlank)
@@ -839,5 +843,121 @@ func TestRunReviewSession_EditWhitespaceOnlyKeepsCurrent(t *testing.T) {
 	}
 	if results[0].WhatChanged != "original-ws" {
 		t.Errorf("WhatChanged: whitespace-only input should keep %q, got %q", "original-ws", results[0].WhatChanged)
+	}
+}
+
+// --- SessionRef preservation ---
+
+// TestDeriveAccepted_PreservesSessionRef verifies that deriveAccepted copies
+// SessionRef from the parent draft. SessionRef is a provenance field that
+// links a draft to its ingestion session — it must survive the accept path.
+func TestDeriveAccepted_PreservesSessionRef(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "id-accept-sess",
+		SourceSpan:      "span-accept",
+		WhatChanged:     "something",
+		Observer:        "analyst-1",
+		SessionRef:      "sess-001",
+		ExtractionStage: "weak-draft",
+	}
+
+	var out bytes.Buffer
+	results, err := review.RunReviewSession([]schema.TraceDraft{parent}, strings.NewReader("a\n"), &out)
+	if err != nil {
+		t.Fatalf("RunReviewSession: unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].SessionRef != "sess-001" {
+		t.Errorf("deriveAccepted: SessionRef: want %q, got %q", "sess-001", results[0].SessionRef)
+	}
+}
+
+// TestDeriveEdited_PreservesSessionRef verifies that deriveEdited copies
+// SessionRef from the parent draft. SessionRef is provenance, not editable
+// content — the reviewer cannot change which session produced the draft.
+func TestDeriveEdited_PreservesSessionRef(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "id-edit-sess",
+		SourceSpan:      "span-edit",
+		WhatChanged:     "something",
+		Observer:        "analyst-1",
+		SessionRef:      "sess-002",
+		ExtractionStage: "weak-draft",
+	}
+
+	// "e\n" triggers edit flow; subsequent empty lines keep all field defaults.
+	input := "e\n\n\n\n\n\n\n\n\n"
+	var out bytes.Buffer
+	results, err := review.RunReviewSession([]schema.TraceDraft{parent}, strings.NewReader(input), &out)
+	if err != nil {
+		t.Fatalf("RunReviewSession: unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].SessionRef != "sess-002" {
+		t.Errorf("deriveEdited: SessionRef: want %q, got %q", "sess-002", results[0].SessionRef)
+	}
+}
+
+// TestFilterReviewable_IncludesCritiqued verifies that "critiqued" drafts are
+// included in the review queue alongside "weak-draft" drafts, and that
+// "reviewed" and "span-harvest" drafts are excluded.
+//
+// filterReviewable is unexported; this test exercises it through
+// RunReviewSession by counting how many times the prompt is rendered (each
+// draft in the queue produces at least one prompt line in the output).
+func TestFilterReviewable_IncludesCritiqued(t *testing.T) {
+	weak := schema.TraceDraft{
+		ID: "w-1", SourceSpan: "span-weak", ExtractionStage: "weak-draft",
+	}
+	critiqued := schema.TraceDraft{
+		ID: "c-1", SourceSpan: "span-critiqued", ExtractionStage: "critiqued",
+	}
+	reviewed := schema.TraceDraft{
+		ID: "r-1", SourceSpan: "span-reviewed", ExtractionStage: "reviewed",
+	}
+	harvest := schema.TraceDraft{
+		ID: "h-1", SourceSpan: "span-harvest", ExtractionStage: "span-harvest",
+	}
+
+	drafts := []schema.TraceDraft{weak, critiqued, reviewed, harvest}
+
+	// Skip first draft, then quit — ensures both queued drafts are rendered
+	// so we can assert their IDs appear in the output.
+	var out bytes.Buffer
+	results, err := review.RunReviewSession(drafts, strings.NewReader("s\nq\n"), &out)
+	if err != nil {
+		t.Fatalf("RunReviewSession: unexpected error: %v", err)
+	}
+	// Quit before accepting: no results.
+	if len(results) != 0 {
+		t.Errorf("want 0 results (quit immediately), got %d", len(results))
+	}
+
+	rendered := out.String()
+
+	// The session must have rendered both "weak-draft" and "critiqued" drafts.
+	// RenderChain shows ids in the format "id:w-1" / "id:c-1".
+	if !strings.Contains(rendered, "w-1") {
+		t.Error("session must render weak-draft draft (id w-1)")
+	}
+	if !strings.Contains(rendered, "c-1") {
+		t.Error("session must render critiqued draft (id c-1)")
+	}
+	// "reviewed" (r-1) and "span-harvest" (h-1) must NOT appear in the queue.
+	if strings.Contains(rendered, "r-1") {
+		t.Error("session must not render reviewed draft (id r-1)")
+	}
+	if strings.Contains(rendered, "h-1") {
+		t.Error("session must not render span-harvest draft (id h-1)")
+	}
+
+	// The prompt header must indicate 2 drafts in the queue (weak + critiqued).
+	// RenderDraft uses "Draft [N/M]" format.
+	if !strings.Contains(rendered, "/2]") {
+		t.Errorf("session must show 2 total drafts, output:\n%s", rendered)
 	}
 }

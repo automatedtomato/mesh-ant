@@ -19,24 +19,17 @@ package schema
 
 import "strings"
 
-// Graph-reference prefix constants.
-// These are unexported; the schema layer only needs to recognise the prefix.
-// The authoritative definition (which also uses these literals to produce
-// reference strings) lives in the graph package.
+// Graph-reference prefix constants. Unexported — schema only needs to recognise
+// them. Authoritative definitions live in the graph package.
 const (
 	graphRefPrefixGraph  = "meshgraph:"
 	graphRefPrefixDiff   = "meshdiff:"
 	graphRefPrefixChain  = "meshchain:"
 )
 
-// parseGraphRef splits a string on its first colon and checks whether the
-// part before the colon is a known graph-reference kind. Returns (kind, id)
-// where kind is "meshgraph", "meshdiff", or "meshchain" and id is the portion
-// after the colon. Returns ("", "") if s is not a graph-reference.
-//
-// Using strings.Cut avoids the paired HasPrefix+TrimPrefix pattern and ensures
-// that both kind and id are extracted in a single pass. Adding a new prefix
-// requires editing only this one function.
+// parseGraphRef splits s on the first colon and validates the prefix.
+// Returns (kind, id) or ("", "") if s is not a graph-reference.
+// Adding a new prefix requires editing only this function.
 func parseGraphRef(s string) (kind, id string) {
 	before, after, ok := strings.Cut(s, ":")
 	if !ok {
@@ -66,13 +59,9 @@ func GraphRefKind(s string) string {
 	return kind
 }
 
-// GraphRefID returns the UUID portion of a graph-reference string — the part
-// after the "meshgraph:" or "meshdiff:" prefix. Returns "" if s is not a
-// graph-reference, or if the ID portion is empty (e.g. "meshgraph:" with nothing
-// after the colon).
-//
-// Note: both cases return "". Callers who need to distinguish "not a graph-ref"
-// from "graph-ref with empty ID" should call [IsGraphRef] first.
+// GraphRefID returns the UUID portion of a graph-reference string.
+// Returns "" if s is not a graph-reference or the ID portion is empty.
+// Call [IsGraphRef] first to distinguish "not a ref" from "ref with empty ID".
 func GraphRefID(s string) string {
 	_, id := parseGraphRef(s)
 	return id

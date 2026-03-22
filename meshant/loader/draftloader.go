@@ -23,8 +23,6 @@ import (
 )
 
 // DraftSummary holds a provenance-aware reading of a TraceDraft dataset.
-// It is oriented toward the ingestion pipeline: who produced the drafts,
-// at what stage, and how much of each record is filled.
 type DraftSummary struct {
 	// Total is the number of drafts in the dataset.
 	Total int
@@ -32,39 +30,31 @@ type DraftSummary struct {
 	// Promotable is the number of drafts for which IsPromotable() returns true.
 	Promotable int
 
-	// ByStage maps ExtractionStage values to the count of drafts at that stage.
+	// ByStage maps ExtractionStage to draft count.
 	ByStage map[string]int
 
-	// ByExtractedBy maps ExtractedBy values to the count of drafts with that label.
+	// ByExtractedBy maps ExtractedBy label to draft count.
 	ByExtractedBy map[string]int
 
-	// FieldFillRate maps field names to the count of drafts with a non-empty
-	// value for that field. This reveals which fields the ingestion pipeline
-	// is populating and which are being left empty (empty = honest abstention).
+	// FieldFillRate maps field names to the count of drafts with a non-empty value.
+	// Empty = honest abstention, not missing data.
 	FieldFillRate map[string]int
 
-	// WithIntentionallyBlank is the number of drafts that declare at least
-	// one intentionally blank field — i.e., that set IntentionallyBlank on
-	// TraceDraft. These are typically critique-pass skeletons produced by
-	// meshant rearticulate, where blank content fields are correct choices,
-	// not missing data.
+	// WithIntentionallyBlank counts drafts declaring at least one intentionally blank field
+	// (critique-pass skeletons where blank is a correct choice, not missing data).
 	WithIntentionallyBlank int
 
-	// WithCriterionRef is the number of drafts that carry a non-empty
-	// CriterionRef — i.e., that declare the EquivalenceCriterion under which
-	// they were produced. A non-zero count means some skeletons are self-situated:
-	// their interpretive frame is named, not implicit.
+	// WithCriterionRef counts drafts carrying a non-empty CriterionRef — self-situated
+	// skeletons whose interpretive frame is named, not implicit.
 	WithCriterionRef int
+
+	// WithSessionRef counts drafts linked to the ingestion session that produced them.
+	WithSessionRef int
 }
 
-// LoadDrafts reads a JSON array of TraceDraft records from path.
-// It assigns new lowercase UUIDs to any records that are missing an ID,
-// stamps a Timestamp on records that have a zero timestamp, and validates
-// each record via TraceDraft.Validate.
-//
-// LoadDrafts stops at the first validation error and names the record index
-// in the error message. An empty JSON array is valid and returns an empty
-// (non-nil) slice. Files larger than 50 MB are rejected before decoding.
+// LoadDrafts reads a JSON array of TraceDraft records from path, assigns UUIDs
+// to records without IDs, stamps zero timestamps, and validates each record.
+// Stops at the first validation error. Empty array valid. Files >50 MB rejected.
 func LoadDrafts(path string) ([]schema.TraceDraft, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -72,8 +62,6 @@ func LoadDrafts(path string) ([]schema.TraceDraft, error) {
 	}
 	defer f.Close()
 
-	// Limit reads to maxFileBytes (defined in loader.go) to prevent memory
-	// exhaustion on unexpectedly large input.
 	limited := io.LimitReader(f, maxFileBytes)
 
 	var drafts []schema.TraceDraft
@@ -81,15 +69,13 @@ func LoadDrafts(path string) ([]schema.TraceDraft, error) {
 		return nil, fmt.Errorf("loader: decode draft file %q: %w", path, err)
 	}
 
-	// Normalise null JSON value (json.Decode sets the target to nil on null).
 	if drafts == nil {
 		drafts = []schema.TraceDraft{}
 	}
 
 	now := time.Now().UTC()
 	for i := range drafts {
-		// Assign a UUID when the record has no ID — the ingestion contract
-		// does not require IDs in extraction JSON; the loader assigns them.
+		// Ingestion JSON may omit IDs; the loader assigns them.
 		if drafts[i].ID == "" {
 			id, err := NewUUID()
 			if err != nil {
@@ -97,11 +83,9 @@ func LoadDrafts(path string) ([]schema.TraceDraft, error) {
 			}
 			drafts[i].ID = id
 		}
-		// Stamp Timestamp when absent.
 		if drafts[i].Timestamp.IsZero() {
 			drafts[i].Timestamp = now
 		}
-		// Validate — only SourceSpan is required at draft stage.
 		if err := drafts[i].Validate(); err != nil {
 			return nil, fmt.Errorf("loader: draft %d (id=%q): %w", i, drafts[i].ID, err)
 		}
@@ -110,12 +94,8 @@ func LoadDrafts(path string) ([]schema.TraceDraft, error) {
 	return drafts, nil
 }
 
-// SummariseDrafts builds a DraftSummary from a slice of TraceDraft records.
-// It counts records by ExtractionStage and ExtractedBy, counts how many are
-// promotable, and records per-field fill rates.
-//
-// SummariseDrafts does not call Validate — callers should ensure drafts have
-// already been validated (e.g. via LoadDrafts).
+// SummariseDrafts builds a DraftSummary from already-validated TraceDraft records.
+// Does not call Validate.
 func SummariseDrafts(drafts []schema.TraceDraft) DraftSummary {
 	s := DraftSummary{
 		Total:         len(drafts),
@@ -135,8 +115,6 @@ func SummariseDrafts(drafts []schema.TraceDraft) DraftSummary {
 			s.ByExtractedBy[d.ExtractedBy]++
 		}
 
-		// Track per-field fill rates — these reveal honest abstentions
-		// (empty fields) vs populated assignments.
 		if d.SourceSpan != "" {
 			s.FieldFillRate["source_span"]++
 		}
@@ -173,6 +151,10 @@ func SummariseDrafts(drafts []schema.TraceDraft) DraftSummary {
 		if d.DerivedFrom != "" {
 			s.FieldFillRate["derived_from"]++
 		}
+		if d.SessionRef != "" {
+			s.FieldFillRate["session_ref"]++
+			s.WithSessionRef++
+		}
 		if len(d.IntentionallyBlank) > 0 {
 			s.WithIntentionallyBlank++
 		}
@@ -185,12 +167,6 @@ func SummariseDrafts(drafts []schema.TraceDraft) DraftSummary {
 }
 
 // PrintDraftSummary writes a draft provenance summary to w.
-// It shows total/promotable counts, breakdown by extraction stage and
-// extracted_by label, and field fill rates across the dataset.
-//
-// ByStage and ByExtractedBy entries are sorted alphabetically for stable
-// output. Field fill rates are listed in field-definition order.
-//
 // Returns the first write error encountered, if any.
 func PrintDraftSummary(w io.Writer, s DraftSummary) error {
 	lines := []string{
@@ -220,11 +196,10 @@ func PrintDraftSummary(w io.Writer, s DraftSummary) error {
 		}
 	}
 
-	// Field fill rates — ordered by field definition for stable output.
 	orderedFields := []string{
 		"source_span", "source_doc_ref", "what_changed", "source", "target",
 		"mediation", "observer", "tags", "uncertainty_note",
-		"extraction_stage", "extracted_by", "derived_from",
+		"extraction_stage", "extracted_by", "derived_from", "session_ref",
 	}
 	lines = append(lines, "", fmt.Sprintf("Field fill rates (out of %d):", s.Total))
 	for _, field := range orderedFields {
@@ -236,6 +211,7 @@ func PrintDraftSummary(w io.Writer, s DraftSummary) error {
 		"",
 		fmt.Sprintf("Critique skeletons (intentionally_blank set): %d", s.WithIntentionallyBlank),
 		fmt.Sprintf("Self-situated skeletons (criterion_ref set):  %d", s.WithCriterionRef),
+		fmt.Sprintf("Session-linked drafts (session_ref set):       %d", s.WithSessionRef),
 		"",
 		"---",
 		"Note: empty fields are honest abstentions, not missing data.",
@@ -250,8 +226,7 @@ func PrintDraftSummary(w io.Writer, s DraftSummary) error {
 	return nil
 }
 
-// sortedKeys returns the keys of a map[string]int in ascending alphabetical
-// order. Used by PrintDraftSummary to produce deterministic output.
+// sortedKeys returns the keys of m in ascending alphabetical order.
 func sortedKeys(m map[string]int) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -261,10 +236,8 @@ func sortedKeys(m map[string]int) []string {
 	return keys
 }
 
-// NewUUID generates a random UUID v4 formatted as a lowercase hyphenated string.
-// It uses crypto/rand for randomness — the same source as production UUID libraries.
-// Exported so that other packages (e.g. review) can assign draft IDs
-// without importing an external UUID library.
+// NewUUID generates a random UUID v4 as a lowercase hyphenated string (crypto/rand).
+// Exported so other packages can assign draft IDs without an external UUID library.
 func NewUUID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {

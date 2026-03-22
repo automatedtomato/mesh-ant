@@ -369,3 +369,58 @@ func TestPrintDraftSummary_ShowsCriterionRefCount(t *testing.T) {
 		t.Errorf("output missing criterion_ref label; output:\n%s", out)
 	}
 }
+
+// --- WithSessionRef ---
+
+// TestSummariseDrafts_SessionRef_counted verifies that SummariseDrafts
+// increments WithSessionRef and FieldFillRate["session_ref"] for drafts
+// that carry a non-empty SessionRef.
+func TestSummariseDrafts_SessionRef_counted(t *testing.T) {
+	withRef := schema.TraceDraft{SourceSpan: "a", SessionRef: "sess-001"}
+	alsoWithRef := schema.TraceDraft{SourceSpan: "b", SessionRef: "sess-002"}
+	withoutRef := schema.TraceDraft{SourceSpan: "c"}
+
+	s := loader.SummariseDrafts([]schema.TraceDraft{withRef, alsoWithRef, withoutRef})
+
+	if s.WithSessionRef != 2 {
+		t.Errorf("WithSessionRef: want 2, got %d", s.WithSessionRef)
+	}
+	if s.FieldFillRate["session_ref"] != 2 {
+		t.Errorf("FieldFillRate[session_ref]: want 2, got %d", s.FieldFillRate["session_ref"])
+	}
+}
+
+// TestSummariseDrafts_SessionRef_ZeroWhenNoneSet verifies that WithSessionRef
+// is zero when no draft in the dataset carries a SessionRef.
+func TestSummariseDrafts_SessionRef_ZeroWhenNoneSet(t *testing.T) {
+	s := loader.SummariseDrafts([]schema.TraceDraft{
+		{SourceSpan: "a"},
+		{SourceSpan: "b"},
+	})
+	if s.WithSessionRef != 0 {
+		t.Errorf("WithSessionRef: want 0, got %d", s.WithSessionRef)
+	}
+	if s.FieldFillRate["session_ref"] != 0 {
+		t.Errorf("FieldFillRate[session_ref]: want 0, got %d", s.FieldFillRate["session_ref"])
+	}
+}
+
+// TestPrintDraftSummary_SessionRef_line verifies that PrintDraftSummary
+// includes a session_ref line in the output when WithSessionRef is non-zero.
+func TestPrintDraftSummary_SessionRef_line(t *testing.T) {
+	s := loader.DraftSummary{
+		Total:          3,
+		ByStage:        map[string]int{},
+		ByExtractedBy:  map[string]int{},
+		FieldFillRate:  map[string]int{"source_span": 3},
+		WithSessionRef: 3,
+	}
+	var buf bytes.Buffer
+	if err := loader.PrintDraftSummary(&buf, s); err != nil {
+		t.Fatalf("PrintDraftSummary: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "session_ref") && !strings.Contains(out, "Session-linked") {
+		t.Errorf("output missing session_ref label; output:\n%s", out)
+	}
+}

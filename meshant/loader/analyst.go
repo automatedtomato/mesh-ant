@@ -9,28 +9,14 @@ package loader
 
 import "github.com/automatedtomato/mesh-ant/meshant/schema"
 
-// GroupByAnalyst partitions drafts by their ExtractedBy field and returns a
-// map from analyst-position string to the drafts attributed to that position.
-//
-// Rules:
-//   - Drafts with an empty ExtractedBy are grouped under key "" (not discarded).
-//     An undeclared analyst position is still a position.
-//   - The returned map is never nil; an empty input produces a non-nil empty map.
-//   - Drafts within each group appear in the same order as in the input slice.
-//   - Returned slices do not alias the input — callers may append to a group
-//     without affecting the original drafts slice.
-//
-// Two drafts with different ExtractedBy values for the same SourceSpan
-// represent two analyst positions on the same material. Their disagreement is
-// data, not error — it is the raw material of comparative analysis.
+// GroupByAnalyst partitions drafts by ExtractedBy and returns a map from
+// analyst-position to drafts. Empty ExtractedBy is grouped under key "" —
+// an undeclared position is still a position. Returned map is never nil.
+// Returned slices do not alias the input.
 func GroupByAnalyst(drafts []schema.TraceDraft) map[string][]schema.TraceDraft {
-	// Allocate the result map eagerly so the return value is never nil.
 	result := make(map[string][]schema.TraceDraft)
 
 	for _, d := range drafts {
-		// Append to a new or existing group. Because we use append on a
-		// per-key slice rather than slicing into the input, each group's
-		// backing array is independent of the input slice.
 		result[d.ExtractedBy] = append(result[d.ExtractedBy], d)
 	}
 

@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-20 (C.4: Multi-analyst example dataset — 10 TraceDraft records across two analyst positions with documented divergences)
+**Last Updated:** 2026-03-22 (F.5: `data/examples/llm_assisted_extraction/` + provenance validation tests; F.6: `docs/decisions/llm-boundary-v2.md`, README v2.0.0 section, v2.0.0 tag)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -13,9 +13,10 @@
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
 | `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, bottleneck analysis, re-articulation suggestions, narrative drafts, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
-| `review` | Ambiguity detection, terminal rendering, and interactive accept/edit/skip/quit session for TraceDraft records (Thread A). |
+| `review` | Ambiguity detection, terminal rendering, and interactive accept/edit/skip/quit session for TraceDraft records (Thread A). Exports `DeriveAccepted`, `DeriveEdited`, `RunEditFlow` for reuse by `llm` (F.3). |
+| `llm` | LLM-mediated extraction, assist, and critique pipelines: `LLMClient` interface, `AnthropicClient`, `RunExtraction`, `RunAssistSession`, `ParseSpans`, `RunCritique`, `SessionRecord`, and supporting types. Enforces F.1 conventions (D1–D7): mediator framing, model-ID provenance, framework UncertaintyNote append, IntentionallyBlank validation (F.2, F.3, F.4). Imports `review` (one-directional: `llm → review`) for derivation helpers and rendering in the assist session. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. `review` is the only interactive subcommand (reads from stdin). |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. `review` and `assist` are interactive subcommands (read from stdin). `extract` calls an LLM to produce TraceDraft records from a source document (F.2). `assist` presents one LLM candidate per span for accept/edit/skip/quit decisions (F.3). `critique` calls an LLM to produce derived "critiqued" drafts from existing TraceDrafts (F.4). |
 
 ## Package: schema
 
@@ -33,7 +34,7 @@
 |------|-----------|---------|
 | `Trace` | `ID` (uuid), `Timestamp` (time), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Tags` ([]string), `Observer` (string, required) | Fundamental unit of record: a moment where something made a difference in a network. |
 | `TagValue` | (string constant type) | Vocabulary for trace descriptors: `TagDelay`, `TagThreshold`, `TagBlockage`, `TagAmplification`, `TagRedirection`, `TagTranslation`, `TagValueArticulation`, `TagValueDraft` (M11). |
-| `TraceDraft` | `ID` (uuid, optional), `Timestamp` (time), `SourceSpan` (string, required), `SourceDocRef` (string), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Observer` (string), `Tags` ([]string), `UncertaintyNote` (string), `ExtractionStage` (string), `ExtractedBy` (string), `DerivedFrom` (string), `CriterionRef` (string, M13), `IntentionallyBlank` ([]string, M12.5) | Provisional, provenance-bearing record from ingestion pipeline. Minimal requirement: `SourceSpan`. May be promoted to canonical `Trace` when sufficiently complete (M11). `CriterionRef` names the EquivalenceCriterion governing a critique skeleton (citation, not copy). `IntentionallyBlank` names content fields deliberately left empty (honest abstention, not missing data). |
+| `TraceDraft` | `ID` (uuid, optional), `Timestamp` (time), `SourceSpan` (string, required), `SourceDocRef` (string), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Observer` (string), `Tags` ([]string), `UncertaintyNote` (string), `ExtractionStage` (string), `ExtractedBy` (string), `DerivedFrom` (string), `CriterionRef` (string, M13), `SessionRef` (string, F.0), `IntentionallyBlank` ([]string, M12.5) | Provisional, provenance-bearing record from ingestion pipeline. Minimal requirement: `SourceSpan`. May be promoted to canonical `Trace` when sufficiently complete (M11). `CriterionRef` names the EquivalenceCriterion governing a critique skeleton (citation, not copy). `SessionRef` names the ingestion session that produced this draft — preserved through the review pipeline, not transferred by `Promote()`. `IntentionallyBlank` names content fields deliberately left empty (honest abstention, not missing data). |
 
 ### Functions
 
@@ -54,7 +55,7 @@
 | File | Contains |
 |------|----------|
 | `loader.go` | `Load`, `Summarise`, `PrintSummary`; `MeshSummary`, `FlaggedTrace` types. |
-| `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; `NewUUID` (exported, Thread A.1). `WithIntentionallyBlank` and `WithCriterionRef` counts added (M12.5, M13). |
+| `draftloader.go` | `LoadDrafts`, `SummariseDrafts`, `PrintDraftSummary`; `DraftSummary` type; `NewUUID` (exported, Thread A.1). `WithIntentionallyBlank`, `WithCriterionRef`, and `WithSessionRef` counts added (M12.5, M13, F.0). |
 | `draftchain.go` | `FollowDraftChain`, `ClassifyDraftChain`; `DraftStepKind`, `DraftStepClassification` types (M13). |
 | `analyst.go` | `GroupByAnalyst`; analyst-position partitioning for multi-analyst comparison (C.1). |
 | `extractiongap.go` | `CompareExtractions`, `PrintExtractionGap`; `ExtractionGap`, `FieldDisagreement` types (C.2). |
@@ -66,7 +67,7 @@
 |------|-----------|---------|
 | `MeshSummary` | `Elements` (map[string]int), `Mediations` ([]string), `MediatedTraceCount` (int), `FlaggedTraces` ([]FlaggedTrace), `GraphRefs` ([]string) | Provisional first-pass reading of a trace dataset. |
 | `FlaggedTrace` | `ID` (string), `WhatChanged` (string), `Tags` ([]string) | Minimal projection of traces tagged delay or threshold. |
-| `DraftSummary` | `Total` (int), `Promotable` (int), `ByStage` (map[string]int), `ByExtractedBy` (map[string]int), `FieldFillRate` (map[string]int), `WithIntentionallyBlank` (int, M12.5), `WithCriterionRef` (int, M13) | Provenance-aware reading of a TraceDraft dataset. Reveals ingestion pipeline breakdown and field fill rates (M11). Counts critique skeletons and self-situated skeletons. |
+| `DraftSummary` | `Total` (int), `Promotable` (int), `ByStage` (map[string]int), `ByExtractedBy` (map[string]int), `FieldFillRate` (map[string]int), `WithIntentionallyBlank` (int, M12.5), `WithCriterionRef` (int, M13), `WithSessionRef` (int, F.0) | Provenance-aware reading of a TraceDraft dataset. Reveals ingestion pipeline breakdown and field fill rates (M11). Counts critique skeletons, self-situated skeletons, and session-linked drafts. |
 | `DraftStepKind` | (string constant: `DraftIntermediary`, `DraftMediator`, `DraftTranslation`) | Classification of a draft chain step; mirrors `StepKind` from graph package. Heuristics are v1 and provisional (M13). |
 | `DraftStepClassification` | `StepIndex` (int), `Kind` (DraftStepKind), `Reason` (string) | Classification and justification for a single draft chain step (M13). |
 | `ExtractionGap` | `AnalystA` (string), `AnalystB` (string), `OnlyInA` ([]string), `OnlyInB` ([]string), `InBoth` ([]string), `Disagreements` ([]FieldDisagreement) | Comparison of two named extraction positions: partitions drafts by SourceSpan into three visibility groups; records field-level disagreements across 9 content fields (C.2). |
@@ -233,7 +234,7 @@ None (persist carries no domain types; wraps graph types).
 | `RenderDraft` | `func RenderDraft(d schema.TraceDraft, index, total int) string` | Format a TraceDraft for terminal display in the review session. Shows all candidate and provenance fields; blank values rendered as "(empty)". `index` is 1-based queue position (Thread A.1). |
 | `RenderAmbiguities` | `func RenderAmbiguities(warnings []AmbiguityWarning) string` | Format `[]AmbiguityWarning` for display below a rendered draft. Returns "(none)" when warnings is nil or empty (Thread A.1). |
 | `RenderChain` | `func RenderChain(chain []schema.TraceDraft, classifications []loader.DraftStepClassification) string` | Format a derivation chain for display in the review session. Shows each draft with truncated ID (8 chars), extraction_stage, extracted_by, and truncated what_changed (60 chars). Interleaves DraftStepClassification lines (Kind + Reason) between drafts. Last draft marked `<-- current`. Returns "(no derivation chain)" for empty input (Thread A.2). |
-| `RunReviewSession` | `func RunReviewSession(drafts []schema.TraceDraft, in io.Reader, out io.Writer) ([]schema.TraceDraft, error)` | Interactive accept/edit/skip/quit loop over weak-draft records. Renders chain, draft, and ambiguities per draft; returns all newly derived (accepted or edited) drafts. Filters to ExtractionStage "weak-draft"; falls back to all drafts when no stage metadata present. EOF treated as quit (Thread A.3/A.4). |
+| `RunReviewSession` | `func RunReviewSession(drafts []schema.TraceDraft, in io.Reader, out io.Writer) ([]schema.TraceDraft, error)` | Interactive accept/edit/skip/quit loop over reviewable draft records. Renders chain, draft, and ambiguities per draft; returns all newly derived (accepted or edited) drafts. Filters to ExtractionStage "weak-draft" or "critiqued" (F.4); falls back to all drafts when no stage metadata present. EOF treated as quit (Thread A.3/A.4). |
 | `deriveAccepted` | `func deriveAccepted(parent schema.TraceDraft) (schema.TraceDraft, error)` | Creates a new TraceDraft derived from parent: copies all candidate fields (deep-copies slices), sets DerivedFrom=parent.ID, ExtractionStage="reviewed", ExtractedBy="meshant-review", new UUID and Timestamp (Thread A.3). |
 | `runEditFlow` | `func runEditFlow(d schema.TraceDraft, scanner *bufio.Scanner, out io.Writer) (schema.TraceDraft, bool, error)` | Field-by-field editing loop over 8 editable content fields (what_changed, source, target, mediation, observer, tags, uncertainty_note, criterion_ref). Empty input keeps current value; slice fields accept comma-separated input. Returns (editedDraft, completedOK, error). EOF mid-flow returns (partial, false, nil) — caller must not append. Provenance fields are not editable (Thread A.4). |
 | `deriveEdited` | `func deriveEdited(parent schema.TraceDraft, edited schema.TraceDraft) (schema.TraceDraft, error)` | Creates a new TraceDraft derived from parent using content fields from edited. Content (WhatChanged, Source, Target, Mediation, Observer, Tags, UncertaintyNote, CriterionRef) from edited; provenance (SourceSpan, SourceDocRef, IntentionallyBlank) from parent. DerivedFrom=parent.ID, ExtractionStage="reviewed", ExtractedBy="meshant-review", new UUID and Timestamp. Edit = one derivation step, not two (Thread A.4). |
@@ -255,14 +256,90 @@ None (persist carries no domain types; wraps graph types).
 | `run` | `func run(w io.Writer, datasetPath string) error` | Full pipeline: Load → Summary → Articulate (Cut A: meteorological-analyst, 2026-04-14) → Articulate (Cut B: local-mayor, 2026-04-16) → Diff → Closing note. |
 | `printClosingNote` | `func printClosingNote(w io.Writer) error` | Write methodological coda naming observer positions, shadows, and Principle 8 gap. |
 
+## Package: llm
+
+### Files
+
+| File | Contains |
+|------|----------|
+| `types.go` | Shared types: `ExtractionConditions`, `DraftDisposition`, `SessionRecord`, `ExtractionOptions`, `AssistOptions`, `CritiqueOptions`; error types `ErrLLMRefusal`, `ErrMalformedOutput`; constants `frameworkUncertaintyNote`, `maxSourceBytes`, `maxResponseBytes`, `httpTimeout`; `knownContentFields` map. `DraftDisposition.Action` values: `"accepted"`, `"edited"`, `"skipped"`, `"abandoned"`. |
+| `client.go` | `LLMClient` interface; `AnthropicClient` implementation (net/http, zero external deps); `NewAnthropicClient()` (env-var key lookup); private `httpClient` with 180 s timeout; response body capped at 8 MiB; auth error scrubbing (401/403 bodies withheld). |
+| `prompt.go` | `LoadPromptTemplate(path)` — reads prompt template up to 1 MiB; empty file is valid (no error). |
+| `extract.go` | `RunExtraction(ctx, client, opts)` — LLM extraction pipeline; always returns non-nil `SessionRecord` even on error; validates `IntentionallyBlank` field names; detects refusals by prefix heuristic; strips LLM preamble before JSON parse; stamps provenance fields (D2–D7). Private helpers: `readSourceDoc`, `isRefusal`, `parseResponse`, `validateIntentionallyBlank`. |
+| `assist.go` | `RunAssistSession(ctx, client, spans, opts, in, out)` — interactive per-span LLM-assist session; skip preserves draft (shadow is not absence); edit appends LLM draft + derived draft; EOF-during-edit records disposition `"abandoned"`. `ParseSpans(data)` — parses spans file from JSON array, newline-separated text, or single line. `parseSingleDraft` — stamps provenance, zeros `DerivedFrom`, validates `IntentionallyBlank`. Imports `review` for `RunEditFlow`, `DeriveEdited`, rendering (F.3). |
+| `critique.go` | `RunCritique(ctx, client, drafts, opts)` — LLM critique pipeline; one call per input draft; returns partial results (nil error on per-draft failures); always returns non-nil `SessionRecord`; hard SourceSpan integrity check (rejects mismatch, session continues). Private helpers: `buildCritiquePrompt`, `parseCritiqueDraft` (F.4). |
+
+### Types
+
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `LLMClient` | `Complete(ctx, system, prompt string) (string, error)` | Interface for LLM completion. Single method — models the analytical boundary: inputs in, text out. Implemented by `AnthropicClient`; tests inject a mock. |
+| `AnthropicClient` | `apiKey` (unexported), `model`, `baseURL`, `httpClient` | Anthropic Messages API client. API key never serialised or logged. Uses a private `http.Client` with explicit timeout; never `http.DefaultClient`. |
+| `ExtractionConditions` | `ModelID`, `PromptTemplate`, `CriterionRef`, `SystemInstructions`, `SourceDocRef`, `Timestamp` | Apparatus description for one LLM session. Intentionally excludes API key — conditions are written to disk. |
+| `SessionRecord` | `ID` (uuid), `Command` (string), `Conditions` (ExtractionConditions), `DraftIDs` ([]string), `Dispositions` ([]DraftDisposition), `InputPath`, `OutputPath`, `DraftCount`, `ErrorNote`, `Timestamp` | Mandatory companion to every LLM interaction. Returned on every code path. `ID` is stamped as `SessionRef` on every produced draft. `ErrorNote` makes failures inspectable from disk without re-running. |
+| `ExtractionOptions` | `ModelID`, `InputPath`, `PromptTemplatePath`, `CriterionRef`, `SourceDocRef`, `OutputPath`, `SessionOutputPath` | Input parameters for `RunExtraction`. |
+| `AssistOptions` | `ModelID`, `InputPath`, `PromptTemplatePath`, `CriterionRef`, `SourceDocRef`, `OutputPath`, `SessionOutputPath` | Input parameters for `RunAssistSession`. `InputPath` is the spans file path — optional; recorded in SessionRecord for provenance. |
+| `CritiqueOptions` | `ModelID`, `InputPath`, `PromptTemplatePath`, `CriterionRef`, `SourceDocRef`, `OutputPath`, `SessionOutputPath`, `DraftID` | Input parameters for `RunCritique`. `DraftID` filters to a single draft by ID when non-empty (F.4). |
+| `ErrLLMRefusal` | `RefusalText string` | LLM explicitly declined to produce output. |
+| `ErrMalformedOutput` | `RawResponse string`, `ParseErr error` | LLM returned text that does not parse as TraceDraft JSON. |
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `NewAnthropicClient` | `func NewAnthropicClient(model string) (*AnthropicClient, error)` | Read API key from `MESHANT_LLM_API_KEY` (fallback `ANTHROPIC_API_KEY`); construct client with 180 s timeout. Returns error if both env vars are absent or empty. |
+| `AnthropicClient.Complete` | `(c *AnthropicClient) Complete(ctx, system, prompt string) (string, error)` | Post to Anthropic Messages API; return first text content block. Caps response body at 8 MiB; scrubs auth error bodies. |
+| `LoadPromptTemplate` | `func LoadPromptTemplate(path string) (string, error)` | Read prompt template file up to 1 MiB. Empty file returns `""` without error. |
+| `RunExtraction` | `func RunExtraction(ctx context.Context, client LLMClient, opts ExtractionOptions) ([]schema.TraceDraft, SessionRecord, error)` | Full extraction pipeline: read source doc → load prompt → call LLM → detect refusal → parse JSON → validate/stamp each draft → return drafts + SessionRecord. Always returns non-nil SessionRecord. Stamps D2 (ExtractedBy), D3 (UncertaintyNote append), D4 (ExtractionStage "weak-draft"), D6 (SessionRef), D7 (IntentionallyBlank validation) per F.1 decision record. |
+| `ParseSpans` | `func ParseSpans(data []byte) ([]string, error)` | Parse a spans file into a slice of span strings. Tries JSON string array first, then newline-separated text, then single-line. Drops blank/whitespace-only entries. Returns error on empty input. |
+| `RunAssistSession` | `func RunAssistSession(ctx context.Context, client LLMClient, spans []string, opts AssistOptions, in io.Reader, out io.Writer) ([]schema.TraceDraft, SessionRecord, error)` | Interactive per-span assist session. For each span: call LLM → parse draft → present to user → read action. Accept: append LLM draft (disposition "accepted"). Edit: RunEditFlow + DeriveEdited → append both (disposition "edited"). Skip: append LLM draft (disposition "skipped"; shadow preserved). EOF or Quit: return partial results without error. Always returns SessionRecord. DraftCount may exceed len(Dispositions) when edits produce two drafts per span. |
+| `RunCritique` | `func RunCritique(ctx context.Context, client LLMClient, drafts []schema.TraceDraft, opts CritiqueOptions) ([]schema.TraceDraft, SessionRecord, error)` | LLM critique pipeline: one call per input draft → parse response → validate SourceSpan → stamp DerivedFrom and ExtractionStage "critiqued". Returns partial results with nil error on per-draft failures; errors accumulate in SessionRecord.ErrorNote. Returns non-nil SessionRecord on all code paths except UUID generation failure. DraftID filter (opts.DraftID non-empty) returns error with SessionRecord when ID not found (F.4). |
+
+### Key Design Notes
+
+- **Zero external dependencies**: Uses only Go stdlib (`net/http`, `encoding/json`, `io`, `os`, `context`).
+- **SessionRecord is mandatory**: `RunExtraction`, `RunAssistSession`, and `RunCritique` always return a SessionRecord. On error, `ErrorNote` is populated. The caller writes the record to disk; the `llm` package does not own the write.
+- **F.1 convention enforcement**: D2 (ExtractedBy = model ID string), D3 (frameworkUncertaintyNote always appended), D4 (ExtractionStage = "weak-draft" for extraction, "critiqued" for critique), D6 (SessionRecord mandatory return), D7 (IntentionallyBlank validates against content-field allowlist). See `docs/decisions/llm-as-mediator-v1.md`.
+- **Client injection**: `RunExtraction`, `RunAssistSession`, and `RunCritique` accept `LLMClient` interface — tests inject a mock; production code uses `AnthropicClient`. No live API calls in unit tests.
+- **Refusal detection**: `isRefusal()` matches conservative English-language prefixes. False negatives fall through to the malformed-output path, which is correct. The heuristic is English-only (documented in F.6 deferred notes).
+- **Security**: API key is an unexported struct field; never appears in `SessionRecord`, any error message, or any serialised output. Authentication error responses (401/403) are not echoed to the user. Span text is not echoed in ErrorNote (uses length only) to avoid PII leakage into session files.
+- **`llm → review` import**: `assist.go` imports `review` for rendering (`RenderDraft`, `RenderAmbiguities`, `DetectAmbiguities`) and derivation helpers (`RunEditFlow`, `DeriveEdited`). The direction is one-way and stable through F.4 (`review` has no `llm` imports). If a future feature requires `review → llm`, extract shared types into a new package to avoid a cycle.
+- **DraftCount vs Dispositions**: In the assist session, `DraftCount` counts all output drafts including edit-derived ones. `Dispositions` has one entry per span processed (not per output draft). When a span is edited, two drafts appear in `DraftIDs` but one disposition entry is recorded. Downstream tools must not assume `DraftCount == len(Dispositions)`.
+- **Accept asymmetry**: In the assist session, accepting a span does not produce a derived draft — the LLM draft is the output. In the review session, accepting does produce a derived draft (derived from the reviewed draft). This is intentional: in assist, the LLM's reading stands as the position; in review, the human reviewer's cut is recorded as a new derivation.
+- **Critique partial results**: `RunCritique` returns nil error even when all drafts fail — per-draft errors accumulate in `SessionRecord.ErrorNote`. `cmdCritique` returns error when input was non-empty but zero critiques produced (distinguishes total LLM failure from legitimate empty input).
+- **SourceSpan integrity**: `RunCritique` hard-rejects any LLM response where SourceSpan differs from the original draft — the source span anchor is immutable across the critique derivation chain.
+- **parseCritiqueDraft / parseSingleDraft**: Two parallel parse implementations exist until F.6 refactor deduplicates them into a shared `parse.go` helper.
+
+---
+
 ## Package: cmd/meshant
 
 ### Files
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: subcommand dispatcher, helper types and functions. Includes `cmdDraft`, `cmdPromote` (M11), `cmdRearticulate`, `cmdLineage` (M12), `cmdShadow`, `cmdGaps` (M13), `cmdBottleneck` (B.1), `cmdExtractionGap` (C.2), `cmdChainDiff` (C.3), `cmdReview` (A.5) handlers. (~2010 lines — pre-existing size debt, tracked for future per-command file split.) |
+| `main.go` | CLI entry point: `main()`, `run()` dispatcher, `usage()`, and shared helpers (`loadCriterionFile`, `stringSliceFlag`, `parseTimeFlag`, `parseTimeWindow`, `outputWriter`, `confirmOutput`). ~259 lines. |
+| `cmd_summarize.go` | `cmdSummarize` subcommand handler. |
+| `cmd_validate.go` | `cmdValidate` subcommand handler. |
+| `cmd_articulate.go` | `cmdArticulate` subcommand handler (`--narrative` flag). |
+| `cmd_diff.go` | `cmdDiff` subcommand handler. |
+| `cmd_follow.go` | `cmdFollow` subcommand handler (`--criterion-file` flag). |
+| `cmd_draft.go` | `cmdDraft` subcommand handler (M11). |
+| `cmd_promote.go` | `cmdPromote` subcommand handler (M11). |
+| `cmd_rearticulate.go` | `cmdRearticulate` subcommand handler (M12). |
+| `cmd_lineage.go` | `cmdLineage` subcommand handler plus 13 exclusive helpers: `lineageNode`, `lineageResult`, `buildLineage`, `detectCycleDFS`, `idPrefix`, `spanPreview`, `printLineageText`, `printLineageStep`, `lineageJSONChain`, `collectMembers`, `printLineageJSON`, `filterLineageByID`, `chainContainsID` (M12). |
+| `cmd_shadow.go` | `cmdShadow` subcommand handler (M13). |
+| `cmd_gaps.go` | `cmdGaps` subcommand handler (`--suggest` flag, B.2) (M13). |
+| `cmd_bottleneck.go` | `cmdBottleneck` subcommand handler (B.1). |
+| `cmd_review.go` | `cmdReview` subcommand handler — only interactive subcommand; accepts `in io.Reader` (A.5). |
+| `cmd_extraction_gap.go` | `cmdExtractionGap` subcommand handler (C.2). |
+| `cmd_chain_diff.go` | `cmdChainDiff` subcommand handler (C.3). |
+| `cmd_extract.go` | `cmdExtract` subcommand handler — calls LLM via injected `llm.LLMClient`; writes TraceDraft JSON and SessionRecord JSON; session output defaulting: `<output>.session.json` (file mode) or `session_<timestamp>.json` in cwd (stdout mode) (F.2). |
+| `cmd_assist.go` | `cmdAssist` subcommand handler — interactive per-span LLM-assist session; reads spans file (capped at 4 MiB); accepts injected `llm.LLMClient`; reads user decisions from injected `io.Reader`; writes TraceDraft JSON and SessionRecord JSON on every code path (F.3). |
+| `cmd_critique.go` | `cmdCritique` subcommand handler — calls LLM via injected `llm.LLMClient`; reads input drafts file (capped at 4 MiB); writes critiqued TraceDraft JSON and SessionRecord JSON; session output defaulting: `<output>.session.json` (file mode) or not written (stdout mode, unless `--session-output` explicit) (F.4). |
 | `main_test.go` | Tests: all subcommands, flag parsing, file output, error handling, criterion file loading, draft/promote pipeline (M11). |
+| `cmd_assist_test.go` | Tests: `cmdAssist` CLI handler — happy path (field assertions on ExtractionStage/ExtractedBy/UncertaintyNote), missing flags, missing file, session file written, quit-outputs-partial-results, LLM error, malformed spans, size cap (F.3). |
+| `cmd_critique_test.go` | Tests: `cmdCritique` happy path, missing input, missing file, session file written, LLM error, ID filter, ID filter not found, malformed JSON input, empty array input, stdout mode, session output confirmation (F.4). |
 
 ### Types
 
@@ -279,7 +356,7 @@ None (persist carries no domain types; wraps graph types).
 | `parseTimeFlag` | `func parseTimeFlag(name, value string) (time.Time, error)` | Parse RFC3339 string to time.Time with contextual error message naming the flag. |
 | `parseTimeWindow` | `func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error)` | Parse two RFC3339 strings (one or both may be empty) into a TimeWindow. Validates only when both bounds are set. |
 | `main` | `func main()` | Entry point. Calls `run(os.Stdout, os.Args[1:])` and exits non-zero on error. |
-| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Parses args to identify subcommand and flags; routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, `cmdExtractionGap()`, `cmdChainDiff()`, or `cmdReview()`. For the `review` case, passes `os.Stdin` as the reader to `cmdReview`. |
+| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, `cmdExtractionGap()`, `cmdChainDiff()`, `cmdReview()`, `cmdExtract()`, `cmdAssist()`, or `cmdCritique()`. For `review` and `assist`, passes `os.Stdin`; for `extract`, `assist`, and `critique`, passes `nil` client (real client constructed from env). |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
 | `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. Optional `--narrative` flag appends a positioned narrative draft (text format only, skipped for JSON/DOT/Mermaid). |
@@ -295,6 +372,11 @@ None (persist carries no domain types; wraps graph types).
 | `cmdExtractionGap` | `func cmdExtractionGap(w io.Writer, args []string) error` | Subcommand: Load two TraceDraft JSON files, compare extractions from named positions via `loader.CompareExtractions()`, print gap report via `PrintExtractionGap()`. Flags: `--analyst-a <label>`, `--analyst-b <label>` (both required, names of analyst positions), `--output <file>` (C.2). |
 | `cmdChainDiff` | `func cmdChainDiff(w io.Writer, args []string) error` | Subcommand: Load TraceDraft JSON, build span-scoped derivation chains for two named analyst positions via `loader.FollowDraftChain()` + `loader.ClassifyDraftChain()`, compare classifications via `loader.CompareChainClassifications()`, print diff report via `PrintClassificationDiffs()`. Flags: `--analyst-a <label>`, `--analyst-b <label>` (both required), `--span <source_span>` (required), `--output <file>` (C.3). |
 | `cmdReview` | `func cmdReview(w io.Writer, in io.Reader, args []string) error` | Subcommand: Load TraceDraft JSON, run interactive accept/edit/skip/quit session via `review.RunReviewSession()`. Only interactive subcommand — signature diverges from all other `cmd*` functions by accepting `in io.Reader` for stdin injection (testability). Interactive prompts go to `os.Stderr`; JSON output and summary go to `w`. Flags: `--output <file>` (A.5). |
+| `cmdExtract` | `func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error` | Subcommand: Call LLM to produce TraceDraft records from a source document. Accepts an injected `llm.LLMClient` (nil = construct `AnthropicClient` from env). Writes TraceDraft JSON array and a `SessionRecord` JSON file on every code path (success and error). Session output defaulting: `<output>.session.json` when `--output` is a file; `session_<timestamp>.json` in cwd when stdout. Flags: `--source-doc <path>` (required), `--source-doc-ref <ref>`, `--prompt-template <path>` (default: `data/prompts/extraction_pass.md`), `--model <id>` (default: `claude-sonnet-4-6`), `--criterion-file <path>`, `--output <file>`, `--session-output <file>` (F.2). |
+| `cmdAssist` | `func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) error` | Subcommand: Read spans file, call LLM once per span, present candidate draft to user for accept/edit/skip/quit decisions via `llm.RunAssistSession()`. Accepts injected `llm.LLMClient` (nil = construct `AnthropicClient` from env) and `in io.Reader` (testability). Always writes SessionRecord on every code path. Flags: `--spans-file <path>` (required), `--prompt-template <path>`, `--model <id>`, `--source-doc-ref <ref>`, `--criterion-file <path>`, `--output <file>`, `--session-output <file>` (F.3). |
+| `cmdCritique` | `func cmdCritique(w io.Writer, client llm.LLMClient, args []string) error` | Subcommand: Call LLM to produce "critiqued" derived drafts from existing TraceDrafts. Reads input drafts file (capped at 4 MiB). Accepts an injected `llm.LLMClient` (nil = construct `AnthropicClient` from env). Writes critiqued TraceDraft JSON array and a `SessionRecord` JSON file. Session output defaulting: `<output>.session.json` when `--output` is a file; not written when stdout unless `--session-output` is explicit. Returns error when input non-empty but zero critiques produced. Flags: `--input <path>` (required), `--prompt-template <path>` (default: `data/prompts/critique_pass.md`), `--model <id>` (default: `claude-sonnet-4-6`), `--source-doc-ref <ref>`, `--criterion-file <path>`, `--output <file>`, `--session-output <file>`, `--id <id>` (F.4). |
+| `readSpansFile` | `func readSpansFile(path string) ([]byte, error)` | Read spans file capped at 4 MiB via `io.LimitReader`. Returns error if file exceeds cap (n > maxSpansBytes). Used only by `cmdAssist`. |
+| `writeSessionRecord` | `func writeSessionRecord(path string, rec llm.SessionRecord) error` | Serialise SessionRecord as indented JSON to path. Encodes to buffer first; creates file only on success (avoids empty file on encode failure). Used by `cmdExtract`, `cmdAssist`, and `cmdCritique`. |
 | `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
 | `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
@@ -308,7 +390,8 @@ None (persist carries no domain types; wraps graph types).
 - **Time handling**: RFC3339 timestamps throughout; `parseTimeFlag()` and `parseTimeWindow()` provide clear error messages with formatting hints
 - **Format options**: `articulate` and `diff` both support text/json/dot/mermaid; `follow` supports text/json
 - **File output**: `--output <file>` writes to file instead of stdout; `cmdReview` uses explicit `f.Close()` (not deferred) to surface write errors
-- **Interactive subcommand**: `cmdReview` is the only `cmd*` function that accepts `in io.Reader` — all other subcommands are non-interactive. `run()` passes `os.Stdin` for the review case only. If a second interactive subcommand is added, migrate to a `cmdContext` struct rather than adding more signature exceptions.
+- **Interactive subcommands**: `cmdReview` and `cmdAssist` both accept `in io.Reader` for stdin injection (testability). Both write interactive prompts to `os.Stderr` and JSON output to `w` (stdout). `run()` passes `os.Stdin` for both. All other subcommands are non-interactive.
+- **LLM-injected subcommands**: `cmdExtract` and `cmdAssist` both accept `llm.LLMClient` as a parameter (nil = real client from env). This is the same injection pattern as `in io.Reader` — enables testing without live API calls. `run()` passes `nil` for both; tests pass a mock (F.2, F.3).
 - **Stderr/stdout separation**: `cmdReview` writes interactive prompts to `os.Stderr` and JSON output to `w` (stdout), enabling `meshant review file.json | jq .` and `--output` file routing without prompt contamination.
 - **Ingestion pipeline** (M11): `draft` command ingests LLM extraction JSON and produces TraceDraft records; `promote` command converts promotable TraceDraft records to canonical Traces (tagged with `draft` provenance signal)
 - **Re-articulation pipeline** (M12): `rearticulate` command produces critique skeletons (SourceSpan + DerivedFrom set, all content fields blank); `lineage` command walks DerivedFrom links and renders positional reading sequences as CLI output
@@ -336,6 +419,10 @@ graph/
 persist/
   ├─→ imports: graph
   └─→ (used by) external tools/pipelines
+
+llm/
+  ├─→ imports: schema (TraceDraft), loader (NewUUID), review (DeriveAccepted, DeriveEdited, RunEditFlow — one-directional; review has no llm imports)
+  └─→ (used by) cmd/meshant
 
 cmd/demo/
   ├─→ imports: graph, loader
@@ -372,6 +459,29 @@ cmd/demo/
 5. Returns `GraphDiff` with empty ID (not an actor yet)
 6. Optional: `graph.IdentifyDiff(d)` → assigns UUID
 7. Optional: `graph.DiffTrace(d, g1, g2, observer)` → records diff as reflexive Trace
+
+### LLM Extraction Pipeline (F.2)
+1. `cmdExtract` validates flags; resolves `sessionOutputPath` (defaulting rules)
+2. `llm.RunExtraction(ctx, client, opts)` — called with injected or real client
+3. Inside: read source doc (capped at 1 MiB) → load prompt template → call `client.Complete()`
+4. Detect refusal via prefix heuristic → parse JSON array (strips LLM preamble)
+5. Per draft: validate `IntentionallyBlank`, assign UUID, stamp D2/D3/D4/D6/D7 fields
+6. Return `[]TraceDraft + SessionRecord` (always non-nil, even on error)
+7. `cmdExtract` writes SessionRecord JSON first (always), then TraceDraft JSON, then summary
+8. On error: SessionRecord with ErrorNote is on disk; extraction error returned to caller
+
+### LLM Assist Pipeline (F.3)
+1. `cmdAssist` reads spans file (capped at 4 MiB via `readSpansFile`); calls `llm.ParseSpans()` to parse JSON array or newline-separated format; drops blank/whitespace-only entries
+2. `llm.RunAssistSession(ctx, client, spans, opts, in, out)` opens interactive session loop
+3. For each span: call `client.Complete()` → `parseSingleDraft()` → validate `IntentionallyBlank`; zero `DerivedFrom` (prevents false chain links); stamp D2/D3/D4/D6 fields
+4. Present draft to user; read decision: `a` (accept), `e` (edit via `review.RunEditFlow`), `s` (skip — preserves draft), `q` (quit)
+5. Accept: appends LLM draft with `DraftDisposition{Action:"accepted"}` — no new derived draft (distinct from `meshant review`)
+6. Edit: writes LLM draft + derived-from draft via `review.DeriveEdited()`; disposition `"edited"`
+7. Skip: appends LLM draft with `DraftDisposition{Action:"skipped"}` — shadow is not absence
+8. EOF during edit: appends LLM draft with `DraftDisposition{Action:"abandoned"}` — interrupted articulation, not deliberate skip
+9. Quit: writes partial results and returns without error
+10. Return `[]TraceDraft + SessionRecord` (always non-nil, even on error); `DraftCount` = total output drafts (includes edit-derived); `Dispositions` has one entry per span (not per draft — documented asymmetry)
+11. `cmdAssist` writes SessionRecord JSON (always), then TraceDraft JSON, then summary
 
 ### Demo Pipeline (cmd/demo/main.go)
 1. Load evacuation_order.json
@@ -444,6 +554,9 @@ cmd/demo/
 | Compare chain classifications from two analysts | `loader/classdiff.go` → `CompareChainClassifications()` |
 | Print classification diff report | `loader/classdiff.go` → `PrintClassificationDiffs()` |
 | Classification diff via CLI | `cmd/meshant/main.go` → `cmdChainDiff()` |
+| Run interactive per-span LLM-assist session | `llm/assist.go` → `RunAssistSession()` |
+| Parse spans from file (JSON array or newline-separated) | `llm/assist.go` → `ParseSpans()` |
+| Interactive assist session via CLI | `cmd/meshant/cmd_assist.go` → `cmdAssist()` |
 | Read critique prompt contract | `data/prompts/critique_pass.md` |
 | Run minimal demo | `cmd/demo/main.go` → `run()` |
 
@@ -584,7 +697,8 @@ cmd/demo/
 
 | File | Purpose |
 |------|---------|
-| `data/prompts/critique_pass.md` | Extraction contract for the critique step: what to preserve (SourceSpan verbatim), what to question (stable actor attributions, imputed intentions), what honest abstention looks like, DerivedFrom semantics, worked E3 example |
+| `data/prompts/critique_pass.md` | Extraction contract for the critique (re-articulation) step: what to preserve (SourceSpan verbatim), what to question (stable actor attributions, imputed intentions), what honest abstention looks like, DerivedFrom semantics, worked E3 example. Updated F.1: `extraction_stage: "critiqued"`, model ID strings for `extracted_by`, `intentionally_blank` in field guide. |
+| `data/prompts/extraction_pass.md` | System instructions for `meshant extract` (Thread F). Enforces trace-first vocabulary: candidate drafts not facts, `intentionally_blank` requirement, honest abstention, worked network-operations example (F.1). |
 
 **Dataset M8 (Incident Response):**
 - **Observers:** monitoring-service, on-call-engineer, incident-commander, product-manager, customer-support
@@ -605,10 +719,12 @@ cmd/demo/
 - `docs/decisions/m10-tag-filter-diff-export-cli-v1.md` — Tag-filter axis, diff visual export, CLI integration (M10)
 - `docs/decisions/translation-chain-v2.md` — Translation chain traversal, classification heuristics, first-match branching (M10.5)
 - `docs/decisions/equivalence-criterion-v1.md` — Equivalence criterion design, three-layer model, v1 implicit criterion, second-order shadow (M10.5+)
-- `docs/decisions/tracedraft-v2.md` — TraceDraft design, ingestion pipeline as analytical object, source span as ground truth, promotion criterion, provenance chain (M11)
+- `docs/decisions/tracedraft-v2.md` — TraceDraft design, ingestion pipeline as analytical object, source span as anchor text, promotion criterion, provenance chain (M11)
 - `docs/decisions/rearticulation-v1.md` — Re-articulation as cut not correction, SourceSpan invariant, blank scaffold as correct output, DerivedFrom positional vocabulary, cmdLineage as first-class CLI output, E3/E14 as demonstration material (M12)
 - `docs/decisions/shadow-analysis-v1.md` — Shadow as cut decision, ObserverGap composability, FollowDraftChain design, CriterionRef as citation metadata, DraftStepKind v1 heuristics, shadow/gaps CLI-first design (M13)
 - `docs/decisions/interactive-review-v1.md` — Interactive review CLI design: session as cut, render-as-string, ExtractedBy sameness, provenance/content partition, stdin/stderr separation, main.go size debt (Thread A)
+- `docs/decisions/llm-as-mediator-v1.md` — 7 conventions for LLM participation in the ingestion pipeline: mediator framing, model ID strings, framework-imposed UncertaintyNote, ExtractionStage values (incl. "critiqued"), SessionRecord mandate, IntentionallyBlank requirement; 3 named ANT tensions (F.1)
+- `docs/decisions/llm-boundary-v2.md` — 9 implementation decisions for Thread F: llm package boundary, LLMClient interface, SessionRecord mandate, "critiqued" semantics, span splitting deferred, API key from env, no retry, main.go file split, no ExtractionCut type; 5 named ANT tensions; deferred items (F.6)
 - `docs/authoring-traces.md` — Trace authoring guide with worked example (M9)
 - `docs/reviews/review_philosophical_m9.md` — Philosophical review, M9 violations and fixes
 

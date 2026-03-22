@@ -14,7 +14,7 @@ in the DerivedFrom chain.
 ## 1. What to preserve: SourceSpan verbatim
 
 Copy `source_span` exactly as it appears in the original draft. Do not paraphrase, summarize,
-or clean up the text. The span is the ground truth anchor — your critique is a reading of
+or clean up the text. The span is the anchor text — your critique is a reading of
 the span, not a replacement for it.
 
 If you find yourself editing the span, stop. The span is not yours to edit. Your job is
@@ -76,8 +76,9 @@ Both readings are analytical objects. The differentiation between them — what 
 to name, what each left blank, what each noted as uncertain — is visible in the chain.
 The chain is the record of the analytical process.
 
-`extraction_stage: "reviewed"` records your position in the pipeline. It does not mean
-the record is final, authoritative, or quality-assured. It names where it was produced.
+`extraction_stage: "critiqued"` records your position in the pipeline. It names a mediating
+act — an LLM suggestion — not a human curatorial decision. It does not mean the record is
+final, authoritative, or quality-assured. It names where it was produced.
 
 ---
 
@@ -115,7 +116,8 @@ performing a specific action. The span does not name a person, identity, or enti
   "target": ["storefront-api-routes"],
   "mediation": "fastmiddleware-token-validation",
   "observer": "security-lead",
-  "uncertainty_note": "The span names a vulnerability class, not an attributable actor. 'Attacker' is an inference from the CVE framing, not from the span itself. The span describes a condition (requests that bypass checks) without naming a source agent. Source left blank: the span does not support confident actor attribution."
+  "uncertainty_note": "The span names a vulnerability class, not an attributable actor. 'Attacker' is an inference from the CVE framing, not from the span itself. The span describes a condition (requests that bypass checks) without naming a source agent. Source left blank: the span does not support confident actor attribution.",
+  "intentionally_blank": ["source"]
 }
 ```
 
@@ -133,8 +135,8 @@ The original is not wrong. The critique is not better. Both are now part of the 
 | `source_span` | Copy verbatim from original. Never edit. |
 | `source_doc_ref` | Copy from original if present. It is provenance, not interpretation. |
 | `derived_from` | Set to the original draft's `id`. |
-| `extraction_stage` | Set to `"reviewed"`. |
-| `extracted_by` | Set to your identifier (e.g. `"human-reviewer"`, `"llm-critique-pass1"`). |
+| `extraction_stage` | Set to `"critiqued"`. This names an LLM mediating act, not a human decision (see `docs/decisions/llm-as-mediator-v1.md`, Decision 5). |
+| `extracted_by` | Set to your model ID string (e.g. `"claude-sonnet-4-6"`). Never use a generic label like `"llm"`. |
 | `id` | Leave blank (assigned by `meshant draft`). |
 | `timestamp` | Leave blank (assigned by `meshant draft`). |
 | `what_changed` | Write a description of what the span records — not what the original said it records. |
@@ -144,3 +146,4 @@ The original is not wrong. The critique is not better. Both are now part of the 
 | `observer` | Name the position from which this reading is made. |
 | `tags` | Use only tags supported by the span. |
 | `uncertainty_note` | Explain every blank content field. Prefer a note to a fabricated value. |
+| `intentionally_blank` | List the names of content fields you deliberately leave empty (`what_changed`, `source`, `target`, `mediation`, `observer`, `tags`). Always pair with an `uncertainty_note` explaining why. |

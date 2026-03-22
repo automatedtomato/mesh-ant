@@ -25,15 +25,13 @@ type AmbiguityWarning struct {
 	Message string
 }
 
-// candidateField pairs a TraceDraft field name with a function that reports
-// whether that field is blank.
+// candidateField pairs a field name with a blank-check predicate.
 type candidateField struct {
 	name    string
 	isBlank func(d schema.TraceDraft) bool
 }
 
-// candidateFields lists the six content fields that may be blank in a draft
-// and that the analyst should be invited to inspect if blank.
+// candidateFields lists the six content fields to inspect for blank values.
 var candidateFields = []candidateField{
 	{
 		name:    "what_changed",
@@ -61,8 +59,7 @@ var candidateFields = []candidateField{
 	},
 }
 
-// candidateMessages maps field name to an ANT-disciplined invitation message
-// used when the field is blank and not covered by IntentionallyBlank.
+// candidateMessages maps field name to an ANT-disciplined invitation message.
 var candidateMessages = map[string]string{
 	"what_changed": "what_changed is unregistered from this position — the nature of the change is in shadow",
 	"source":       "source is unregistered from this position — the origin of the trace is in shadow",
@@ -72,17 +69,10 @@ var candidateMessages = map[string]string{
 	"tags":         "tags are unregistered from this position — the descriptive frame is in shadow",
 }
 
-// DetectAmbiguities returns ambiguity warnings for d.
-//
-// It checks the six candidate content fields (what_changed, source, target,
-// mediation, observer, tags) for blank values when the field is not listed
-// in d.IntentionallyBlank. It also checks whether d.UncertaintyNote is set
-// without a corresponding d.CriterionRef (criterion_ref mismatch).
-//
-// Returns nil if no ambiguities are detected. Warnings are invitations to
-// inspect — not demands to correct. Language follows ANT discipline.
+// DetectAmbiguities returns ambiguity warnings for d. Checks six content fields
+// for unexplained blanks and criterion_ref/uncertainty_note mismatch.
+// Returns nil if no ambiguities detected.
 func DetectAmbiguities(d schema.TraceDraft) []AmbiguityWarning {
-	// Build a set of intentionally-blank field names for O(1) lookup.
 	intentional := make(map[string]bool, len(d.IntentionallyBlank))
 	for _, name := range d.IntentionallyBlank {
 		intentional[name] = true
@@ -90,7 +80,6 @@ func DetectAmbiguities(d schema.TraceDraft) []AmbiguityWarning {
 
 	var warnings []AmbiguityWarning
 
-	// Check each candidate content field: if blank and not intentional, warn.
 	for _, cf := range candidateFields {
 		if cf.isBlank(d) && !intentional[cf.name] {
 			warnings = append(warnings, AmbiguityWarning{
@@ -100,9 +89,7 @@ func DetectAmbiguities(d schema.TraceDraft) []AmbiguityWarning {
 		}
 	}
 
-	// Check for criterion_ref mismatch: an uncertainty_note without a
-	// criterion_ref means the interpretive frame is unnamed — the uncertainty
-	// is acknowledged but not anchored.
+	// uncertainty_note without criterion_ref: uncertainty acknowledged but not anchored.
 	if d.UncertaintyNote != "" && d.CriterionRef == "" {
 		warnings = append(warnings, AmbiguityWarning{
 			Field:   "criterion_ref mismatch",

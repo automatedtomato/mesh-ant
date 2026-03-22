@@ -43,7 +43,6 @@ import (
 //   - g.ID is empty (call IdentifyGraph first)
 //   - observer is empty (required by schema.Validate)
 func ArticulationTrace(g MeshGraph, observer string, source []string) (schema.Trace, error) {
-	// Fail fast — these errors would produce a trace that fails schema.Validate.
 	if g.ID == "" {
 		return schema.Trace{}, fmt.Errorf("graph.ArticulationTrace: graph has no ID; call IdentifyGraph first")
 	}
@@ -51,11 +50,8 @@ func ArticulationTrace(g MeshGraph, observer string, source []string) (schema.Tr
 		return schema.Trace{}, fmt.Errorf("graph.ArticulationTrace: observer must be non-empty")
 	}
 
-	// Derive what_changed from the Cut parameters. This describes the position
-	// from which the articulation was made, keeping the reflexive trace self-situated.
 	whatChanged := articulationWhatChanged(g.Cut)
 
-	// Copy source to avoid capturing caller-owned slice.
 	var sourceCopy []string
 	if len(source) > 0 {
 		sourceCopy = make([]string, len(source))
@@ -87,7 +83,6 @@ func ArticulationTrace(g MeshGraph, observer string, source []string) (schema.Tr
 // The produced trace always passes schema.Validate(). Returns an error if any
 // of d, g1, or g2 have an empty ID, or if observer is empty.
 func DiffTrace(d GraphDiff, g1, g2 MeshGraph, observer string) (schema.Trace, error) {
-	// Validate all required IDs and observer up-front for clear error messages.
 	if d.ID == "" {
 		return schema.Trace{}, fmt.Errorf("graph.DiffTrace: diff has no ID; call IdentifyDiff first")
 	}
@@ -116,16 +111,8 @@ func DiffTrace(d GraphDiff, g1, g2 MeshGraph, observer string) (schema.Trace, er
 	return tr, nil
 }
 
-// articulationWhatChanged derives a human-readable description of the cut for
-// use in an ArticulationTrace's WhatChanged field. The description is derived
-// from the Cut parameters so the reflexive trace is self-situated.
-//
-// Format:
-//   - observers set, no window:   "articulate: observer=[pos1, pos2]"
-//   - observers set, window set:  "articulate: observer=[pos1, pos2] window=START–END"
-//   - tags set:                   "articulate: observer=[pos1] tags=[delay, threshold]"
-//   - no observers, window set:   "articulate: window=START–END"
-//   - neither set (full cut):     "articulate: full cut"
+// articulationWhatChanged derives the WhatChanged string for an ArticulationTrace
+// from the cut parameters, keeping the reflexive trace self-situated.
 func articulationWhatChanged(c Cut) string {
 	var parts []string
 
@@ -155,27 +142,13 @@ func articulationWhatChanged(c Cut) string {
 	return "articulate: " + strings.Join(parts, " ")
 }
 
-// diffWhatChanged derives a human-readable description of the diff for use in a
-// DiffTrace's WhatChanged field. The format is directional: "from → to".
-//
-// Each side includes both observer positions and time window (when set), so
-// the WhatChanged field is self-situated along both dimensions. Without the
-// time window, two cuts that differ only temporally would produce identical
-// WhatChanged strings, implying the cuts are equivalent in character — a
-// violation of Principle 2 (articulation-first: every output names its position).
-//
-// Format:
-//   - observers set, no window:   "diff: [from-obs]→[to-obs]"
-//   - observers set, window set:  "diff: [from-obs window=START–END]→[to-obs window=START–END]"
-//   - no observers, window set:   "diff: [full cut window=START–END]→[full cut window=START–END]"
-//   - neither set (full cut):     "diff: [(full cut)]→[(full cut)]"
+// diffWhatChanged derives the WhatChanged string for a DiffTrace. Includes the
+// time window so cuts that differ only temporally produce distinct strings.
 func diffWhatChanged(from, to Cut) string {
 	return fmt.Sprintf("diff: [%s]\u2192[%s]", cutLabel(from), cutLabel(to))
 }
 
-// cutLabel builds the label for one side of a diff's WhatChanged string.
-// It includes observer positions, time window, and tag filter when set, so
-// the label is fully self-situated across all cut axes.
+// cutLabel builds a self-situated label for a Cut covering all three cut axes.
 func cutLabel(c Cut) string {
 	var parts []string
 
