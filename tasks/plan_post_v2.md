@@ -135,7 +135,7 @@ compatibility). Endpoints:
 - `GET /articulate?observer=X&from=T&to=T` → cut JSON (same schema as `--format json`)
 - `GET /diff?observer-a=X&observer-b=Y` → diff JSON
 - `GET /shadow?observer=X` → shadow JSON
-- `GET /traces` → full trace list (no cut applied — raw substrate view)
+- `GET /traces?observer=X` → trace list (observer required — the raw list is still a positioned cut)
 
 Every endpoint response includes cut metadata. No endpoint returns a "raw graph"
 without an observer position.
