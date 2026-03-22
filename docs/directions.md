@@ -30,9 +30,10 @@ distinct. Any future direction should preserve it.
 MeshAnt as a Go package and command-line tool. Static analysis: load traces, articulate,
 diff, export to JSON / DOT / Mermaid. The analyst is outside the mesh, using the tool.
 
-**Current target: v1.0.0**
+**Status: complete — v1.0.0 (2026-03-13), v2.0.0 (2026-03-22)**
 
-The foundation. Everything else builds on this.
+The foundation. v2.0.0 adds LLM-assisted ingestion (`extract`, `assist`, `critique`) while
+keeping the analytical engine intact.
 
 ---
 
@@ -53,12 +54,12 @@ primarily analytical — it helps you understand a network, not run one.
   directly. The LLM's transformations are still visible in the mesh (it appears as a
   mediator node, not a neutral extractor), but the boundary moves inside the tool.
 
-**Tentative: v2.0.0**
+**Status: complete — v2.0.0 (2026-03-22)**
 
-Requires the static analysis foundation to be complete and polished first:
-visualization path, shadow analysis operations, re-articulation, ingestion entrypoint
-(M11), anti-ontology critique pass (M11.5/M12). Do not rush here. An interactive layer
-on an incomplete foundation makes the gaps harder to fix.
+`meshant extract`, `meshant assist`, `meshant critique` call the LLM directly. The LLM
+is a mediator, not an extractor. Every LLM-produced draft carries model ID, session link,
+and a framework-appended uncertainty note. No LLM draft enters the mesh without a named
+analytical position. Full design: `docs/decisions/llm-boundary-v2.md`.
 
 ---
 
@@ -90,12 +91,16 @@ explicitly, or the rendering silently lies. MeshAnt's current JSON exports alrea
 carry this metadata; the work is in the adapter layer and in making the UI refuse to
 strip provenance.
 
-**Current status**: future-compatible boundary only. The existing `--format json`
-exports from `articulate` and `diff` already produce cut-aware output that could feed
-a future adapter. No implementation planned until the analytical core and ingestion
-entrypoint are more mature.
+**Status: next major target — post-v2.0.0**
 
-**Tentative: post-v2.0.0, or as a parallel track alongside v2.0.0.**
+Design confirmed (2026-03-22). Key decisions:
+- Storage backend: GraphDB (Neo4j-compatible) for scalability
+- Query model: Choice B hybrid — Go analytical engine unchanged; DB handles storage and pre-filtering; ANT logic stays in Go
+- Interactive surface: CLI commands + localhost Web UI (`meshant serve`); D3.js or Cytoscape.js frontend
+- Layer 3 discipline: every rendering carries cut metadata; shadow always named; provenance never stripped
+- "Actors act" simulation comes after this layer is established, not before
+
+Full plan: `tasks/plan_post_v2.md`
 
 ---
 
@@ -122,7 +127,10 @@ relational history, not free to act arbitrarily. Otherwise the simulation drifts
 network it emerged from. Getting that constraint right is the core methodological challenge
 of this direction — not the engineering.
 
-**Tentative: v3.0.0 or later. Do not plan this in detail now.**
+**Status: v3.0.0 or later. Do not plan this in detail now.**
+
+Depends on the ANT-like Knowledge Graph (Form 3) being established first — emerged
+actors need a persistent, queryable graph substrate to act within.
 
 ---
 
@@ -191,5 +199,6 @@ These are not opposed to the Layer 1/3 work. Deepening and extending proceed tog
 
 ---
 
-*Last updated: 2026-03-15. This is a note, not a spec. Supersedes `docs/potential-forms.md` (removed).*
-*2026-03-15 additions: Knowledge-graph-aware layered form (Form 3); LLM boundary layering in Form 2; based on `docs/reviews/graph_integration_note_14-mar-26.md` and `docs/reviews/llm_limit_14-mar-26.md`.*
+*Last updated: 2026-03-22. This is a note, not a spec. Supersedes `docs/potential-forms.md` (removed).*
+*2026-03-15 additions: Knowledge-graph-aware layered form (Form 3); LLM boundary layering in Form 2.*
+*2026-03-22 update: v1.0.0 and v2.0.0 complete; Form 3 confirmed as next major target; query model and storage decisions recorded.*

@@ -607,36 +607,31 @@ Informed by v1.0.0 review (`docs/reviews/release_v1_review_13-mar-26.md`) and ea
 review (`docs/reviews/review_12-mar-26.md`). These are directions, not a locked plan.
 Milestones will be cut when work begins.
 
-### Kernel deepening (Layer 2)
+### Kernel deepening (Layer 2) — COMPLETE
 
-These deepen the analytical core — deferred across earlier milestones:
+- [x] **Tag-filter cut axis** — third cut axis alongside observer and time-window (M10)
+- [x] **GraphDiff DOT / Mermaid export** — `PrintDiffDOT`, `PrintDiffMermaid` (M10)
+- [x] **Shadow analysis operations** — shadow summary, observer-gap report, shadow/gaps CLI subcommands (M13)
+- [x] **Re-articulation** — `meshant rearticulate` + `meshant lineage`; DerivedFrom chain; critique prompt template (M12)
 
-- [x] **Tag-filter cut axis** — third cut axis alongside observer and time-window (completed in M10)
-- [x] **GraphDiff DOT / Mermaid export** — `PrintDiffDOT`, `PrintDiffMermaid` (completed in M10)
-- [x] **Shadow analysis operations** — shadow summary, observer-gap report, shadow/gaps CLI subcommands (completed in M13)
-- [ ] **Re-articulation** — re-cutting the same dataset; showing how one articulation provokes another
-
-### Authoring support (Layer 1)
-
-The most important next frontier — the direct interface with the user:
+### Authoring support (Layer 1) — COMPLETE
 
 - [x] **TraceDraft schema** — `TraceDraft` type with source span, candidate fields, provenance chain (M11)
 - [x] **Ingestion entrypoint** — `meshant draft` + `meshant promote`; LLM-external boundary; ingestion contract (M11)
-- [x] **Anti-ontology critique pass** — re-articulation as second cut: same SourceSpan, alternative draft, DerivedFrom link; `meshant rearticulate` + `meshant lineage`; critique prompt template (M12)
-- [ ] **Interactive review CLI** — human-in-the-loop refinement; surfaces ambiguity, shows provenance chain; the interactive layer before promotion (M12+)
+- [x] **Anti-ontology critique pass** — re-articulation as second cut; `meshant rearticulate` + `meshant lineage` (M12)
+- [x] **Interactive review CLI** — `meshant review`; accept/edit/skip loop; ambiguity detection; provenance chain rendering (Thread A)
+- [x] **LLM-assisted ingestion** — `meshant extract`, `meshant assist`, `meshant critique`; SessionRecord; ANT-positioned boundary (Thread F, v2.0.0)
 
-### Interpretation support (Layer 3)
+### Interpretation support — COMPLETE
 
-How outputs become actionable:
-
-- [x] **Interpretive outputs (partial)** — observer-gap report and shadow summary completed in M13; bottleneck note, re-articulation suggestion, incident narrative draft remain
-- [ ] **More real-world examples** — validate authoring conventions and interpretation patterns across domains
+- [x] **Interpretive outputs** — shadow summary, observer-gap (M13); bottleneck note, re-articulation suggestion, narrative draft (Thread B)
+- [ ] **More real-world examples** — validate authoring conventions across domains (Thread D, open)
 
 ### Constraints
 
 - Do not hide the cut in the name of usability.
 - LLM integration enters as assisted authoring with visible uncertainty, not automated truth.
-- The project is still in formation. Keep directions open-ended and revisable.
+- Graph itself is always already a cut — this is a living design principle, not a configuration option.
 
 ---
 
@@ -676,13 +671,15 @@ Parent issue: #103
 - [x] **C.4 (#107) — Multi-analyst example dataset** — `data/examples/multi_analyst_drafts.json`; 10 TraceDraft records, 2 analyst positions, 5 shared+unique spans, 6 extraction-gap disagreements, 1 chain-diff classification divergence; `data/examples/multi_analyst_drafts_README.md` companion guide; PR #112 merged
 - [x] **C.5 (#108) — Decision record + docs** — `docs/decisions/multi-analyst-v1.md` (7 decisions + ANT tensions); codemap updated (run dispatcher entry); `tasks/todo.md` Thread C marked complete; parent #103 closed; PR #113 merged
 
-### Deferred Items
+### Deferred Items (from v2.0.0 and earlier)
 
-Items identified during review but deferred to future work:
-
-- **CLI code organization** — Architect review (C.3): `main.go` and `main_test.go` extraction candidate; trigger on next subcommand addition (current size ~2010 lines, tracking for future per-command file split)
-- **Slice equality helper naming** — Architect review (C.3): naming inconsistency (`slicesEqual`/`stringSlicesEqual`); clearer names deferred to next refactor-clean pass
-- **buildChain closure extraction** — Architect review (C.3): candidate for extraction if a second consumer appears in future work
+- [x] **CLI code organization** — resolved in Thread F Phase 0 (#116); `main.go` split into per-subcommand files
+- [ ] **Slice equality helper naming** — `slicesEqual`/`stringSlicesEqual` inconsistency; deferred to next refactor-clean pass
+- [ ] **buildChain closure extraction** — candidate if a second consumer appears
+- [ ] **`meshant split`** — LLM-assisted span splitting; standalone `SessionRecord`; deferred from Thread F
+- [ ] **Session records promotable to Traces** — `SessionRecord` already carries enough; deferred from Thread F
+- [ ] **`PromptHash` in `ExtractionConditions`** — content hash of prompt template for reproducibility; deferred from Thread F
+- [ ] **`ExtractionConditions` bifurcation** — extract vs. critique conditions may need distinct types; deferred from Thread F ant-theorist review
 
 ---
 
@@ -705,3 +702,34 @@ Parent issue: #115
 - [x] **F.4 (#120) — `meshant critique`** — `RunCritique`; `"critiqued"` stage; `filterReviewable` updated; `cmdCritique`; SourceSpan integrity hard check; partial-results semantics; DerivedFrom + ExtractionStage injection guards; 14 unit tests + 10 CLI tests; PR #128 merged to develop
 - [x] **F.5 (#121) — Real-world LLM-assisted extraction example** — `data/examples/llm_assisted_extraction/` (7 spans, open source governance domain); 3 analytical divergences documented (A: LLM more faithful, B: mediation correction, C: blockage→translation re-reading); 6 provenance validation tests; PR #129 merged to develop
 - [x] **F.6 (#122) — Decision record + docs + v2.0.0 release** — `docs/decisions/llm-boundary-v2.md` (9 decisions + 5 ANT tensions + deferred items); README v2.0.0 section; codemap updated; v2.0.0 tagged on main
+
+**Thread F complete** (2026-03-22) — per-thread pipeline: refactor-clean (SessionOutputPath removed, stale comments updated), philosophical review (ALIGNED WITH TENSIONS), docs updated, v2.0.0 tagged on main.
+
+---
+
+## Post-v2.0.0 — ANT-like Knowledge Graph
+
+**Full plan:** `tasks/plan_post_v2.md`
+**Status:** Planning phase (2026-03-22)
+
+Direction confirmed in design discussion (2026-03-22). The next major form is an ANT-like Knowledge Graph — persistent, queryable, interactive. "Actors act" simulation comes much later, after the graph substrate exists.
+
+### Immediate (deferred items + ingestion gaps)
+
+- [ ] **`meshant split`** — LLM-assisted span splitting; removes the biggest `assist` friction
+- [ ] **Session records → Traces** — a session is an observation act; closes the ANT reflexivity gap
+- [ ] **Multi-document ingestion** — `meshant extract` across several source documents in one session
+- [ ] **Non-text source adapters** — PDF, HTML, structured logs → text → existing LLM pipeline
+
+### Thread D — Real-World Datasets
+
+- [ ] **D.1** — software incident dataset (`data/examples/software_incident.json`)
+- [ ] **D.2** — multi-agent pipeline dataset (`data/examples/multi_agent_pipeline.json`)
+- [ ] **D.3** — policy/procurement dataset (`data/examples/policy_process.json`)
+
+### Form 3 — ANT-like Knowledge Graph
+
+- [ ] **Form 3 scoping document** — storage adapter contract, query model, Web UI shape, Layer 1/2/3 boundaries
+- [ ] **Layer 1 — Trace substrate** — GraphDB storage adapter (Neo4j-compatible); persistent traces; temporal indexing; provenance-preserving; Go analytical engine unchanged (Choice B hybrid)
+- [ ] **Layer 3 — Interactive graph output** — `meshant serve`; localhost Web UI (D3.js or Cytoscape.js); cut-first rendering; shadow explicit; provenance never stripped
+- [ ] **Thread D datasets** — showcase the full stack across multiple domains
