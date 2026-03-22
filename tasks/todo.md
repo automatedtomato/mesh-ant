@@ -85,13 +85,13 @@ Direction confirmed in design discussion (2026-03-22). The next major form is an
 ### Phase 1 — Deferred items and ingestion gaps (parent: #132)
 
 - [x] **#137 — `meshant split`** — LLM-assisted span splitting; removes the biggest `assist` friction
-- [ ] **#138 — Session records → Traces** — a session is an observation act; closes the ANT reflexivity gap
+- [x] **#138 — Session records → Traces** — a session is an observation act; closes the ANT reflexivity gap
 - [ ] **#139 — Multi-document ingestion** — `meshant extract` across several source documents in one session
 - [ ] **#140 — Non-text source adapters** — PDF, HTML, structured logs → text → existing LLM pipeline
 
 ### Phase 2 — Form 3 scoping document (parent: #133)
 
-- [ ] **#141 — KG scoping document** — storage adapter contract, query model, Web UI shape, Layer 1/2/3 boundaries
+- [x] **#141 — KG scoping document** — storage adapter contract, query model, Web UI shape, Layer 1/2/3 boundaries
 
 ### Phase 3 — Layer 1: Trace substrate (parent: #134)
 

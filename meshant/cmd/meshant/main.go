@@ -200,6 +200,8 @@ func run(w io.Writer, args []string) error {
 	case "split":
 		// nil client: real AnthropicClient from env; tests inject a mock.
 		return cmdSplit(w, nil, args[1:])
+	case "promote-session":
+		return cmdPromoteSession(w, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
@@ -229,7 +231,8 @@ Commands:
   extract         call LLM to produce TraceDraft records from a source document (flags: --source-doc, --source-doc-ref, --prompt-template, --model, --criterion-file, --output, --session-output)
   assist          interactively refine spans into TraceDraft records with LLM assistance (flags: --spans-file, --prompt-template, --model, --source-doc-ref, --criterion-file, --output, --session-output)
   critique        call LLM to produce "critiqued" derived drafts from existing TraceDrafts (flags: --input, --prompt-template, --model, --source-doc-ref, --criterion-file, --output, --session-output, --id)
-  split           call LLM to split a source document into observation spans (flags: --source-doc, --source-doc-ref, --prompt-template, --model, --output, --session-output)
+  split            call LLM to split a source document into observation spans (flags: --source-doc, --source-doc-ref, --prompt-template, --model, --output, --session-output)
+  promote-session  promote a SessionRecord to a canonical Trace (flags: --session-file, --observer, --output)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }

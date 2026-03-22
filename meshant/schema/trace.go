@@ -45,6 +45,11 @@ const (
 	// graph.DiffTrace are called. Supports reflexive tracing: the observation
 	// apparatus enters the mesh it observes.
 	TagValueArticulation TagValue = "articulation"
+
+	// TagValueSession marks a trace promoted from a SessionRecord — a record
+	// of an LLM session as an observation act. Closing the reflexivity gap:
+	// the framework observes the apparatus that observed the source material.
+	TagValueSession TagValue = "session"
 )
 
 // Trace is a record of something that made a difference in a network.
