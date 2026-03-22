@@ -91,7 +91,7 @@ Direction confirmed in design discussion (2026-03-22). The next major form is an
 
 ### Phase 2 — Form 3 scoping document (parent: #133)
 
-- [ ] **#141 — KG scoping document** — storage adapter contract, query model, Web UI shape, Layer 1/2/3 boundaries
+- [x] **#141 — KG scoping document** — storage adapter contract, query model, Web UI shape, Layer 1/2/3 boundaries
 
 ### Phase 3 — Layer 1: Trace substrate (parent: #134)
 
