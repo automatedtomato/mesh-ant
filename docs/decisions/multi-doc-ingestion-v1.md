@@ -117,3 +117,14 @@ document by examining `SourceDocRef` on each draft.
   as an API quota safeguard. Exceeding the cap returns an error before any LLM
   call. Large document sets within the cap will produce proportionally more LLM
   calls. The existing `maxSourceBytes` per-document cap still applies.
+- **Sequential processing**: Documents are processed sequentially in loop
+  order. This preserves the "processed in flag order" guarantee and keeps error
+  handling simple (fail-fast on the first failed document). Parallel LLM calls
+  would reduce wall-clock time for large batches but would complicate partial
+  failure semantics. Concurrency is a possible future optimisation if analysts
+  regularly hit the wall-clock ceiling on 20-document sessions.
+- **Multi-target promotion**: A promoted trace from a multi-document session
+  will have multiple entries in `Target` (one per source document ref).
+  Downstream consumers that assumed `len(Target) == 1` should not — the
+  schema treats `Target` as a slice throughout. This is analytically correct:
+  the session acted on multiple documents, so the trace should reflect that.
