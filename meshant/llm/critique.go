@@ -34,7 +34,7 @@ func RunCritique(ctx context.Context, client LLMClient, drafts []schema.TraceDra
 	rec := SessionRecord{
 		ID:         sessionID,
 		Command:    "critique",
-		InputPath:  opts.InputPath,
+		InputPaths: []string{opts.InputPath},
 		OutputPath: opts.OutputPath,
 		Timestamp:  now,
 	}
@@ -50,7 +50,7 @@ func RunCritique(ctx context.Context, client LLMClient, drafts []schema.TraceDra
 		PromptTemplate:     opts.PromptTemplatePath,
 		CriterionRef:       opts.CriterionRef,
 		SystemInstructions: systemInstructions,
-		SourceDocRef:       opts.SourceDocRef,
+		SourceDocRefs:      []string{opts.SourceDocRef},
 		Timestamp:          now,
 	}
 
@@ -190,12 +190,13 @@ stamp:
 
 	// Framework-assigned provenance (D2, D6). ExtractionStage left empty —
 	// RunCritique owns that value and sets it after the call (avoids two-step override).
+	// SourceDocRef is always overwritten unconditionally: an LLM-supplied value
+	// could carry a fabricated or cross-document ref, which is an injection risk
+	// in multi-doc sessions where differing refs are meaningful (see #139).
 	draft.ExtractedBy = modelID
 	draft.ExtractionStage = ""
 	draft.SessionRef = sessionID
-	if draft.SourceDocRef == "" {
-		draft.SourceDocRef = sourceDocRef
-	}
+	draft.SourceDocRef = sourceDocRef
 
 	// Append framework uncertainty note (D3); preserve any LLM-set note.
 	if draft.UncertaintyNote != "" {

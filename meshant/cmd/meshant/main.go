@@ -119,11 +119,13 @@ func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow,
 
 // outputWriter returns w when outputPath is empty, or creates and returns
 // a file at outputPath. The caller is responsible for closing the file.
+// Uses 0o600 permissions — consistent with writeSessionRecord — since output
+// files may contain LLM-extracted observations from sensitive source material.
 func outputWriter(w io.Writer, outputPath string) (io.Writer, error) {
 	if outputPath == "" {
 		return w, nil
 	}
-	f, err := os.Create(outputPath)
+	f, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create output file: %w", err)
 	}

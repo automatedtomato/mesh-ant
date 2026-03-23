@@ -17,13 +17,25 @@ import (
 // The API key is intentionally absent. Two runs with different keys but the
 // same conditions are analytically indistinguishable — the key is an
 // operational detail, not an analytical position.
+//
+// SourceDocRefs replaces the old SourceDocRef string to support multi-document
+// ingestion (#139). Single-doc sessions carry a one-element slice. The old
+// JSON key "source_doc_ref" is preserved via SourceDocRef for backward
+// compatibility with existing session files — both fields are read; new
+// session files write only SourceDocRefs.
 type ExtractionConditions struct {
 	ModelID            string    `json:"model_id"`
 	PromptTemplate     string    `json:"prompt_template"`
 	CriterionRef       string    `json:"criterion_ref,omitempty"`
 	SystemInstructions string    `json:"system_instructions"`
-	SourceDocRef       string    `json:"source_doc_ref"`
-	Timestamp          time.Time `json:"timestamp"`
+	// SourceDocRefs holds the reference strings for all source documents
+	// processed in this session. Single-doc sessions use a one-element slice.
+	SourceDocRefs []string `json:"source_doc_refs,omitempty"`
+	// SourceDocRef is the legacy single-document field, retained for backward
+	// compatibility with session files written before #139. New code writes
+	// SourceDocRefs and leaves this empty. Reading code checks both fields.
+	SourceDocRef string    `json:"source_doc_ref,omitempty"`
+	Timestamp    time.Time `json:"timestamp"`
 }
 
 // DraftDisposition records the reviewer's decision about a single draft within a session.
@@ -50,29 +62,43 @@ type DraftDisposition struct {
 // SessionRecord.ID is the SessionRef stamped on every draft produced in
 // the session, linking each draft back to the conditions under which it
 // was produced (FM4 from plan_thread_f.md).
+//
+// InputPaths replaces InputPath to support multi-document ingestion (#139).
+// Single-doc sessions carry a one-element slice. InputPath is retained for
+// backward compatibility with existing session files.
 type SessionRecord struct {
-	ID           string               `json:"id"`
-	Command      string               `json:"command"` // "extract", "assist", "critique", "split"
-	Conditions   ExtractionConditions `json:"conditions"`
+	ID      string               `json:"id"`
+	Command string               `json:"command"` // "extract", "assist", "critique", "split"
+	Conditions ExtractionConditions `json:"conditions"`
 	// DraftIDs holds the UUIDs of TraceDraft records produced in this session.
 	// Nil (serialized as null) is intentional for "split" sessions — spans are
 	// not TraceDraft records. Use DraftCount to determine span count for split.
-	DraftIDs     []string             `json:"draft_ids"`
-	Dispositions []DraftDisposition   `json:"dispositions,omitempty"`
-	InputPath    string               `json:"input_path"`
-	OutputPath   string               `json:"output_path"`
-	DraftCount   int                  `json:"draft_count"`
-	ErrorNote    string               `json:"error_note,omitempty"`
-	Timestamp    time.Time            `json:"timestamp"`
+	DraftIDs     []string           `json:"draft_ids"`
+	Dispositions []DraftDisposition `json:"dispositions,omitempty"`
+	// InputPaths holds the source document paths for all documents processed in
+	// this session. Single-doc sessions use a one-element slice.
+	InputPaths []string `json:"input_paths,omitempty"`
+	// InputPath is the legacy single-document field, retained for backward
+	// compatibility with session files written before #139. New code writes
+	// InputPaths and leaves this empty.
+	InputPath  string    `json:"input_path,omitempty"`
+	OutputPath string    `json:"output_path"`
+	DraftCount int       `json:"draft_count"`
+	ErrorNote  string    `json:"error_note,omitempty"`
+	Timestamp  time.Time `json:"timestamp"`
 }
 
 // ExtractionOptions configures a single RunExtraction call.
+//
+// InputPaths and SourceDocRefs support multi-document ingestion (#139).
+// For single-document ingestion, both slices must have exactly one element.
+// len(InputPaths) must equal len(SourceDocRefs); both must be >= 1.
 type ExtractionOptions struct {
 	ModelID            string
-	InputPath          string
+	InputPaths         []string // one or more source document paths
+	SourceDocRefs      []string // one provenance ref per document (parallel to InputPaths)
 	PromptTemplatePath string
 	CriterionRef       string
-	SourceDocRef       string
 	OutputPath         string
 }
 
