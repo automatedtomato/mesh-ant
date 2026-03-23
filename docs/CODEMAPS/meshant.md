@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-23 (#139: multi-document ingestion — `--source-doc` repeatable; `InputPaths`/`SourceDocRefs` plural fields; `extractSingleDoc` helper; `stringSlice` flag type; decision record `multi-doc-ingestion-v1.md`)
+**Last Updated:** 2026-03-23 (#140: non-text source adapters — new `adapter` package; `PDFAdapter`, `HTMLAdapter`, `JSONLogAdapter`; `meshant convert` subcommand; `--adapter` flag on `meshant extract`; `AdapterName` in `ExtractionConditions`; decision record `non-text-adapters-v1.md`)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -9,6 +9,7 @@
 
 | Package | Purpose |
 |---------|---------|
+| `adapter` | Format-conversion adapters: PDF, HTML, and JSONL → plain text. `Adapter` interface, `ConvertResult` struct, `ForName()` registry. Used by `cmd/meshant` for `meshant convert` and `meshant extract --adapter`. |
 | `schema` | Core trace types, graph-reference predicates, and validators. |
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
 | `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, bottleneck analysis, re-articulation suggestions, narrative drafts, export to JSON/DOT/Mermaid. |
@@ -16,7 +17,7 @@
 | `review` | Ambiguity detection, terminal rendering, and interactive accept/edit/skip/quit session for TraceDraft records (Thread A). Exports `DeriveAccepted`, `DeriveEdited`, `RunEditFlow` for reuse by `llm` (F.3). |
 | `llm` | LLM-mediated extraction, assist, critique, and split pipelines: `LLMClient` interface, `AnthropicClient`, `RunExtraction`, `RunAssistSession`, `ParseSpans`, `RunCritique`, `RunSplit`, `PromoteSession`, `SessionRecord`, and supporting types. Shared helpers (`readSourceDoc`, `isRefusal`) in `shared.go`. Enforces F.1 conventions (D1–D7): mediator framing, model-ID provenance, framework UncertaintyNote append, IntentionallyBlank validation (F.2, F.3, F.4, #137). `PromoteSession` closes the Principle 8 reflexivity gap: converts a SessionRecord to a canonical Trace (#138). Imports `review` (one-directional: `llm → review`) for derivation helpers and rendering in the assist session. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique`, `split`, `promote-session` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. `review` and `assist` are interactive subcommands (read from stdin). `extract` calls an LLM to produce TraceDraft records from a source document (F.2). `assist` presents one LLM candidate per span for accept/edit/skip/quit decisions (F.3). `critique` calls an LLM to produce derived "critiqued" drafts from existing TraceDrafts (F.4). `split` calls an LLM to split a source document into candidate observation spans (#137). `promote-session` promotes a SessionRecord to a canonical Trace, closing the Principle 8 reflexivity gap (#138). |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique`, `split`, `promote-session`, `convert` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. `review` and `assist` are interactive subcommands (read from stdin). `extract` calls an LLM to produce TraceDraft records from a source document (F.2); supports `--adapter` for format-conversion before extraction (#140). `assist` presents one LLM candidate per span for accept/edit/skip/quit decisions (F.3). `critique` calls an LLM to produce derived "critiqued" drafts from existing TraceDrafts (F.4). `split` calls an LLM to split a source document into candidate observation spans (#137). `promote-session` promotes a SessionRecord to a canonical Trace, closing the Principle 8 reflexivity gap (#138). `convert` converts a non-text source to plain text for inspection before extraction (#140). |
 
 ## Package: schema
 
@@ -91,6 +92,42 @@
 | `PrintExtractionGap` | `func PrintExtractionGap(w io.Writer, gap ExtractionGap) error` | Write human-readable extraction gap report to io.Writer. Names both analyst positions, three-way partition with SourceSpan lists, field disagreement block, shadow note (neither position is authoritative), non-authoritative disclaimer (C.2). |
 | `CompareChainClassifications` | `func CompareChainClassifications(chainA, chainB []DraftStepClassification) []ClassificationDiff` | Compare two classified chains by position (0-indexed step index). Returns classifications differing by Kind or Reason, up to min(len(chainA), lenB) steps. Returns non-nil empty slice when chains are identical (C.3). |
 | `PrintClassificationDiffs` | `func PrintClassificationDiffs(w io.Writer, analystA, analystB string, lenA, lenB int, diffs []ClassificationDiff) error` | Write human-readable classification diff report to io.Writer. Names both analyst positions, overall chain length context (lenA/lenB steps), per-diff lines (step position, Kind/Reason for each analyst, position note), footer caveat (neither position is authoritative, data-dependent heuristics) (C.3). |
+
+## Package: adapter
+
+### Files
+
+| File | Contains |
+|------|----------|
+| `adapter.go` | `Adapter` interface, `ConvertResult` struct, `ForName()` registry, `maxRawBytes` cap (10 MiB). |
+| `pdf.go` | `PDFAdapter` — pure-Go PDF extraction via `github.com/ledongthuc/pdf`; page-by-page; `Metadata["page_count"]`; `AdapterName: "pdf-extractor"`. |
+| `html.go` | `HTMLAdapter` — iterative HTML tokenizer via `golang.org/x/net/html`; skips script/style/noscript; block elements produce newlines; `AdapterName: "html-extractor"`. |
+| `jsonlog.go` | `JSONLogAdapter` — `bufio.Scanner` line-by-line; JSON objects rendered as "message (key=val, ...)"; non-JSON lines verbatim; `Metadata["line_count"]`; `AdapterName: "jsonlog-parser"`. |
+| `pdf_test.go`, `html_test.go`, `jsonlog_test.go` | Black-box tests (`package adapter_test`); testdata fixtures in `testdata/`; cover happy path, adapter name, metadata, size cap, file-not-found, format errors, `ForName` registry (#140). |
+
+### Types
+
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `ConvertResult` | `Text` (string), `AdapterName` (string), `Metadata` (map[string]string) | Output of a format-conversion adapter. `AdapterName` is set by the adapter itself (self-identifying mediator) and travels to the session record for provenance. |
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `ForName` | `func ForName(name string) (Adapter, error)` | Resolve adapter by explicit name ("pdf", "html", "jsonlog"). Returns descriptive error naming all known adapters on mismatch. |
+| `PDFAdapter.Convert` | `(a *PDFAdapter) Convert(path string) (ConvertResult, error)` | Stat → size cap → open → page-by-page text extraction → concatenate. Known limitation: complex multi-column or scanned PDFs may produce degraded text. |
+| `HTMLAdapter.Convert` | `(a *HTMLAdapter) Convert(path string) (ConvertResult, error)` | Stat → size cap → open → tokenizer-based text extraction with whitespace normalisation. |
+| `JSONLogAdapter.Convert` | `(a *JSONLogAdapter) Convert(path string) (ConvertResult, error)` | Stat → size cap → line-by-line scanner with JSON-aware formatting. |
+
+### Key Design Notes
+
+- **Named mediator**: Analyst explicitly names the adapter (`--adapter pdf`). No auto-detection by extension — the act of format translation is a visible, recorded decision.
+- **Self-identifying**: `ConvertResult.AdapterName` is set by the adapter, not the caller. The mediator names itself.
+- **Provenance chain**: `AdapterName` flows from `ConvertResult` → `ExtractionOptions.AdapterName` → `ExtractionConditions.AdapterName` (omitempty) → session record JSON.
+- **No circular deps**: `adapter` depends on no MeshAnt-internal packages; `llm` receives only the adapter name as a string.
+
+---
 
 ## Package: graph
 
@@ -342,7 +379,8 @@ None (persist carries no domain types; wraps graph types).
 | `cmd_review.go` | `cmdReview` subcommand handler — only interactive subcommand; accepts `in io.Reader` (A.5). |
 | `cmd_extraction_gap.go` | `cmdExtractionGap` subcommand handler (C.2). |
 | `cmd_chain_diff.go` | `cmdChainDiff` subcommand handler (C.3). |
-| `cmd_extract.go` | `cmdExtract` subcommand handler — `--source-doc` and `--source-doc-ref` are repeatable flags (multi-doc ingestion, #139) via `stringSlice` flag type; calls LLM via injected `llm.LLMClient`; writes TraceDraft JSON and SessionRecord JSON (0o600); session output defaulting: `<output>.session.json` (file mode) or `session_<timestamp>.json` in cwd (stdout mode) (F.2). Also houses `writeSessionRecord` shared by all LLM subcommands. |
+| `cmd_extract.go` | `cmdExtract` subcommand handler — `--source-doc` and `--source-doc-ref` are repeatable flags (multi-doc ingestion, #139) via `stringSlice` flag type; `--adapter` flag enables format-conversion before extraction (#140); adapter validated early (before any LLM call); converted text written to OS temp files (deferred removal); calls LLM via injected `llm.LLMClient`; writes TraceDraft JSON and SessionRecord JSON (0o600); session output defaulting: `<output>.session.json` (file mode) or `session_<timestamp>.json` in cwd (stdout mode) (F.2). Also houses `writeSessionRecord` shared by all LLM subcommands. |
+| `cmd_convert.go` | `cmdConvert` subcommand handler — `meshant convert` two-step workflow entry: convert non-text source to plain text, write to stdout or `--output`, print confirmation with adapter name and metadata. Flags: `--adapter` (required), `--source-doc` (required), `--output` (optional) (#140). |
 | `cmd_assist.go` | `cmdAssist` subcommand handler — interactive per-span LLM-assist session; reads spans file (capped at 4 MiB); accepts injected `llm.LLMClient`; reads user decisions from injected `io.Reader`; writes TraceDraft JSON and SessionRecord JSON on every code path (F.3). |
 | `cmd_critique.go` | `cmdCritique` subcommand handler — calls LLM via injected `llm.LLMClient`; reads input drafts file (capped at 4 MiB); writes critiqued TraceDraft JSON and SessionRecord JSON; session output defaulting: `<output>.session.json` (file mode) or not written (stdout mode, unless `--session-output` explicit) (F.4). |
 | `cmd_split.go` | `cmdSplit` subcommand handler — calls LLM via injected `llm.LLMClient`; writes candidate observation spans as JSON string array and SessionRecord JSON on every code path; session output defaulting mirrors extract; no `--criterion-file` (split is boundary detection only) (#137). |
@@ -367,7 +405,7 @@ None (persist carries no domain types; wraps graph types).
 | `parseTimeFlag` | `func parseTimeFlag(name, value string) (time.Time, error)` | Parse RFC3339 string to time.Time with contextual error message naming the flag. |
 | `parseTimeWindow` | `func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error)` | Parse two RFC3339 strings (one or both may be empty) into a TimeWindow. Validates only when both bounds are set. |
 | `main` | `func main()` | Entry point. Calls `run(os.Stdout, os.Args[1:])` and exits non-zero on error. |
-| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, `cmdExtractionGap()`, `cmdChainDiff()`, `cmdReview()`, `cmdExtract()`, `cmdAssist()`, `cmdCritique()`, or `cmdSplit()`. For `review` and `assist`, passes `os.Stdin`; for `extract`, `assist`, `critique`, and `split`, passes `nil` client (real client constructed from env). |
+| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, `cmdExtractionGap()`, `cmdChainDiff()`, `cmdReview()`, `cmdExtract()`, `cmdAssist()`, `cmdCritique()`, `cmdSplit()`, `cmdPromoteSession()`, or `cmdConvert()`. For `review` and `assist`, passes `os.Stdin`; for `extract`, `assist`, `critique`, and `split`, passes `nil` client (real client constructed from env). |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
 | `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. Optional `--narrative` flag appends a positioned narrative draft (text format only, skipped for JSON/DOT/Mermaid). |
@@ -396,7 +434,7 @@ None (persist carries no domain types; wraps graph types).
 
 ### Key Design Notes
 
-- **Stdlib only**: No external dependencies; uses only Go standard library (`flag`, `time`, `io`, `fmt`, `errors`, etc.)
+- **External dependencies**: `cmd/meshant` imports `adapter` which uses `github.com/ledongthuc/pdf` (pure Go, no CGo) and `golang.org/x/net/html` for format-conversion. All other packages use stdlib only.
 - **Testable structure**: Core logic in `run()`, `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`; `main()` is thin wrapper that wires os.Stdout/os.Args and exits non-zero on error
 - **Flag parsing**: Uses stdlib `flag.FlagSet` for subcommand isolation; `stringSliceFlag` enables repeatable `--observer` flags without comma-separation
 - **Time handling**: RFC3339 timestamps throughout; `parseTimeFlag()` and `parseTimeWindow()` provide clear error messages with formatting hints
