@@ -153,12 +153,18 @@ func (s *JSONFileStore) Close() error {
 // loadOrEmpty calls loader.Load but converts a "file not found" error into
 // an empty slice. All other errors (malformed JSON, validation failure) are
 // returned as-is.
+//
+// Coupling note: the os.ErrNotExist check relies on loader.Load wrapping the
+// os.Open error with %w (see loader/loader.go). If loader.Load ever changes
+// to use fmt.Errorf without %w at that layer, this check will silently stop
+// working and a missing file will be returned as an error instead of an empty
+// slice. The test TestQuery_FileDoesNotExist_ReturnsEmptySlice guards this.
 func (s *JSONFileStore) loadOrEmpty() ([]schema.Trace, error) {
 	traces, err := loader.Load(s.path)
 	if err == nil {
 		return traces, nil
 	}
-	// Treat missing file as empty dataset.
+	// Treat missing file as empty dataset (not an error condition for a store).
 	if errors.Is(err, os.ErrNotExist) {
 		return []schema.Trace{}, nil
 	}
@@ -214,11 +220,19 @@ func (s *JSONFileStore) writeAtomic(traces []schema.Trace) error {
 	}
 	tmpPath := tmp.Name()
 
-	// Write data; close and clean up on any error before the rename.
+	// Write data; fsync before close to ensure the data reaches stable storage
+	// before the rename. Without fsync, close(2) does not guarantee dirty pages
+	// are flushed — the rename could succeed while the data remains in the page
+	// cache, corrupting the file on a crash.
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)
 		return fmt.Errorf("store: write temp file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("store: sync temp file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpPath)
