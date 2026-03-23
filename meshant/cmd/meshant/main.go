@@ -246,6 +246,8 @@ func run(w io.Writer, args []string) error {
 		// nil store: a real TraceStore is constructed from --db at runtime;
 		// tests inject a pre-built store.
 		return cmdStore(w, nil, args[1:])
+	case "serve":
+		return cmdServe(w, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
@@ -279,6 +281,7 @@ Commands:
   promote-session  promote a SessionRecord to a canonical Trace (flags: --session-file, --observer, --output)
   convert          convert a non-text source to plain text (flags: --adapter, --source-doc, --output)
   store            load traces from JSON and write to database (flags: --db)
+  serve            start a localhost HTTP server with analytical endpoints (flags: --db, --port)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }
