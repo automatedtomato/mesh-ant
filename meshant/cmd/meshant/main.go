@@ -204,6 +204,8 @@ func run(w io.Writer, args []string) error {
 		return cmdSplit(w, nil, args[1:])
 	case "promote-session":
 		return cmdPromoteSession(w, args[1:])
+	case "convert":
+		return cmdConvert(w, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
@@ -235,6 +237,7 @@ Commands:
   critique        call LLM to produce "critiqued" derived drafts from existing TraceDrafts (flags: --input, --prompt-template, --model, --source-doc-ref, --criterion-file, --output, --session-output, --id)
   split            call LLM to split a source document into observation spans (flags: --source-doc, --source-doc-ref, --prompt-template, --model, --output, --session-output)
   promote-session  promote a SessionRecord to a canonical Trace (flags: --session-file, --observer, --output)
+  convert          convert a non-text source to plain text (flags: --adapter, --source-doc, --output)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }
