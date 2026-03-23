@@ -175,5 +175,5 @@ Modified:
 - [x] Graceful shutdown on SIGINT/SIGTERM
 - [x] `go test ./...` passes, `go vet ./...` clean
 - [x] 82.3% test coverage on `meshant/serve` package (≥ 80%)
-- [x] ANT tensions documented (T1–T4)
+- [x] ANT tensions documented (T1–T5)
 - [x] Decision record committed
