@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/automatedtomato/mesh-ant/meshant/adapter"
 	"github.com/automatedtomato/mesh-ant/meshant/llm"
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
 )
@@ -86,8 +87,22 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 	var sessionOutputPath string
 	fs.StringVar(&sessionOutputPath, "session-output", "", "write SessionRecord JSON to file (see default rules)")
 
+	var adapterName string
+	fs.StringVar(&adapterName, "adapter", "", "format-conversion adapter to run before extraction: pdf, html, jsonlog (optional)")
+
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	// Validate adapter name early — before any LLM calls — so unknown adapters
+	// fail fast without wasting API quota or writing misleading session files.
+	var sourceAdapter adapter.Adapter
+	if adapterName != "" {
+		a, err := adapter.ForName(adapterName)
+		if err != nil {
+			return fmt.Errorf("extract: %w", err)
+		}
+		sourceAdapter = a
 	}
 
 	// Validate: at least one source document is required.
@@ -127,6 +142,40 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 		criterionRef = c.Name
 	}
 
+	// If an adapter was specified, convert each source document to plain text
+	// and replace the source doc paths with the converted temp files.
+	// Temp files are created with a recognisable prefix and removed on return.
+	var convertedAdapterName string
+	if sourceAdapter != nil {
+		converted := make(stringSlice, len(sourceDocs))
+		var tempFiles []string
+		defer func() {
+			for _, f := range tempFiles {
+				os.Remove(f)
+			}
+		}()
+		for i, srcPath := range sourceDocs {
+			result, err := sourceAdapter.Convert(srcPath)
+			if err != nil {
+				return fmt.Errorf("extract: adapter convert %q: %w", srcPath, err)
+			}
+			// Write converted text to a temp file for the extraction pipeline.
+			tmp, err := os.CreateTemp("", "meshant-convert-*.txt")
+			if err != nil {
+				return fmt.Errorf("extract: create temp file: %w", err)
+			}
+			tempFiles = append(tempFiles, tmp.Name())
+			if _, err := tmp.WriteString(result.Text); err != nil {
+				tmp.Close()
+				return fmt.Errorf("extract: write temp file: %w", err)
+			}
+			tmp.Close()
+			converted[i] = tmp.Name()
+			convertedAdapterName = result.AdapterName
+		}
+		sourceDocs = converted
+	}
+
 	if client == nil {
 		c, err := llm.NewAnthropicClient(modelID)
 		if err != nil {
@@ -142,6 +191,7 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 		PromptTemplatePath: promptTemplate,
 		CriterionRef:       criterionRef,
 		OutputPath:         outputPath,
+		AdapterName:        convertedAdapterName,
 	}
 
 	drafts, rec, err := llm.RunExtraction(context.Background(), client, opts)

@@ -722,3 +722,71 @@ func TestCmdExtract_MultiDoc_SourceDocRef_DefaultsToPath(t *testing.T) {
 		t.Errorf("draft[1].SourceDocRef: want path %q, got %q", src1, drafts[1].SourceDocRef)
 	}
 }
+
+// TestCmdExtract_Adapter_HTML verifies that --adapter html converts the source
+// HTML file to text before extraction, and that the session record carries
+// adapter_name so the mediating act is visible in provenance.
+func TestCmdExtract_Adapter_HTML(t *testing.T) {
+	// Write an HTML source file (not a plain .md file).
+	dir := t.TempDir()
+	htmlPath := filepath.Join(dir, "source.html")
+	htmlContent := `<html><body><h1>Incident</h1><p>The service failed at 09:00.</p></body></html>`
+	if err := os.WriteFile(htmlPath, []byte(htmlContent), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	prompt := writeExtractPromptTemplate(t)
+	outputPath := filepath.Join(dir, "drafts.json")
+	sessionPath := filepath.Join(dir, "session.json")
+
+	// Mock client returns one draft.
+	const draft = `[{"source_span": "service failed at 09:00", "what_changed": "service failure"}]`
+	client := &extractMockClient{response: draft}
+
+	var buf bytes.Buffer
+	err := cmdExtract(&buf, client, []string{
+		"--adapter", "html",
+		"--source-doc", htmlPath,
+		"--source-doc-ref", "incident-report",
+		"--prompt-template", prompt,
+		"--output", outputPath,
+		"--session-output", sessionPath,
+	})
+	if err != nil {
+		t.Fatalf("cmdExtract() with --adapter html: want no error, got: %v", err)
+	}
+
+	// Session file must carry adapter_name so the conversion act is recorded.
+	data, readErr := os.ReadFile(sessionPath)
+	if readErr != nil {
+		t.Fatalf("session file not written: %v", readErr)
+	}
+	var rec llm.SessionRecord
+	if jsonErr := json.Unmarshal(data, &rec); jsonErr != nil {
+		t.Fatalf("session file not valid JSON: %v", jsonErr)
+	}
+	if rec.Conditions.AdapterName != "html-extractor" {
+		t.Errorf("session.Conditions.AdapterName: want %q, got %q", "html-extractor", rec.Conditions.AdapterName)
+	}
+}
+
+// TestCmdExtract_UnknownAdapter verifies that an unrecognised --adapter value
+// returns an error before any LLM call.
+func TestCmdExtract_UnknownAdapter(t *testing.T) {
+	src := writeExtractSourceDoc(t, "some content")
+	prompt := writeExtractPromptTemplate(t)
+	client := &extractMockClient{response: "[]"}
+
+	var buf bytes.Buffer
+	err := cmdExtract(&buf, client, []string{
+		"--adapter", "nosuchformat",
+		"--source-doc", src,
+		"--prompt-template", prompt,
+	})
+	if err == nil {
+		t.Fatal("cmdExtract() with unknown adapter: want error, got nil")
+	}
+	if client.calls != 0 {
+		t.Errorf("LLM was called %d times; should be 0 for unknown adapter", client.calls)
+	}
+}

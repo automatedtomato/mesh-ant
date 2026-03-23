@@ -86,6 +86,7 @@ func RunExtraction(ctx context.Context, client LLMClient, opts ExtractionOptions
 		CriterionRef:       opts.CriterionRef,
 		SystemInstructions: systemInstructions,
 		SourceDocRefs:      opts.SourceDocRefs,
+		AdapterName:        opts.AdapterName,
 		Timestamp:          now,
 	}
 

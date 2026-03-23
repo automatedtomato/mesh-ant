@@ -1,0 +1,3 @@
+2026-03-23T09:00:00Z ERROR database connection exhausted
+2026-03-23T09:01:00Z INFO  restarting connection pool
+2026-03-23T09:05:00Z INFO  service recovered

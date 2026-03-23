@@ -35,7 +35,12 @@ type ExtractionConditions struct {
 	// compatibility with session files written before #139. New code writes
 	// SourceDocRefs and leaves this empty. Reading code checks both fields.
 	SourceDocRef string    `json:"source_doc_ref,omitempty"`
-	Timestamp    time.Time `json:"timestamp"`
+	// AdapterName is the name of the format-conversion adapter used before LLM
+	// extraction, e.g. "pdf-extractor" or "html-extractor" (#140). Empty when
+	// no adapter was used (plain-text source). This field names the mediating
+	// act of format conversion so it is visible in the session provenance.
+	AdapterName string    `json:"adapter_name,omitempty"`
+	Timestamp   time.Time `json:"timestamp"`
 }
 
 // DraftDisposition records the reviewer's decision about a single draft within a session.
@@ -100,6 +105,10 @@ type ExtractionOptions struct {
 	PromptTemplatePath string
 	CriterionRef       string
 	OutputPath         string
+	// AdapterName is the name of the format-conversion adapter applied to source
+	// documents before extraction (#140). Empty for plain-text sources. When set,
+	// it is recorded in ExtractionConditions.AdapterName on the session record.
+	AdapterName string
 }
 
 // AssistOptions configures a single RunAssistSession call.
