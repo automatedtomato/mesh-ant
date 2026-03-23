@@ -657,6 +657,14 @@ func TestRunExtraction_MultiDoc_SecondDocFails(t *testing.T) {
 	if rec.ErrorNote == "" {
 		t.Error("rec.ErrorNote must be set when a document fails")
 	}
+	// Partial drafts from the first doc must be recorded in the session so the
+	// provenance record reflects what was actually produced before the failure.
+	if rec.DraftCount != 1 {
+		t.Errorf("rec.DraftCount: want 1 (first doc succeeded), got %d", rec.DraftCount)
+	}
+	if len(rec.DraftIDs) != 1 {
+		t.Errorf("len(rec.DraftIDs): want 1, got %d", len(rec.DraftIDs))
+	}
 }
 
 // TestRunExtraction_MultiDoc_MismatchedLengths verifies that providing
@@ -749,6 +757,42 @@ func TestRunExtraction_MultiDoc_MaxDocsPerSession(t *testing.T) {
 	}
 	if client.calls != 0 {
 		t.Errorf("LLM was called %d times; should be 0 for cap violation", client.calls)
+	}
+}
+
+// TestRunExtraction_MultiDoc_ExactlyAtCap verifies that exactly maxDocsPerSession
+// documents succeeds — boundary correctness for the off-by-one case.
+func TestRunExtraction_MultiDoc_ExactlyAtCap(t *testing.T) {
+	prompt := writePromptTemplate(t)
+
+	// Build maxDocsPerSession (20) paths and refs — right at the cap boundary.
+	const count = 20
+	paths := make([]string, count)
+	refs := make([]string, count)
+	responses := make([]string, count)
+	for i := range paths {
+		paths[i] = writeSourceDoc(t, fmt.Sprintf("doc content %d", i))
+		refs[i] = fmt.Sprintf("doc-ref-%d", i)
+		responses[i] = fmt.Sprintf(`[{"source_span": "doc content %d", "what_changed": "c%d"}]`, i, i)
+	}
+
+	client := &mockClient{responses: responses, errs: make([]error, count)}
+	opts := llm.ExtractionOptions{
+		ModelID:            "claude-sonnet-4-6",
+		InputPaths:         paths,
+		SourceDocRefs:      refs,
+		PromptTemplatePath: prompt,
+	}
+
+	drafts, rec, err := llm.RunExtraction(context.Background(), client, opts)
+	if err != nil {
+		t.Fatalf("RunExtraction() with exactly %d docs: want no error, got: %v", count, err)
+	}
+	if len(drafts) != count {
+		t.Errorf("want %d drafts, got %d", count, len(drafts))
+	}
+	if rec.DraftCount != count {
+		t.Errorf("rec.DraftCount: want %d, got %d", count, rec.DraftCount)
 	}
 }
 

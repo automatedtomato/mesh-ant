@@ -629,6 +629,54 @@ func TestCmdExtract_MultiDoc_MismatchedRefCount(t *testing.T) {
 	if err == nil {
 		t.Fatal("cmdExtract() with mismatched --source-doc-ref count: want error, got nil")
 	}
+	// Validation must fail before any LLM call is made.
+	if client.calls != 0 {
+		t.Errorf("LLM was called %d times; should be 0 for flag-count validation error", client.calls)
+	}
+}
+
+// TestCmdExtract_MultiDoc_PartialFailure verifies that when the second document
+// fails the LLM call, cmdExtract returns an error AND the session file is still
+// written with ErrorNote and partial DraftCount populated.
+func TestCmdExtract_MultiDoc_PartialFailure(t *testing.T) {
+	src0 := writeExtractSourceDoc(t, "First document.")
+	src1 := writeExtractSourceDoc(t, "Second document.")
+	prompt := writeExtractPromptTemplate(t)
+	dir := t.TempDir()
+	sessionPath := filepath.Join(dir, "session.json")
+
+	// First call succeeds; second exhausts responses and falls through to err.
+	client := &extractMockClient{
+		responses: []string{`[{"source_span": "First document.", "what_changed": "c0"}]`},
+		err:       errors.New("network timeout on second doc"),
+	}
+
+	var buf bytes.Buffer
+	err := cmdExtract(&buf, client, []string{
+		"--source-doc", src0,
+		"--source-doc", src1,
+		"--prompt-template", prompt,
+		"--session-output", sessionPath,
+	})
+	if err == nil {
+		t.Fatal("cmdExtract() partial failure: want error, got nil")
+	}
+
+	// Session file must exist and carry ErrorNote + partial DraftCount.
+	data, readErr := os.ReadFile(sessionPath)
+	if readErr != nil {
+		t.Fatalf("session file not written on partial failure: %v", readErr)
+	}
+	var rec llm.SessionRecord
+	if jsonErr := json.Unmarshal(data, &rec); jsonErr != nil {
+		t.Fatalf("session file is not valid JSON: %v", jsonErr)
+	}
+	if rec.ErrorNote == "" {
+		t.Error("session file: ErrorNote must be set on partial failure")
+	}
+	if rec.DraftCount != 1 {
+		t.Errorf("session file: DraftCount want 1 (first doc succeeded), got %d", rec.DraftCount)
+	}
 }
 
 // TestCmdExtract_MultiDoc_SourceDocRef_DefaultsToPath verifies that when

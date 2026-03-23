@@ -107,6 +107,7 @@ document by examining `SourceDocRef` on each draft.
 - **Order sensitivity**: Documents are processed in flag order. LLM output may
   vary if order is changed (same documents, different order = different session).
   This is consistent with MeshAnt's situated-reading stance.
-- **Session size**: There is no cap on the number of documents per session.
-  Large document sets will produce proportionally more LLM calls. The existing
-  `maxSourceBytes` per-document cap still applies.
+- **Session size**: A session is capped at `maxDocsPerSession = 20` documents
+  as an API quota safeguard. Exceeding the cap returns an error before any LLM
+  call. Large document sets within the cap will produce proportionally more LLM
+  calls. The existing `maxSourceBytes` per-document cap still applies.

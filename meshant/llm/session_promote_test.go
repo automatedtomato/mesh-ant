@@ -287,6 +287,13 @@ func TestPromoteSession_multiDocSourceDocRefs(t *testing.T) {
 			t.Errorf("Target: want %q in %v", wantRef, tr.Target)
 		}
 	}
+
+	// WhatChanged must surface all source doc refs so the act is human-readable.
+	for _, wantRef := range rec.Conditions.SourceDocRefs {
+		if !strings.Contains(tr.WhatChanged, wantRef) {
+			t.Errorf("WhatChanged %q: want ref %q mentioned", tr.WhatChanged, wantRef)
+		}
+	}
 }
 
 // TestPromoteSession_SourceDocRefsPriorityOverLegacy verifies that when both
