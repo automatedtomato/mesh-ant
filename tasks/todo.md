@@ -101,7 +101,7 @@ shared.go, stripPreamble extracted); ant-theorist (ALIGNED WITH TENSIONS); docs 
 
 - [x] **#142 — DB adapter interface** — `TraceStore` interface in `meshant/store`; `JSONFileStore` implements it; `QueryOpts` with Observer/TimeWindow/Tags/Limit; 86.4% coverage; PR #157
 - [x] **#143 — Neo4j adapter** — `Neo4jStore` + `Neo4jConfig`; `neo4j_store.go` + `neo4j_cypher.go`; build tag `neo4j`; MERGE/FOREACH Cypher; RFC3339Nano timestamps; integration tests behind same tag; 4 ANT tensions documented; decision record `neo4j-adapter-v1.md`
-- [ ] **#144 — `meshant store` + `--db` flag** — ingest JSON to DB; `--db` flag on all analytical commands
+- [x] **#144 — `meshant store` + `--db` flag** — `meshant store` reads JSON → writes to DB via TraceStore; `--db` flag on `articulate`, `diff`, `shadow`, `gaps`, `follow`, `bottleneck`; `loadTraces` shared helper; `db_factory.go`/`db_factory_neo4j.go` build-tag factory; no pre-filtering (full substrate preserved for ANT correctness); decision record `store-cli-v1.md`
 
 ### Phase 4 — Layer 3: Interactive graph output (parent: #135)
 
