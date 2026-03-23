@@ -12,6 +12,7 @@ package store_test
 import (
 	"context"
 	"os"
+	"sort"
 	"testing"
 	"time"
 
@@ -90,6 +91,27 @@ func neo4jClearDB(t *testing.T, url, user, pass string) {
 	}); err != nil {
 		t.Fatalf("neo4jClearDB: delete all: %v", err)
 	}
+}
+
+// sortedStringSlicesEqual reports whether two string slices contain the same
+// elements, regardless of order. Used for Source, Target, and Tags comparisons
+// because Neo4j's collect(DISTINCT) does not guarantee return order.
+func sortedStringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	ac := make([]string, len(a))
+	bc := make([]string, len(b))
+	copy(ac, a)
+	copy(bc, b)
+	sort.Strings(ac)
+	sort.Strings(bc)
+	for i := range ac {
+		if ac[i] != bc[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // --- Interface compliance ---
@@ -534,7 +556,10 @@ func TestNeo4jStore_EmptySlice_NoWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Store empty slice: want no error, got %v", err)
 	}
-	all, _ := s.Query(context.Background(), store.QueryOpts{})
+	all, err2 := s.Query(context.Background(), store.QueryOpts{})
+	if err2 != nil {
+		t.Fatalf("Query after empty store: %v", err2)
+	}
 	if len(all) != 0 {
 		t.Errorf("want 0 traces after empty store, got %d", len(all))
 	}
@@ -629,14 +654,15 @@ func TestNeo4jStore_RoundTrip_AllFields(t *testing.T) {
 	if got.Mediation != tr.Mediation {
 		t.Errorf("Mediation: want %q, got %q", tr.Mediation, got.Mediation)
 	}
-	if len(got.Source) != len(tr.Source) {
-		t.Errorf("Source len: want %d, got %d", len(tr.Source), len(got.Source))
+	// collect(DISTINCT) order is non-deterministic; compare sorted.
+	if !sortedStringSlicesEqual(got.Source, tr.Source) {
+		t.Errorf("Source: want %v, got %v", tr.Source, got.Source)
 	}
-	if len(got.Target) != len(tr.Target) {
-		t.Errorf("Target len: want %d, got %d", len(tr.Target), len(got.Target))
+	if !sortedStringSlicesEqual(got.Target, tr.Target) {
+		t.Errorf("Target: want %v, got %v", tr.Target, got.Target)
 	}
-	if len(got.Tags) != len(tr.Tags) {
-		t.Errorf("Tags len: want %d, got %d", len(tr.Tags), len(got.Tags))
+	if !sortedStringSlicesEqual(got.Tags, tr.Tags) {
+		t.Errorf("Tags: want %v, got %v", tr.Tags, got.Tags)
 	}
 }
 
@@ -723,8 +749,8 @@ func TestNeo4jStore_RelationshipDirections(t *testing.T) {
 	s := neo4jTestStore(t)
 
 	tr := validTrace("00000000-0000-0000-0000-000000000001", "directed relationship test")
-	tr.Source = []string{"source-actor"}
-	tr.Target = []string{"target-actor"}
+	tr.Source = []string{"source-element"}
+	tr.Target = []string{"target-element"}
 	if err := s.Store(context.Background(), []schema.Trace{tr}); err != nil {
 		t.Fatalf("Store: %v", err)
 	}
@@ -741,7 +767,7 @@ func TestNeo4jStore_RelationshipDirections(t *testing.T) {
 	// Verify SOURCE_OF direction: Element → Trace.
 	sourceResult, err := sess.ExecuteRead(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		res, err := tx.Run(ctx,
-			"MATCH (e:Element {name: 'source-actor'})-[:SOURCE_OF]->(t:Trace {id: $id}) RETURN count(t) AS cnt",
+			"MATCH (e:Element {name: 'source-element'})-[:SOURCE_OF]->(t:Trace {id: $id}) RETURN count(t) AS cnt",
 			map[string]any{"id": tr.ID})
 		if err != nil {
 			return nil, err
@@ -763,7 +789,7 @@ func TestNeo4jStore_RelationshipDirections(t *testing.T) {
 	// Verify TARGETS direction: Trace → Element.
 	targetResult, err := sess.ExecuteRead(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		res, err := tx.Run(ctx,
-			"MATCH (t:Trace {id: $id})-[:TARGETS]->(e:Element {name: 'target-actor'}) RETURN count(e) AS cnt",
+			"MATCH (t:Trace {id: $id})-[:TARGETS]->(e:Element {name: 'target-element'}) RETURN count(e) AS cnt",
 			map[string]any{"id": tr.ID})
 		if err != nil {
 			return nil, err
@@ -780,5 +806,225 @@ func TestNeo4jStore_RelationshipDirections(t *testing.T) {
 	}
 	if c, _ := targetResult.(int64); c != 1 {
 		t.Errorf("TARGETS: want Trace→Element, direction wrong (count=%d)", c)
+	}
+}
+
+// --- Query: combined filters (AND across multiple opts fields) ---
+
+func TestNeo4jQuery_ObserverAndWindow_AND(t *testing.T) {
+	s := neo4jTestStore(t)
+	day1, day2, day3 := baseTime, baseTime.Add(24*time.Hour), baseTime.Add(48*time.Hour)
+	traces := []schema.Trace{
+		validTraceWithObserver("00000000-0000-0000-0000-000000000001", "a", "observer/alpha"),
+		func() schema.Trace {
+			tr := validTraceWithObserver("00000000-0000-0000-0000-000000000002", "b", "observer/alpha")
+			tr.Timestamp = day2
+			return tr
+		}(),
+		func() schema.Trace {
+			tr := validTraceWithObserver("00000000-0000-0000-0000-000000000003", "c", "observer/beta")
+			tr.Timestamp = day2
+			return tr
+		}(),
+		func() schema.Trace {
+			tr := validTraceWithObserver("00000000-0000-0000-0000-000000000004", "d", "observer/alpha")
+			tr.Timestamp = day3
+			return tr
+		}(),
+	}
+	_ = day1 // not used in filter
+	if err := s.Store(context.Background(), traces); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	got, err := s.Query(context.Background(), store.QueryOpts{
+		Observer: "observer/alpha",
+		Window:   graph.TimeWindow{Start: day2, End: day2},
+	})
+	if err != nil {
+		t.Fatalf("Query() observer+window: %v", err)
+	}
+	// Only trace 2: observer/alpha AND in day2 window.
+	if len(got) != 1 {
+		t.Errorf("want 1 trace (observer/alpha, day2), got %d", len(got))
+	}
+}
+
+func TestNeo4jQuery_ObserverAndTags_AND(t *testing.T) {
+	s := neo4jTestStore(t)
+	traces := []schema.Trace{
+		// Matches both filters.
+		func() schema.Trace {
+			tr := validTraceWithObserver("00000000-0000-0000-0000-000000000001", "a", "observer/alpha")
+			tr.Tags = []string{"delay"}
+			return tr
+		}(),
+		// Wrong observer.
+		func() schema.Trace {
+			tr := validTraceWithObserver("00000000-0000-0000-0000-000000000002", "b", "observer/beta")
+			tr.Tags = []string{"delay"}
+			return tr
+		}(),
+		// Correct observer, wrong tag.
+		func() schema.Trace {
+			tr := validTraceWithObserver("00000000-0000-0000-0000-000000000003", "c", "observer/alpha")
+			tr.Tags = []string{"blockage"}
+			return tr
+		}(),
+	}
+	if err := s.Store(context.Background(), traces); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	got, err := s.Query(context.Background(), store.QueryOpts{
+		Observer: "observer/alpha",
+		Tags:     []string{"delay"},
+	})
+	if err != nil {
+		t.Fatalf("Query() observer+tags: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("want 1 trace (observer/alpha AND delay tag), got %d", len(got))
+	}
+}
+
+func TestNeo4jQuery_AllFilters_AND(t *testing.T) {
+	s := neo4jTestStore(t)
+	day2 := baseTime.Add(24 * time.Hour)
+	traces := []schema.Trace{
+		// Matches all filters.
+		func() schema.Trace {
+			tr := validTraceWithObserver("00000000-0000-0000-0000-000000000001", "match", "observer/alpha")
+			tr.Timestamp = day2
+			tr.Tags = []string{"delay"}
+			return tr
+		}(),
+		// Wrong observer.
+		func() schema.Trace {
+			tr := validTraceWithObserver("00000000-0000-0000-0000-000000000002", "b", "observer/beta")
+			tr.Timestamp = day2
+			tr.Tags = []string{"delay"}
+			return tr
+		}(),
+		// Outside window.
+		func() schema.Trace {
+			tr := validTraceWithObserver("00000000-0000-0000-0000-000000000003", "c", "observer/alpha")
+			tr.Timestamp = baseTime
+			tr.Tags = []string{"delay"}
+			return tr
+		}(),
+		// Missing tag.
+		func() schema.Trace {
+			tr := validTraceWithObserver("00000000-0000-0000-0000-000000000004", "d", "observer/alpha")
+			tr.Timestamp = day2
+			tr.Tags = []string{"blockage"}
+			return tr
+		}(),
+	}
+	if err := s.Store(context.Background(), traces); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	got, err := s.Query(context.Background(), store.QueryOpts{
+		Observer: "observer/alpha",
+		Window:   graph.TimeWindow{Start: day2, End: day2},
+		Tags:     []string{"delay"},
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatalf("Query() all filters: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("want 1 trace matching all filters, got %d", len(got))
+	}
+	if len(got) > 0 && got[0].WhatChanged != "match" {
+		t.Errorf("want WhatChanged=match, got %q", got[0].WhatChanged)
+	}
+}
+
+// --- Query: zero TimeWindow ---
+
+func TestNeo4jQuery_Window_Zero_NoFilter(t *testing.T) {
+	s := neo4jTestStore(t)
+	traces := []schema.Trace{
+		validTrace("00000000-0000-0000-0000-000000000001", "change a"),
+		validTrace("00000000-0000-0000-0000-000000000002", "change b"),
+	}
+	if err := s.Store(context.Background(), traces); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	got, err := s.Query(context.Background(), store.QueryOpts{
+		Window: graph.TimeWindow{}, // zero window: no constraint
+	})
+	if err != nil {
+		t.Fatalf("Query() zero window: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("zero TimeWindow should return all 2 traces, got %d", len(got))
+	}
+}
+
+// --- Query: Limit edge cases ---
+
+func TestNeo4jQuery_Limit_LargerThanDataset_ReturnsAll(t *testing.T) {
+	s := neo4jTestStore(t)
+	traces := []schema.Trace{
+		validTrace("00000000-0000-0000-0000-000000000001", "change a"),
+		validTrace("00000000-0000-0000-0000-000000000002", "change b"),
+	}
+	if err := s.Store(context.Background(), traces); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	got, err := s.Query(context.Background(), store.QueryOpts{Limit: 100})
+	if err != nil {
+		t.Fatalf("Query() Limit larger than dataset: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("Limit=100 with 2 traces: want 2, got %d", len(got))
+	}
+}
+
+// --- Round-trip: nil/empty slice edge cases ---
+
+// TestNeo4jStore_RoundTrip_EmptySourceSlice documents the normalization
+// contract: storeCypher converts nil→[]string{} before sending to Neo4j;
+// anySliceToStrings converts empty collect result back to nil. A caller
+// storing Source: []string{} should receive Source: nil back.
+func TestNeo4jStore_RoundTrip_EmptySourceSlice(t *testing.T) {
+	s := neo4jTestStore(t)
+	tr := validTrace("00000000-0000-0000-0000-000000000001", "empty source")
+	tr.Source = []string{} // non-nil empty slice
+	if err := s.Store(context.Background(), []schema.Trace{tr}); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	got, found, err := s.Get(context.Background(), tr.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !found {
+		t.Fatal("Get: trace not found")
+	}
+	// storeCypher normalises []string{} to an empty FOREACH; collect(DISTINCT)
+	// returns []; anySliceToStrings returns nil. This is the documented contract.
+	if got.Source != nil {
+		t.Errorf("empty Source slice normalises to nil on round-trip, got %v", got.Source)
+	}
+}
+
+// TestNeo4jStore_RoundTrip_NilTags confirms that nil Tags is preserved
+// through the nil→[]string{} normalisation and empty-list→nil retrieval path.
+func TestNeo4jStore_RoundTrip_NilTags(t *testing.T) {
+	s := neo4jTestStore(t)
+	tr := validTrace("00000000-0000-0000-0000-000000000001", "nil tags")
+	// validTrace does not set Tags; it remains nil.
+	if err := s.Store(context.Background(), []schema.Trace{tr}); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	got, found, err := s.Get(context.Background(), tr.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !found {
+		t.Fatal("Get: trace not found")
+	}
+	if got.Tags != nil {
+		t.Errorf("nil Tags should round-trip to nil, got %v", got.Tags)
 	}
 }
