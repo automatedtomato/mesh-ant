@@ -13,6 +13,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,11 +23,46 @@ import (
 	"time"
 
 	"github.com/automatedtomato/mesh-ant/meshant/graph"
+	"github.com/automatedtomato/mesh-ant/meshant/loader"
+	"github.com/automatedtomato/mesh-ant/meshant/schema"
+	"github.com/automatedtomato/mesh-ant/meshant/store"
 )
 
 // maxCriterionBytes caps the size of a criterion JSON file read by
 // loadCriterionFile. 1 MiB is generous for a human-authored declaration.
 const maxCriterionBytes = 1 * 1024 * 1024
+
+// noop is a no-op cleanup function returned by loadTraces when no store
+// resources need releasing (e.g. the JSON file path).
+var noop = func() {}
+
+// loadTraces resolves []schema.Trace from either a Neo4j database URL or a
+// JSON file path. dbURL and fileArgs are mutually exclusive at the call site —
+// callers validate this before calling loadTraces.
+//
+// When dbURL is non-empty, openDB is called and all traces are fetched via
+// Query(ctx, QueryOpts{}). No pre-filtering is applied at the store layer;
+// the analytical engine performs all cut logic on the full substrate. The
+// returned cleanup function closes the store; callers must defer it.
+//
+// When dbURL is empty, fileArgs[0] is loaded via loader.Load. The cleanup
+// function is a no-op.
+func loadTraces(ctx context.Context, dbURL string, fileArgs []string) ([]schema.Trace, func(), error) {
+	if dbURL != "" {
+		ts, err := openDB(ctx, dbURL)
+		if err != nil {
+			return nil, noop, err
+		}
+		traces, err := ts.Query(ctx, store.QueryOpts{})
+		if err != nil {
+			ts.Close()
+			return nil, noop, fmt.Errorf("query db: %w", err)
+		}
+		return traces, func() { ts.Close() }, nil
+	}
+	traces, err := loader.Load(fileArgs[0])
+	return traces, noop, err
+}
 
 // loadCriterionFile reads and decodes a JSON EquivalenceCriterion from path.
 // Fails if the file is unreadable, contains unknown fields (DisallowUnknownFields
@@ -206,6 +242,10 @@ func run(w io.Writer, args []string) error {
 		return cmdPromoteSession(w, args[1:])
 	case "convert":
 		return cmdConvert(w, args[1:])
+	case "store":
+		// nil store: a real TraceStore is constructed from --db at runtime;
+		// tests inject a pre-built store.
+		return cmdStore(w, nil, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
@@ -238,6 +278,7 @@ Commands:
   split            call LLM to split a source document into observation spans (flags: --source-doc, --source-doc-ref, --prompt-template, --model, --output, --session-output)
   promote-session  promote a SessionRecord to a canonical Trace (flags: --session-file, --observer, --output)
   convert          convert a non-text source to plain text (flags: --adapter, --source-doc, --output)
+  store            load traces from JSON and write to database (flags: --db)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }

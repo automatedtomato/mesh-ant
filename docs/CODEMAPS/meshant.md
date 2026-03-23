@@ -18,7 +18,7 @@
 | `review` | Ambiguity detection, terminal rendering, and interactive accept/edit/skip/quit session for TraceDraft records (Thread A). Exports `DeriveAccepted`, `DeriveEdited`, `RunEditFlow` for reuse by `llm` (F.3). |
 | `llm` | LLM-mediated extraction, assist, critique, and split pipelines: `LLMClient` interface, `AnthropicClient`, `RunExtraction`, `RunAssistSession`, `ParseSpans`, `RunCritique`, `RunSplit`, `PromoteSession`, `SessionRecord`, and supporting types. Shared helpers (`readSourceDoc`, `isRefusal`) in `shared.go`. Enforces F.1 conventions (D1–D7): mediator framing, model-ID provenance, framework UncertaintyNote append, IntentionallyBlank validation (F.2, F.3, F.4, #137). `PromoteSession` closes the Principle 8 reflexivity gap: converts a SessionRecord to a canonical Trace (#138). Imports `review` (one-directional: `llm → review`) for derivation helpers and rendering in the assist session. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique`, `split`, `promote-session`, `convert` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. `review` and `assist` are interactive subcommands (read from stdin). `extract` calls an LLM to produce TraceDraft records from a source document (F.2); supports `--adapter` for format-conversion before extraction (#140). `assist` presents one LLM candidate per span for accept/edit/skip/quit decisions (F.3). `critique` calls an LLM to produce derived "critiqued" drafts from existing TraceDrafts (F.4). `split` calls an LLM to split a source document into candidate observation spans (#137). `promote-session` promotes a SessionRecord to a canonical Trace, closing the Principle 8 reflexivity gap (#138). `convert` converts a non-text source to plain text for inspection before extraction (#140). |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique`, `split`, `promote-session`, `convert`, `store` subcommands. `articulate`, `diff`, `shadow`, `gaps`, `follow`, `bottleneck` accept `--db bolt://...` to load traces from a Neo4j DB instead of a JSON file (mutually exclusive with the file arg). `store` writes JSON traces to the DB. `articulate` also supports `--narrative`; `gaps` supports `--suggest`. `review` and `assist` are interactive (read from stdin). `extract` calls an LLM for TraceDraft extraction (F.2, #139); supports `--adapter` (#140). `split` splits a source document into spans (#137). `promote-session` promotes a SessionRecord to a Trace (#138). `convert` converts non-text sources to plain text (#140). |
 
 ## Package: schema
 
@@ -412,19 +412,22 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: `main()`, `run()` dispatcher, `usage()`, and shared helpers (`loadCriterionFile`, `stringSliceFlag`, `parseTimeFlag`, `parseTimeWindow`, `outputWriter`, `confirmOutput`). ~259 lines. |
+| `main.go` | CLI entry point: `main()`, `run()` dispatcher, `usage()`, and shared helpers (`loadCriterionFile`, `stringSliceFlag`, `parseTimeFlag`, `parseTimeWindow`, `outputWriter`, `confirmOutput`, `loadTraces`, `noop`). |
+| `db_factory.go` | `//go:build !neo4j` — `openDB` stub: returns "rebuild with -tags neo4j" error for any non-empty dbURL. Default binary unchanged. |
+| `db_factory_neo4j.go` | `//go:build neo4j` — `openDB` implementation: reads MESHANT_DB_USER/MESHANT_DB_PASS/MESHANT_DB_NAME from env, creates `Neo4jStore`. |
+| `cmd_store.go` | `cmdStore` subcommand handler — reads JSON file via `loader.Load`, writes to injected or factory-created `TraceStore`. |
 | `cmd_summarize.go` | `cmdSummarize` subcommand handler. |
 | `cmd_validate.go` | `cmdValidate` subcommand handler. |
-| `cmd_articulate.go` | `cmdArticulate` subcommand handler (`--narrative` flag). |
-| `cmd_diff.go` | `cmdDiff` subcommand handler. |
-| `cmd_follow.go` | `cmdFollow` subcommand handler (`--criterion-file` flag). |
+| `cmd_articulate.go` | `cmdArticulate` subcommand handler (`--narrative` flag, `--db` flag). |
+| `cmd_diff.go` | `cmdDiff` subcommand handler (`--db` flag). |
+| `cmd_follow.go` | `cmdFollow` subcommand handler (`--criterion-file` flag, `--db` flag). |
 | `cmd_draft.go` | `cmdDraft` subcommand handler (M11). |
 | `cmd_promote.go` | `cmdPromote` subcommand handler (M11). |
 | `cmd_rearticulate.go` | `cmdRearticulate` subcommand handler (M12). |
 | `cmd_lineage.go` | `cmdLineage` subcommand handler plus 13 exclusive helpers: `lineageNode`, `lineageResult`, `buildLineage`, `detectCycleDFS`, `idPrefix`, `spanPreview`, `printLineageText`, `printLineageStep`, `lineageJSONChain`, `collectMembers`, `printLineageJSON`, `filterLineageByID`, `chainContainsID` (M12). |
-| `cmd_shadow.go` | `cmdShadow` subcommand handler (M13). |
-| `cmd_gaps.go` | `cmdGaps` subcommand handler (`--suggest` flag, B.2) (M13). |
-| `cmd_bottleneck.go` | `cmdBottleneck` subcommand handler (B.1). |
+| `cmd_shadow.go` | `cmdShadow` subcommand handler (`--db` flag) (M13). |
+| `cmd_gaps.go` | `cmdGaps` subcommand handler (`--suggest` flag, B.2; `--db` flag) (M13). |
+| `cmd_bottleneck.go` | `cmdBottleneck` subcommand handler (`--db` flag) (B.1). |
 | `cmd_review.go` | `cmdReview` subcommand handler — only interactive subcommand; accepts `in io.Reader` (A.5). |
 | `cmd_extraction_gap.go` | `cmdExtractionGap` subcommand handler (C.2). |
 | `cmd_chain_diff.go` | `cmdChainDiff` subcommand handler (C.3). |
@@ -454,7 +457,10 @@ None (persist carries no domain types; wraps graph types).
 | `parseTimeFlag` | `func parseTimeFlag(name, value string) (time.Time, error)` | Parse RFC3339 string to time.Time with contextual error message naming the flag. |
 | `parseTimeWindow` | `func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error)` | Parse two RFC3339 strings (one or both may be empty) into a TimeWindow. Validates only when both bounds are set. |
 | `main` | `func main()` | Entry point. Calls `run(os.Stdout, os.Args[1:])` and exits non-zero on error. |
-| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, `cmdExtractionGap()`, `cmdChainDiff()`, `cmdReview()`, `cmdExtract()`, `cmdAssist()`, `cmdCritique()`, `cmdSplit()`, `cmdPromoteSession()`, or `cmdConvert()`. For `review` and `assist`, passes `os.Stdin`; for `extract`, `assist`, `critique`, and `split`, passes `nil` client (real client constructed from env). |
+| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, `cmdExtractionGap()`, `cmdChainDiff()`, `cmdReview()`, `cmdExtract()`, `cmdAssist()`, `cmdCritique()`, `cmdSplit()`, `cmdPromoteSession()`, `cmdConvert()`, or `cmdStore()`. For `review` and `assist`, passes `os.Stdin`; for `extract`, `assist`, `critique`, `split`, passes `nil` client; for `store`, passes `nil` TraceStore (real store created from --db). |
+| `loadTraces` | `func loadTraces(ctx context.Context, dbURL string, fileArgs []string) ([]schema.Trace, func(), error)` | Resolve traces from either a Neo4j database (dbURL non-empty → `openDB` + `Query(ctx, QueryOpts{})`) or a JSON file (dbURL empty → `loader.Load(fileArgs[0])`). Returns traces, a cleanup function (defer it to close the store), and any error. No pre-filtering — full substrate returned to analytical engine. Callers validate mutual exclusion before calling. |
+| `openDB` | `func openDB(ctx context.Context, dbURL string) (store.TraceStore, error)` | Factory: in `!neo4j` builds, returns "rebuild with -tags neo4j" error. In `neo4j` builds, reads MESHANT_DB_USER/MESHANT_DB_PASS/MESHANT_DB_NAME from env and returns a `Neo4jStore`. |
+| `cmdStore` | `func cmdStore(w io.Writer, ts store.TraceStore, args []string) error` | Subcommand: Load canonical Traces from JSON file, write to `TraceStore` via `Store()`. `ts` may be nil (openDB called from --db flag) or injected (test). Reports stored count. Idempotent on trace ID. |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
 | `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. Optional `--narrative` flag appends a positioned narrative draft (text format only, skipped for JSON/DOT/Mermaid). |
@@ -486,6 +492,8 @@ None (persist carries no domain types; wraps graph types).
 - **External dependencies**: `cmd/meshant` imports `adapter` which uses `github.com/ledongthuc/pdf` (pure Go, no CGo) and `golang.org/x/net/html` for format-conversion. All other packages use stdlib only.
 - **Testable structure**: Core logic in `run()`, `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`; `main()` is thin wrapper that wires os.Stdout/os.Args and exits non-zero on error
 - **Flag parsing**: Uses stdlib `flag.FlagSet` for subcommand isolation; `stringSliceFlag` enables repeatable `--observer` flags without comma-separation
+- **DB backend**: `--db` flag on analytical commands + `meshant store` switches the trace source from JSON to Neo4j. The `loadTraces` helper centralises the DB/file branching. Build-tag factory (`db_factory.go`/`db_factory_neo4j.go`) keeps the default binary lean. Credentials never exposed as CLI flags — read from MESHANT_DB_USER/MESHANT_DB_PASS env vars.
+- **No pre-filtering via TraceStore.Query**: `loadTraces` passes `QueryOpts{}` (no filters) so the analytical engine receives the full substrate. Cut logic (observer, time window, tags) remains exclusively in `graph.Articulate` — see decision record `store-cli-v1.md` for rationale.
 - **Time handling**: RFC3339 timestamps throughout; `parseTimeFlag()` and `parseTimeWindow()` provide clear error messages with formatting hints
 - **Format options**: `articulate` and `diff` both support text/json/dot/mermaid; `follow` supports text/json
 - **File output**: `--output <file>` writes to file instead of stdout; `cmdReview` uses explicit `f.Close()` (not deferred) to surface write errors
