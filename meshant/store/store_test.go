@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -545,10 +546,45 @@ func TestStore_InvalidTrace_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestStore_EmptySlice_NoError(t *testing.T) {
-	s := store.NewJSONFileStore(tempPath(t))
+// TestStore_InvalidBatch_FileUnmodified verifies the atomicity guarantee:
+// if any trace in a batch is invalid, the pre-existing file is not changed.
+func TestStore_InvalidBatch_FileUnmodified(t *testing.T) {
+	existing := []schema.Trace{
+		validTrace("00000000-0000-0000-0000-000000000001", "original"),
+	}
+	path := writeTempJSON(t, existing)
+	originalData, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile before Store: %v", err)
+	}
+
+	s := store.NewJSONFileStore(path)
+	// Batch with one valid and one invalid trace.
+	bad := schema.Trace{} // empty ID — fails Validate()
+	storeErr := s.Store(context.Background(), []schema.Trace{
+		validTrace("00000000-0000-0000-0000-000000000002", "new"),
+		bad,
+	})
+	if storeErr == nil {
+		t.Fatal("Store() with invalid batch: want error, got nil")
+	}
+	afterData, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile after failed Store: %v", err)
+	}
+	if string(afterData) != string(originalData) {
+		t.Error("Store() with invalid batch: file was modified; atomicity guarantee violated")
+	}
+}
+
+func TestStore_EmptySlice_DoesNotCreateFile(t *testing.T) {
+	path := tempPath(t)
+	s := store.NewJSONFileStore(path)
 	if err := s.Store(context.Background(), []schema.Trace{}); err != nil {
 		t.Fatalf("Store() empty slice: want no error, got %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("Store() with empty slice should not create the file")
 	}
 }
 
@@ -623,6 +659,49 @@ func TestClose_MultipleCallsSafe(t *testing.T) {
 	}
 }
 
+// --- Malformed file ---
+
+// writeMalformedJSON creates a file with invalid JSON content and returns its path.
+func writeMalformedJSON(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(path, []byte(`{broken`), 0o644); err != nil {
+		t.Fatalf("writeMalformedJSON: %v", err)
+	}
+	return path
+}
+
+// TestQuery_MalformedFile_ReturnsError verifies that a malformed JSON file
+// causes Query to return an error rather than an empty slice.
+func TestQuery_MalformedFile_ReturnsError(t *testing.T) {
+	s := store.NewJSONFileStore(writeMalformedJSON(t))
+	_, err := s.Query(context.Background(), store.QueryOpts{})
+	if err == nil {
+		t.Fatal("Query() on malformed JSON file: want error, got nil")
+	}
+}
+
+// TestGet_MalformedFile_ReturnsError verifies Get returns an error on a malformed file.
+func TestGet_MalformedFile_ReturnsError(t *testing.T) {
+	s := store.NewJSONFileStore(writeMalformedJSON(t))
+	_, _, err := s.Get(context.Background(), "00000000-0000-0000-0000-000000000001")
+	if err == nil {
+		t.Fatal("Get() on malformed JSON file: want error, got nil")
+	}
+}
+
+// TestStore_MalformedExistingFile_ReturnsError verifies Store returns an error
+// when the existing file is malformed (cannot load for upsert merge).
+func TestStore_MalformedExistingFile_ReturnsError(t *testing.T) {
+	s := store.NewJSONFileStore(writeMalformedJSON(t))
+	if err := s.Store(context.Background(), []schema.Trace{
+		validTrace("00000000-0000-0000-0000-000000000001", "change a"),
+	}); err == nil {
+		t.Fatal("Store() with malformed existing file: want error, got nil")
+	}
+}
+
 // --- Round-trip ---
 
 func TestStoreAndQuery_RoundTrip(t *testing.T) {
@@ -668,6 +747,42 @@ func TestStoreAndGet_RoundTrip(t *testing.T) {
 	}
 	if got.WhatChanged != "change a" {
 		t.Errorf("Get() round-trip: want 'change a', got %q", got.WhatChanged)
+	}
+}
+
+// TestStoreAndQuery_RoundTrip_PreservesAllFields verifies that Tags and Observer
+// survive the JSON marshal/unmarshal cycle. A missing json struct tag on either
+// field would cause this test to fail.
+func TestStoreAndQuery_RoundTrip_PreservesAllFields(t *testing.T) {
+	original := schema.Trace{
+		ID:          "00000000-0000-0000-0000-000000000001",
+		Timestamp:   baseTime,
+		WhatChanged: "change with tags",
+		Observer:    "analyst/field-position",
+		Tags:        []string{"delay", "threshold"},
+	}
+	path := tempPath(t)
+	s := store.NewJSONFileStore(path)
+	if err := s.Store(context.Background(), []schema.Trace{original}); err != nil {
+		t.Fatalf("Store() full-fields round-trip: %v", err)
+	}
+	got, found, err := s.Get(context.Background(), original.ID)
+	if err != nil {
+		t.Fatalf("Get() full-fields round-trip: %v", err)
+	}
+	if !found {
+		t.Fatal("Get() full-fields round-trip: want found, got false")
+	}
+	if got.Observer != original.Observer {
+		t.Errorf("Observer not preserved: want %q, got %q", original.Observer, got.Observer)
+	}
+	if len(got.Tags) != len(original.Tags) {
+		t.Fatalf("Tags length not preserved: want %d, got %d", len(original.Tags), len(got.Tags))
+	}
+	for i, tag := range original.Tags {
+		if got.Tags[i] != tag {
+			t.Errorf("Tags[%d] not preserved: want %q, got %q", i, tag, got.Tags[i])
+		}
 	}
 }
 

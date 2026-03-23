@@ -207,6 +207,12 @@ func matchesOpts(t schema.Trace, opts QueryOpts) bool {
 // writeAtomic serialises traces as an indented JSON array and writes it
 // atomically: a temp file in the same directory is written first, then
 // renamed over the target path to avoid partial-write corruption.
+//
+// The Write, Sync, and Close error branches inside this function are not
+// covered by tests — they require OS-level fault injection (e.g., writing
+// to a full filesystem or a kernel-simulated write failure). These are
+// known, deliberate gaps, not untested-by-accident code. The Rename error
+// branch can be exercised by pointing the store at a read-only directory.
 func (s *JSONFileStore) writeAtomic(traces []schema.Trace) error {
 	data, err := json.MarshalIndent(traces, "", "  ")
 	if err != nil {
