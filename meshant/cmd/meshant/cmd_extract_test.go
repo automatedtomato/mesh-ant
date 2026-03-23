@@ -16,12 +16,24 @@ import (
 
 // extractMockClient is a minimal llm.LLMClient test double for cmdExtract
 // tests. It returns a canned response or error on each call.
+// When responses is non-empty, calls are served in order (indexed); once
+// exhausted, the fallback response/err fields are used.
 type extractMockClient struct {
-	response string
-	err      error
+	response  string
+	err       error
+	responses []string // indexed: each call advances the counter
+	calls     int
 }
 
 func (m *extractMockClient) Complete(_ context.Context, _, _ string) (string, error) {
+	if len(m.responses) > 0 {
+		i := m.calls
+		m.calls++
+		if i < len(m.responses) {
+			return m.responses[i], nil
+		}
+		// Fall through to fallback after exhausting indexed responses.
+	}
 	if m.err != nil {
 		return "", m.err
 	}
@@ -494,5 +506,171 @@ func TestCmdExtract_CriterionFile_Missing(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "criterion-file") {
 		t.Errorf("error should mention criterion-file: %v", err)
+	}
+}
+
+// --- Multi-document CLI tests ---
+
+// TestCmdExtract_MultiDoc_HappyPath verifies that passing --source-doc twice
+// produces a combined drafts file and a single session record.
+func TestCmdExtract_MultiDoc_HappyPath(t *testing.T) {
+	src0 := writeExtractSourceDoc(t, "First document content.")
+	src1 := writeExtractSourceDoc(t, "Second document content.")
+	prompt := writeExtractPromptTemplate(t)
+	dir := t.TempDir()
+	outputPath := filepath.Join(dir, "drafts.json")
+	sessionPath := filepath.Join(dir, "session.json")
+
+	const doc0Draft = `[{"source_span": "First document content.", "what_changed": "c0"}]`
+	const doc1Draft = `[{"source_span": "Second document content.", "what_changed": "c1"}]`
+
+	var buf bytes.Buffer
+	client := &extractMockClient{responses: []string{doc0Draft, doc1Draft}}
+	err := cmdExtract(&buf, client, []string{
+		"--source-doc", src0,
+		"--source-doc", src1,
+		"--prompt-template", prompt,
+		"--output", outputPath,
+		"--session-output", sessionPath,
+	})
+	if err != nil {
+		t.Fatalf("cmdExtract() multi-doc returned unexpected error: %v", err)
+	}
+
+	// Drafts file must parse to 2 records.
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("output file not created: %v", err)
+	}
+	var drafts []schema.TraceDraft
+	if err := json.Unmarshal(data, &drafts); err != nil {
+		t.Fatalf("output file is not valid JSON: %v", err)
+	}
+	if len(drafts) != 2 {
+		t.Errorf("want 2 drafts, got %d", len(drafts))
+	}
+
+	// Session file must exist and reflect 2 drafts.
+	sdata, err := os.ReadFile(sessionPath)
+	if err != nil {
+		t.Fatalf("session file not created: %v", err)
+	}
+	var rec llm.SessionRecord
+	if err := json.Unmarshal(sdata, &rec); err != nil {
+		t.Fatalf("session file is not valid JSON: %v", err)
+	}
+	if rec.DraftCount != 2 {
+		t.Errorf("rec.DraftCount: want 2, got %d", rec.DraftCount)
+	}
+	if len(rec.InputPaths) != 2 {
+		t.Errorf("rec.InputPaths: want 2 entries, got %d", len(rec.InputPaths))
+	}
+}
+
+// TestCmdExtract_MultiDoc_WithRefs verifies that --source-doc-ref flags
+// are matched to the corresponding --source-doc flags in order.
+func TestCmdExtract_MultiDoc_WithRefs(t *testing.T) {
+	src0 := writeExtractSourceDoc(t, "Doc A content.")
+	src1 := writeExtractSourceDoc(t, "Doc B content.")
+	prompt := writeExtractPromptTemplate(t)
+	dir := t.TempDir()
+	outputPath := filepath.Join(dir, "drafts.json")
+	sessionPath := filepath.Join(dir, "session.json")
+
+	const docADraft = `[{"source_span": "Doc A content.", "what_changed": "cA"}]`
+	const docBDraft = `[{"source_span": "Doc B content.", "what_changed": "cB"}]`
+
+	var buf bytes.Buffer
+	client := &extractMockClient{responses: []string{docADraft, docBDraft}}
+	err := cmdExtract(&buf, client, []string{
+		"--source-doc", src0,
+		"--source-doc", src1,
+		"--source-doc-ref", "RefA",
+		"--source-doc-ref", "RefB",
+		"--prompt-template", prompt,
+		"--output", outputPath,
+		"--session-output", sessionPath,
+	})
+	if err != nil {
+		t.Fatalf("cmdExtract() multi-doc with refs returned error: %v", err)
+	}
+
+	data, _ := os.ReadFile(outputPath)
+	var drafts []schema.TraceDraft
+	if err := json.Unmarshal(data, &drafts); err != nil {
+		t.Fatalf("output file is not valid JSON: %v", err)
+	}
+	if len(drafts) != 2 {
+		t.Fatalf("want 2 drafts, got %d", len(drafts))
+	}
+	if drafts[0].SourceDocRef != "RefA" {
+		t.Errorf("draft[0].SourceDocRef: want %q, got %q", "RefA", drafts[0].SourceDocRef)
+	}
+	if drafts[1].SourceDocRef != "RefB" {
+		t.Errorf("draft[1].SourceDocRef: want %q, got %q", "RefB", drafts[1].SourceDocRef)
+	}
+}
+
+// TestCmdExtract_MultiDoc_MismatchedRefCount verifies that providing two
+// --source-doc flags but only one --source-doc-ref flag returns an error.
+func TestCmdExtract_MultiDoc_MismatchedRefCount(t *testing.T) {
+	src0 := writeExtractSourceDoc(t, "Doc A content.")
+	src1 := writeExtractSourceDoc(t, "Doc B content.")
+	prompt := writeExtractPromptTemplate(t)
+
+	var buf bytes.Buffer
+	client := &extractMockClient{responses: []string{"[]", "[]"}}
+	err := cmdExtract(&buf, client, []string{
+		"--source-doc", src0,
+		"--source-doc", src1,
+		"--source-doc-ref", "only-one-ref",
+		"--prompt-template", prompt,
+	})
+	if err == nil {
+		t.Fatal("cmdExtract() with mismatched --source-doc-ref count: want error, got nil")
+	}
+}
+
+// TestCmdExtract_MultiDoc_SourceDocRef_DefaultsToPath verifies that when
+// --source-doc-ref is omitted entirely with multiple --source-doc flags, each
+// draft's SourceDocRef defaults to its corresponding source doc path.
+func TestCmdExtract_MultiDoc_SourceDocRef_DefaultsToPath(t *testing.T) {
+	src0 := writeExtractSourceDoc(t, "Doc 0 content.")
+	src1 := writeExtractSourceDoc(t, "Doc 1 content.")
+	prompt := writeExtractPromptTemplate(t)
+	dir := t.TempDir()
+	outputPath := filepath.Join(dir, "drafts.json")
+	sessionPath := filepath.Join(dir, "session.json")
+
+	const doc0Draft = `[{"source_span": "Doc 0 content.", "what_changed": "c0"}]`
+	const doc1Draft = `[{"source_span": "Doc 1 content.", "what_changed": "c1"}]`
+
+	var buf bytes.Buffer
+	client := &extractMockClient{responses: []string{doc0Draft, doc1Draft}}
+	err := cmdExtract(&buf, client, []string{
+		"--source-doc", src0,
+		"--source-doc", src1,
+		// --source-doc-ref intentionally omitted
+		"--prompt-template", prompt,
+		"--output", outputPath,
+		"--session-output", sessionPath,
+	})
+	if err != nil {
+		t.Fatalf("cmdExtract() multi-doc no refs returned error: %v", err)
+	}
+
+	data, _ := os.ReadFile(outputPath)
+	var drafts []schema.TraceDraft
+	if err := json.Unmarshal(data, &drafts); err != nil {
+		t.Fatalf("output file is not valid JSON: %v", err)
+	}
+	if len(drafts) != 2 {
+		t.Fatalf("want 2 drafts, got %d", len(drafts))
+	}
+	if drafts[0].SourceDocRef != src0 {
+		t.Errorf("draft[0].SourceDocRef: want path %q, got %q", src0, drafts[0].SourceDocRef)
+	}
+	if drafts[1].SourceDocRef != src1 {
+		t.Errorf("draft[1].SourceDocRef: want path %q, got %q", src1, drafts[1].SourceDocRef)
 	}
 }

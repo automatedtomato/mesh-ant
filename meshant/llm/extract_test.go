@@ -3,6 +3,7 @@ package llm_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,13 +65,14 @@ func writePromptTemplate(t *testing.T) string {
 }
 
 // baseOpts returns a valid ExtractionOptions pointing at real temp files.
+// Uses InputPaths/SourceDocRefs (the new plural fields, #139).
 func baseOpts(t *testing.T, sourcePath, promptPath string) llm.ExtractionOptions {
 	t.Helper()
 	return llm.ExtractionOptions{
 		ModelID:            "claude-sonnet-4-6",
-		InputPath:          sourcePath,
+		InputPaths:         []string{sourcePath},
+		SourceDocRefs:      []string{"test-doc"},
 		PromptTemplatePath: promptPath,
-		SourceDocRef:       "test-doc",
 	}
 }
 
@@ -358,7 +360,8 @@ func TestRunExtraction_SourceDocTooLarge(t *testing.T) {
 
 	opts := llm.ExtractionOptions{
 		ModelID:            "claude-sonnet-4-6",
-		InputPath:          largePath,
+		InputPaths:         []string{largePath},
+		SourceDocRefs:      []string{"large-doc"},
 		PromptTemplatePath: prompt,
 	}
 	_, _, err := llm.RunExtraction(context.Background(), client, opts)
@@ -428,7 +431,8 @@ func TestRunExtraction_MissingSourceDoc(t *testing.T) {
 
 	opts := llm.ExtractionOptions{
 		ModelID:            "claude-sonnet-4-6",
-		InputPath:          "/nonexistent/source.md",
+		InputPaths:         []string{"/nonexistent/source.md"},
+		SourceDocRefs:      []string{"missing-doc"},
 		PromptTemplatePath: prompt,
 	}
 	_, _, err := llm.RunExtraction(context.Background(), client, opts)
@@ -443,7 +447,8 @@ func TestRunExtraction_MissingPromptTemplate(t *testing.T) {
 
 	opts := llm.ExtractionOptions{
 		ModelID:            "claude-sonnet-4-6",
-		InputPath:          src,
+		InputPaths:         []string{src},
+		SourceDocRefs:      []string{"some-doc"},
 		PromptTemplatePath: "/nonexistent/prompt.md",
 	}
 	_, rec, err := llm.RunExtraction(context.Background(), client, opts)
@@ -517,5 +522,261 @@ func TestRunExtraction_DraftValidationFailure(t *testing.T) {
 	}
 	if rec.ErrorNote == "" {
 		t.Error("SessionRecord.ErrorNote must be set on draft validation failure")
+	}
+}
+
+// --- Multi-document ingestion tests ---
+
+// baseMultiOpts returns a valid ExtractionOptions for multi-doc ingestion.
+// docPaths and docRefs must be the same length.
+func baseMultiOpts(t *testing.T, docPaths, docRefs []string, promptPath string) llm.ExtractionOptions {
+	t.Helper()
+	return llm.ExtractionOptions{
+		ModelID:            "claude-sonnet-4-6",
+		InputPaths:         docPaths,
+		SourceDocRefs:      docRefs,
+		PromptTemplatePath: promptPath,
+	}
+}
+
+// newIndexedMockClient returns a mock whose responses are indexed by call order.
+func newIndexedMockClient(responses []string) *mockClient {
+	return &mockClient{responses: responses}
+}
+
+// TestRunExtraction_MultiDoc_HappyPath verifies that two source documents
+// produce drafts with the correct per-document SourceDocRef and that the
+// SessionRecord accumulates all draft IDs.
+func TestRunExtraction_MultiDoc_HappyPath(t *testing.T) {
+	src0 := writeSourceDoc(t, "First document content.")
+	src1 := writeSourceDoc(t, "Second document content.")
+	prompt := writePromptTemplate(t)
+
+	// Each LLM call returns one draft attributed to its document.
+	const doc0Draft = `[{"source_span": "First document content.", "what_changed": "change in doc0"}]`
+	const doc1Draft = `[{"source_span": "Second document content.", "what_changed": "change in doc1"}]`
+	client := newIndexedMockClient([]string{doc0Draft, doc1Draft})
+
+	opts := baseMultiOpts(t,
+		[]string{src0, src1},
+		[]string{"doc-ref-0", "doc-ref-1"},
+		prompt,
+	)
+
+	drafts, rec, err := llm.RunExtraction(context.Background(), client, opts)
+	if err != nil {
+		t.Fatalf("want no error, got: %v", err)
+	}
+
+	// Two documents produce two drafts total.
+	if len(drafts) != 2 {
+		t.Fatalf("want 2 drafts, got %d", len(drafts))
+	}
+
+	// Per-draft SourceDocRef must match the document that produced it.
+	if drafts[0].SourceDocRef != "doc-ref-0" {
+		t.Errorf("draft[0].SourceDocRef: want %q, got %q", "doc-ref-0", drafts[0].SourceDocRef)
+	}
+	if drafts[1].SourceDocRef != "doc-ref-1" {
+		t.Errorf("draft[1].SourceDocRef: want %q, got %q", "doc-ref-1", drafts[1].SourceDocRef)
+	}
+
+	// All drafts share the same session ID.
+	for i, d := range drafts {
+		if d.SessionRef != rec.ID {
+			t.Errorf("draft[%d].SessionRef %q != rec.ID %q", i, d.SessionRef, rec.ID)
+		}
+	}
+
+	// SessionRecord must reflect all drafts.
+	if rec.DraftCount != 2 {
+		t.Errorf("rec.DraftCount: want 2, got %d", rec.DraftCount)
+	}
+	if len(rec.DraftIDs) != 2 {
+		t.Errorf("len(rec.DraftIDs): want 2, got %d", len(rec.DraftIDs))
+	}
+}
+
+// TestRunExtraction_MultiDoc_SessionRecord_InputPaths verifies that the
+// SessionRecord.InputPaths field is populated with all provided input paths.
+func TestRunExtraction_MultiDoc_SessionRecord_InputPaths(t *testing.T) {
+	src0 := writeSourceDoc(t, "First document.")
+	src1 := writeSourceDoc(t, "Second document.")
+	prompt := writePromptTemplate(t)
+
+	client := newIndexedMockClient([]string{
+		`[{"source_span": "First document.", "what_changed": "c0"}]`,
+		`[{"source_span": "Second document.", "what_changed": "c1"}]`,
+	})
+
+	opts := baseMultiOpts(t,
+		[]string{src0, src1},
+		[]string{"ref0", "ref1"},
+		prompt,
+	)
+
+	_, rec, err := llm.RunExtraction(context.Background(), client, opts)
+	if err != nil {
+		t.Fatalf("want no error, got: %v", err)
+	}
+
+	if len(rec.InputPaths) != 2 {
+		t.Fatalf("rec.InputPaths: want 2 entries, got %d", len(rec.InputPaths))
+	}
+	if rec.InputPaths[0] != src0 {
+		t.Errorf("rec.InputPaths[0]: want %q, got %q", src0, rec.InputPaths[0])
+	}
+	if rec.InputPaths[1] != src1 {
+		t.Errorf("rec.InputPaths[1]: want %q, got %q", src1, rec.InputPaths[1])
+	}
+}
+
+// TestRunExtraction_MultiDoc_SecondDocFails verifies that if the LLM call for
+// the second document errors, RunExtraction returns an error and sets ErrorNote.
+func TestRunExtraction_MultiDoc_SecondDocFails(t *testing.T) {
+	src0 := writeSourceDoc(t, "First document.")
+	src1 := writeSourceDoc(t, "Second document.")
+	prompt := writePromptTemplate(t)
+
+	// First call succeeds, second call errors.
+	client := &mockClient{
+		responses: []string{`[{"source_span": "First document.", "what_changed": "c0"}]`},
+		errs:      []error{nil, errors.New("network timeout on second doc")},
+	}
+
+	opts := baseMultiOpts(t,
+		[]string{src0, src1},
+		[]string{"ref0", "ref1"},
+		prompt,
+	)
+
+	_, rec, err := llm.RunExtraction(context.Background(), client, opts)
+	if err == nil {
+		t.Fatal("want error when second doc LLM call fails, got nil")
+	}
+	if rec.ErrorNote == "" {
+		t.Error("rec.ErrorNote must be set when a document fails")
+	}
+}
+
+// TestRunExtraction_MultiDoc_MismatchedLengths verifies that providing
+// len(InputPaths) != len(SourceDocRefs) returns an error before any LLM call.
+func TestRunExtraction_MultiDoc_MismatchedLengths(t *testing.T) {
+	src0 := writeSourceDoc(t, "First document.")
+	src1 := writeSourceDoc(t, "Second document.")
+	prompt := writePromptTemplate(t)
+
+	// 2 input paths but only 1 source doc ref.
+	client := newMockClient("[]") // should never be called
+	opts := llm.ExtractionOptions{
+		ModelID:            "claude-sonnet-4-6",
+		InputPaths:         []string{src0, src1},
+		SourceDocRefs:      []string{"only-one-ref"},
+		PromptTemplatePath: prompt,
+	}
+
+	_, rec, err := llm.RunExtraction(context.Background(), client, opts)
+	if err == nil {
+		t.Fatal("want error for mismatched InputPaths/SourceDocRefs lengths, got nil")
+	}
+	// SessionRecord must have a non-empty ID even on validation failure.
+	if rec.ID == "" {
+		t.Error("SessionRecord.ID must be non-empty even on validation failure")
+	}
+	// LLM must not have been called.
+	if client.calls != 0 {
+		t.Errorf("LLM was called %d times; should be 0 for validation error", client.calls)
+	}
+}
+
+// TestRunExtraction_MultiDoc_EmptyInputPaths verifies that an empty InputPaths
+// slice returns an error before any LLM call.
+func TestRunExtraction_MultiDoc_EmptyInputPaths(t *testing.T) {
+	prompt := writePromptTemplate(t)
+
+	client := newMockClient("[]")
+	opts := llm.ExtractionOptions{
+		ModelID:            "claude-sonnet-4-6",
+		InputPaths:         []string{},
+		SourceDocRefs:      []string{},
+		PromptTemplatePath: prompt,
+	}
+
+	_, rec, err := llm.RunExtraction(context.Background(), client, opts)
+	if err == nil {
+		t.Fatal("want error for empty InputPaths, got nil")
+	}
+	// SessionRecord must have a non-empty ID even on validation failure.
+	if rec.ID == "" {
+		t.Error("SessionRecord.ID must be non-empty even on validation failure")
+	}
+	if client.calls != 0 {
+		t.Errorf("LLM was called %d times; should be 0 for validation error", client.calls)
+	}
+}
+
+// TestRunExtraction_MultiDoc_MaxDocsPerSession verifies that exceeding the
+// per-session document cap returns an error before any LLM call, and that
+// the returned SessionRecord still has a valid ID and ErrorNote.
+func TestRunExtraction_MultiDoc_MaxDocsPerSession(t *testing.T) {
+	prompt := writePromptTemplate(t)
+	client := newMockClient("[]")
+
+	// Build a slice of 21 paths and refs — one over the maxDocsPerSession limit.
+	paths := make([]string, 21)
+	refs := make([]string, 21)
+	for i := range paths {
+		paths[i] = writeSourceDoc(t, "doc content")
+		refs[i] = fmt.Sprintf("doc-ref-%d", i)
+	}
+
+	opts := llm.ExtractionOptions{
+		ModelID:            "claude-sonnet-4-6",
+		InputPaths:         paths,
+		SourceDocRefs:      refs,
+		PromptTemplatePath: prompt,
+	}
+
+	_, rec, err := llm.RunExtraction(context.Background(), client, opts)
+	if err == nil {
+		t.Fatal("want error for exceeding maxDocsPerSession, got nil")
+	}
+	if rec.ID == "" {
+		t.Error("SessionRecord.ID must be non-empty even on cap violation")
+	}
+	if rec.ErrorNote == "" {
+		t.Error("SessionRecord.ErrorNote must be set on cap violation")
+	}
+	if client.calls != 0 {
+		t.Errorf("LLM was called %d times; should be 0 for cap violation", client.calls)
+	}
+}
+
+// TestRunExtraction_SingleDoc_BackwardCompat verifies that single-doc invocations
+// still work correctly via InputPaths/SourceDocRefs (wrapping single values).
+func TestRunExtraction_SingleDoc_BackwardCompat(t *testing.T) {
+	src := writeSourceDoc(t, "The system failed at 14:00.")
+	prompt := writePromptTemplate(t)
+	client := newMockClient(`[{"source_span": "The system failed at 14:00.", "what_changed": "failure"}]`)
+
+	opts := llm.ExtractionOptions{
+		ModelID:            "claude-sonnet-4-6",
+		InputPaths:         []string{src},
+		SourceDocRefs:      []string{"single-doc-ref"},
+		PromptTemplatePath: prompt,
+	}
+
+	drafts, rec, err := llm.RunExtraction(context.Background(), client, opts)
+	if err != nil {
+		t.Fatalf("want no error for single-doc via InputPaths, got: %v", err)
+	}
+	if len(drafts) != 1 {
+		t.Fatalf("want 1 draft, got %d", len(drafts))
+	}
+	if drafts[0].SourceDocRef != "single-doc-ref" {
+		t.Errorf("draft.SourceDocRef: want %q, got %q", "single-doc-ref", drafts[0].SourceDocRef)
+	}
+	if len(rec.InputPaths) != 1 || rec.InputPaths[0] != src {
+		t.Errorf("rec.InputPaths: want [%q], got %v", src, rec.InputPaths)
 	}
 }

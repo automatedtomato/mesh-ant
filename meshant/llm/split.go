@@ -37,7 +37,7 @@ func RunSplit(ctx context.Context, client LLMClient, opts SplitOptions) ([]strin
 	rec := SessionRecord{
 		ID:         sessionID,
 		Command:    "split",
-		InputPath:  opts.InputPath,
+		InputPaths: []string{opts.InputPath},
 		OutputPath: opts.OutputPath,
 		Timestamp:  now,
 	}
@@ -58,7 +58,7 @@ func RunSplit(ctx context.Context, client LLMClient, opts SplitOptions) ([]strin
 		ModelID:            opts.ModelID,
 		PromptTemplate:     opts.PromptTemplatePath,
 		SystemInstructions: systemInstructions,
-		SourceDocRef:       opts.SourceDocRef,
+		SourceDocRefs:      []string{opts.SourceDocRef},
 		Timestamp:          now,
 	}
 

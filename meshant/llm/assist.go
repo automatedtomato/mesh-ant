@@ -96,10 +96,10 @@ func RunAssistSession(
 			PromptTemplate:     opts.PromptTemplatePath,
 			CriterionRef:       opts.CriterionRef,
 			SystemInstructions: systemInstructions,
-			SourceDocRef:       opts.SourceDocRef,
+			SourceDocRefs:      []string{opts.SourceDocRef},
 			Timestamp:          now,
 		},
-		InputPath:  opts.InputPath,
+		InputPaths: []string{opts.InputPath},
 		OutputPath: opts.OutputPath,
 		Timestamp:  now,
 	}

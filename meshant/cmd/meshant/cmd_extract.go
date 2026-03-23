@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/automatedtomato/mesh-ant/meshant/llm"
@@ -22,11 +24,37 @@ const defaultExtractionPrompt = "data/prompts/extraction_pass.md"
 // defaultExtractModel is the model ID used when --model is not supplied.
 const defaultExtractModel = "claude-sonnet-4-6"
 
+// stringSlice is a repeatable flag value that accumulates multiple --flag
+// invocations into a string slice. It implements flag.Value so that flag
+// parsing can call Set on each occurrence of the flag. For example:
+//
+//	--source-doc a.txt --source-doc b.txt
+//
+// results in []string{"a.txt", "b.txt"}.
+type stringSlice []string
+
+// String returns a comma-joined representation of the slice (required by flag.Value).
+func (s *stringSlice) String() string {
+	return strings.Join(*s, ",")
+}
+
+// Set appends each occurrence of the flag value to the slice.
+// Rejects blank values so --source-doc "" is caught at flag parse time
+// rather than producing a confusing os.Open("") error deep in the pipeline.
+func (s *stringSlice) Set(v string) error {
+	if strings.TrimSpace(v) == "" {
+		return errors.New("value must not be empty")
+	}
+	*s = append(*s, v)
+	return nil
+}
+
 // cmdExtract implements the "extract" subcommand.
 //
-// Calls the LLM to produce TraceDraft records from a source document. Writes
-// TraceDraft JSON to --output (or stdout) and a SessionRecord to
-// --session-output (defaults: <output>.session.json for file output, or
+// Calls the LLM to produce TraceDraft records from one or more source
+// documents. Supports multi-document ingestion via repeated --source-doc
+// flags. Writes TraceDraft JSON to --output (or stdout) and a SessionRecord
+// to --session-output (defaults: <output>.session.json for file output, or
 // session_<timestamp>.json in cwd for stdout output).
 //
 // client may be nil; a real AnthropicClient is then constructed from env vars.
@@ -34,11 +62,14 @@ const defaultExtractModel = "claude-sonnet-4-6"
 func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 	fs := flag.NewFlagSet("extract", flag.ContinueOnError)
 
-	var sourceDoc string
-	fs.StringVar(&sourceDoc, "source-doc", "", "path to source document (required)")
+	// sourceDocs and sourceDocRefs are repeatable flags, each occurrence
+	// appends one entry. sourceDocs must be non-empty; if sourceDocRefs is
+	// non-empty, its length must equal len(sourceDocs).
+	var sourceDocs stringSlice
+	fs.Var(&sourceDocs, "source-doc", "path to source document (repeatable; at least one required)")
 
-	var sourceDocRef string
-	fs.StringVar(&sourceDocRef, "source-doc-ref", "", "document reference string for provenance (defaults to --source-doc path)")
+	var sourceDocRefs stringSlice
+	fs.Var(&sourceDocRefs, "source-doc-ref", "document reference string for provenance (repeatable; if provided, count must equal --source-doc count; defaults to path)")
 
 	var promptTemplate string
 	fs.StringVar(&promptTemplate, "prompt-template", defaultExtractionPrompt, "path to extraction prompt template")
@@ -59,12 +90,23 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 		return err
 	}
 
-	if sourceDoc == "" {
+	// Validate: at least one source document is required.
+	if len(sourceDocs) == 0 {
 		return fmt.Errorf("extract: --source-doc is required\n\nUsage: meshant extract --source-doc <path> [--source-doc-ref <ref>] [--prompt-template <path>] [--model <id>] [--criterion-file <path>] [--output <file>] [--session-output <file>]")
 	}
 
-	if sourceDocRef == "" {
-		sourceDocRef = sourceDoc
+	// Validate: if refs provided, count must match docs.
+	if len(sourceDocRefs) > 0 && len(sourceDocRefs) != len(sourceDocs) {
+		return fmt.Errorf(
+			"extract: --source-doc-ref count (%d) must equal --source-doc count (%d)",
+			len(sourceDocRefs), len(sourceDocs),
+		)
+	}
+
+	// Default each ref to its corresponding source doc path when no refs given.
+	if len(sourceDocRefs) == 0 {
+		sourceDocRefs = make(stringSlice, len(sourceDocs))
+		copy(sourceDocRefs, sourceDocs)
 	}
 
 	// Default session output path when not explicitly provided.
@@ -95,10 +137,10 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 
 	opts := llm.ExtractionOptions{
 		ModelID:            modelID,
-		InputPath:          sourceDoc,
+		InputPaths:         []string(sourceDocs),
+		SourceDocRefs:      []string(sourceDocRefs),
 		PromptTemplatePath: promptTemplate,
 		CriterionRef:       criterionRef,
-		SourceDocRef:       sourceDocRef,
 		OutputPath:         outputPath,
 	}
 

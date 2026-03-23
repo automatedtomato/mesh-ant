@@ -5,7 +5,7 @@
     "model_id": "claude-sonnet-4-6",
     "prompt_template": "data/prompts/extraction_pass.md",
     "system_instructions": "# Extraction Pass — System Instructions\n\nYou are producing candidate trace drafts — not extracting facts. Your output is a reading from one observer position at one moment under one set of conditions. A different model, a different prompt, or a different day would produce different candidates. Treat your output accordingly: as a candidate, not as a finding.\n\n[Full prompt template: data/prompts/extraction_pass.md]",
-    "source_doc_ref": "data/examples/llm_assisted_extraction/source_document.md",
+    "source_doc_refs": ["data/examples/llm_assisted_extraction/source_document.md"],
     "timestamp": "2026-03-15T14:22:00Z"
   },
   "draft_ids": [
@@ -17,7 +17,7 @@
     "f5000001-0000-4000-8000-000000000006",
     "f5000001-0000-4000-8000-000000000007"
   ],
-  "input_path": "data/examples/llm_assisted_extraction/source_document.md",
+  "input_paths": ["data/examples/llm_assisted_extraction/source_document.md"],
   "output_path": "data/examples/llm_assisted_extraction/raw_drafts.json",
   "draft_count": 7,
   "timestamp": "2026-03-15T14:22:35Z"

@@ -14,6 +14,7 @@ package llm
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
@@ -49,8 +50,13 @@ func PromoteSession(rec SessionRecord, observer string) (schema.Trace, error) {
 		source = []string{rec.Conditions.ModelID}
 	}
 
+	// Build the Target slice from SourceDocRefs (plural, #139) when available,
+	// falling back to the legacy SourceDocRef field for backward compatibility
+	// with session files written before the multi-doc migration.
 	var target []string
-	if rec.Conditions.SourceDocRef != "" {
+	if len(rec.Conditions.SourceDocRefs) > 0 {
+		target = nonBlankRefs(rec.Conditions.SourceDocRefs)
+	} else if rec.Conditions.SourceDocRef != "" {
 		target = []string{rec.Conditions.SourceDocRef}
 	}
 
@@ -76,11 +82,12 @@ func PromoteSession(rec SessionRecord, observer string) (schema.Trace, error) {
 }
 
 // sessionWhatChanged generates the WhatChanged description for a promoted session trace.
-// The description names the command, source document, and model — making the conditions
+// The description names the command, source document(s), and model — making the conditions
 // of the act visible in the trace's most human-readable field. This follows the style
 // of articulationWhatChanged, which names the conditions under which the observation
 // was made rather than simply stating that something happened.
-// Falls back gracefully when Command, SourceDocRef, or ModelID are empty.
+// Falls back gracefully when Command, SourceDocRefs/SourceDocRef, or ModelID are empty.
+// Multi-doc sessions list all doc refs separated by commas.
 func sessionWhatChanged(rec SessionRecord) string {
 	cmd := rec.Command
 	if cmd == "" {
@@ -90,11 +97,32 @@ func sessionWhatChanged(rec SessionRecord) string {
 	model := rec.Conditions.ModelID
 
 	base := "LLM " + cmd + " session"
-	if rec.Conditions.SourceDocRef != "" {
+
+	// Use SourceDocRefs (plural) when available; fall back to legacy SourceDocRef.
+	if len(rec.Conditions.SourceDocRefs) > 0 {
+		if refs := nonBlankRefs(rec.Conditions.SourceDocRefs); len(refs) > 0 {
+			base += " on " + strings.Join(refs, ", ")
+		}
+	} else if rec.Conditions.SourceDocRef != "" {
 		base += " on " + rec.Conditions.SourceDocRef
 	}
+
 	if model != "" {
 		base += " (" + model + ")"
 	}
 	return base
+}
+
+// nonBlankRefs returns a new slice containing only non-empty entries from refs.
+// Used when building Target and WhatChanged from SourceDocRefs so that nil or
+// empty entries (which may result from partial session records) are not included
+// in the promoted Trace.
+func nonBlankRefs(refs []string) []string {
+	var out []string
+	for _, ref := range refs {
+		if ref != "" {
+			out = append(out, ref)
+		}
+	}
+	return out
 }

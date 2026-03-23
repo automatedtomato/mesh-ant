@@ -262,6 +262,61 @@ func TestPromoteSession_emptyModelID(t *testing.T) {
 	}
 }
 
+// TestPromoteSession_multiDocSourceDocRefs verifies that when a session has
+// SourceDocRefs (plural, multi-doc), all refs appear in the promoted Target.
+func TestPromoteSession_multiDocSourceDocRefs(t *testing.T) {
+	rec := validSession()
+	// Simulate a multi-doc session: SourceDocRefs carries all doc refs.
+	rec.Conditions.SourceDocRefs = []string{"data/doc-a.md", "data/doc-b.md"}
+
+	tr, err := llm.PromoteSession(rec, "analyst-alice")
+	if err != nil {
+		t.Fatalf("PromoteSession() with multi-doc session: want no error, got: %v", err)
+	}
+
+	// All source doc refs must appear in Target.
+	for _, wantRef := range rec.Conditions.SourceDocRefs {
+		found := false
+		for _, s := range tr.Target {
+			if s == wantRef {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Target: want %q in %v", wantRef, tr.Target)
+		}
+	}
+}
+
+// TestPromoteSession_SourceDocRefsPriorityOverLegacy verifies that when both
+// SourceDocRefs (plural) and the legacy SourceDocRef (singular) are present,
+// SourceDocRefs takes precedence and SourceDocRef is ignored for the Target field.
+// This covers the deserialization scenario where an older session file that had
+// SourceDocRef is re-saved with SourceDocRefs also populated.
+func TestPromoteSession_SourceDocRefsPriorityOverLegacy(t *testing.T) {
+	rec := validSession()
+	// Simulate a session file with both fields present.
+	rec.Conditions.SourceDocRefs = []string{"data/new-doc.md"}
+	rec.Conditions.SourceDocRef = "data/old-doc.md" // legacy field — must be ignored
+
+	tr, err := llm.PromoteSession(rec, "analyst-alice")
+	if err != nil {
+		t.Fatalf("PromoteSession() with both ref fields: want no error, got: %v", err)
+	}
+
+	// Target must be built from SourceDocRefs only.
+	if len(tr.Target) != 1 || tr.Target[0] != "data/new-doc.md" {
+		t.Errorf("Target: want [%q], got %v (SourceDocRefs should take priority over SourceDocRef)", "data/new-doc.md", tr.Target)
+	}
+	// The legacy value must not appear.
+	for _, s := range tr.Target {
+		if s == "data/old-doc.md" {
+			t.Errorf("Target contains legacy SourceDocRef %q — SourceDocRefs must take priority", "data/old-doc.md")
+		}
+	}
+}
+
 // TestPromoteSession_promotedTraceAlwaysValidates verifies Validate() passes
 // across a range of valid session configurations.
 func TestPromoteSession_promotedTraceAlwaysValidates(t *testing.T) {
