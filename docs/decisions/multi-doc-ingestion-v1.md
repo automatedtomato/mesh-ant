@@ -82,10 +82,16 @@ new plural fields carry `omitempty`. Old session files remain readable.
 
 ## Fail-fast error strategy
 
-Validation (mismatched lengths, empty `InputPaths`) runs before allocating a
-session ID. If document N fails (LLM error, refusal, parse error), the entire
-session fails with an error and `SessionRecord.ErrorNote` is set. Partial
-results are not written. This matches the existing single-doc behaviour and
+A session ID is allocated first so that every error path — including
+validation failures — returns a `SessionRecord` with a non-empty ID. The
+caller writes this record to disk even on failure, making the error
+inspectable. Structural validation (mismatched lengths, empty `InputPaths`,
+cap exceeded) then runs before any LLM call. If document N fails (LLM error,
+refusal, parse error), the entire session fails with an error and
+`SessionRecord.ErrorNote` is set. Draft output is not written, but the
+session record is always persisted with partial `DraftCount`/`DraftIDs` so
+the provenance record accurately reflects what was produced. This matches the
+existing single-doc behaviour and
 avoids silent provenance gaps where some documents extracted and others did not.
 
 ---
