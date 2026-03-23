@@ -37,6 +37,36 @@ func readSourceDoc(path string) (string, error) {
 	return string(data), nil
 }
 
+// stripPreamble trims any leading text before the first '[' and any trailing
+// text after the last ']' from s. It returns the trimmed string and true if
+// an opening bracket was found, or the original string and false otherwise.
+// Callers use the boolean to decide whether to return an error or proceed —
+// parseResponse silently passes through while parseSplitResponse errors on false.
+func stripPreamble(s string) (trimmed string, found bool) {
+	idx := strings.Index(s, "[")
+	if idx < 0 {
+		return s, false
+	}
+	s = s[idx:]
+	if end := strings.LastIndex(s, "]"); end >= 0 {
+		s = s[:end+1]
+	}
+	return s, true
+}
+
+// filterBlanks returns only the non-blank (after TrimSpace) strings from src.
+// Used by ParseSpans (assist.go) and parseSplitResponse (split.go) to drop
+// empty entries from LLM-produced string slices.
+func filterBlanks(src []string) []string {
+	var result []string
+	for _, s := range src {
+		if strings.TrimSpace(s) != "" {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
 // isRefusal reports whether the LLM response looks like an explicit refusal.
 // Conservative heuristic — undetected refusals fall through to the
 // malformed-output path rather than producing a false positive.

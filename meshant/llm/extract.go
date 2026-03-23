@@ -196,16 +196,10 @@ func extractSingleDoc(
 }
 
 // parseResponse parses the LLM's text as a JSON array of TraceDraft,
-// tolerating minor preamble before the opening '['.
+// tolerating minor preamble before the opening '['. If no '[' is found,
+// json.Unmarshal will fail and the caller wraps it as ErrMalformedOutput.
 func parseResponse(raw string) ([]schema.TraceDraft, error) {
-	s := strings.TrimSpace(raw)
-
-	if idx := strings.Index(s, "["); idx >= 0 {
-		s = s[idx:]
-	}
-	if idx := strings.LastIndex(s, "]"); idx >= 0 {
-		s = s[:idx+1]
-	}
+	s, _ := stripPreamble(strings.TrimSpace(raw))
 
 	var drafts []schema.TraceDraft
 	if err := json.Unmarshal([]byte(s), &drafts); err != nil {

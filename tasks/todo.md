@@ -82,10 +82,14 @@ Open GitHub issues (deferred, lower priority):
 
 Direction confirmed in design discussion (2026-03-22). The next major form is an ANT-like Knowledge Graph — persistent, queryable, interactive. "Actors act" simulation comes much later, after the graph substrate exists.
 
-### Phase 1 — Deferred items and ingestion gaps (parent: #132)
+### Phase 1 — Deferred items and ingestion gaps (parent: #132) — COMPLETE
+
+Per-thread pipeline complete: refactor-cleaner (stringSlice consolidation, filterBlanks →
+shared.go, stripPreamble extracted); ant-theorist (ALIGNED WITH TENSIONS); docs updated
+(session-promote-v1.md decision record added, non-text-adapters tensions updated).
 
 - [x] **#137 — `meshant split`** — LLM-assisted span splitting; removes the biggest `assist` friction
-- [x] **#138 — Session records → Traces** — a session is an observation act; closes the ANT reflexivity gap
+- [x] **#138 — Session records → Traces** — a session is an observation act; closes the ANT reflexivity gap; decision record `session-promote-v1.md`
 - [x] **#139 — Multi-document ingestion** — `meshant extract` across several source documents in one session
 - [x] **#140 — Non-text source adapters** — PDF, HTML, structured logs → text → existing LLM pipeline
 

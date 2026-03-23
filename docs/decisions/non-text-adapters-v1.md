@@ -140,9 +140,19 @@ require richer `ExtractionOptions` typing.
 
 ### Duplicate `stringSlice` type
 
-`cmd_extract.go` defines `stringSlice` (from #139); `main.go` defines `stringSliceFlag`
-(earlier). Both implement `flag.Value` identically. Deferred for consolidation in the
-Phase 1 per-thread refactor-cleaner pass.
+`cmd_extract.go` defined `stringSlice` (from #139); `main.go` defined `stringSliceFlag`
+(earlier). Both implemented `flag.Value` identically. Consolidated in the Phase 1
+per-thread refactor-cleaner pass: `stringSlice` removed from `cmd_extract.go`; all uses
+updated to `stringSliceFlag`.
+
+### Last-adapter-name in multi-doc loop
+
+In the adapter conversion loop in `cmd_extract.go`, `convertedAdapterName` is set on each
+iteration (`convertedAdapterName = result.AdapterName`). The session record therefore
+carries only the last document's adapter name. Since all documents in a session share the
+same adapter (see "single adapter per session" tension above), this is currently harmless.
+If per-document adapter specification were ever supported, this would silently lose
+information — the latent design assumption ties this tension to T3.
 
 ---
 

@@ -96,27 +96,18 @@ func RunSplit(ctx context.Context, client LLMClient, opts SplitOptions) ([]strin
 // parseSplitResponse parses the LLM's JSON array of strings (the span
 // boundaries), tolerating preamble text before the opening '['.
 // Filters blank strings from the result. Returns an error if the response
-// cannot be parsed as a JSON array of strings.
+// cannot be parsed as a JSON array of strings, or if no '[' is found.
 func parseSplitResponse(raw string) ([]string, error) {
-	s := strings.TrimSpace(raw)
-
-	// Tolerate preamble before the JSON array.
-	if idx := strings.Index(s, "["); idx >= 0 {
-		s = s[idx:]
-	} else {
+	s, found := stripPreamble(strings.TrimSpace(raw))
+	if !found {
 		return nil, fmt.Errorf("parseSplitResponse: no JSON array found in response")
 	}
 
-	// Trim trailing content after the last ']' to tolerate suffix prose.
-	if idx := strings.LastIndex(s, "]"); idx >= 0 {
-		s = s[:idx+1]
-	}
-
-	var raw2 []string
-	if err := json.Unmarshal([]byte(s), &raw2); err != nil {
+	var spans []string
+	if err := json.Unmarshal([]byte(s), &spans); err != nil {
 		return nil, fmt.Errorf("parseSplitResponse: %w", err)
 	}
 
 	// Filter blank strings — blank spans are not observation units.
-	return filterBlanks(raw2), nil
+	return filterBlanks(spans), nil
 }

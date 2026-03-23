@@ -4,12 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/automatedtomato/mesh-ant/meshant/adapter"
@@ -24,31 +22,6 @@ const defaultExtractionPrompt = "data/prompts/extraction_pass.md"
 
 // defaultExtractModel is the model ID used when --model is not supplied.
 const defaultExtractModel = "claude-sonnet-4-6"
-
-// stringSlice is a repeatable flag value that accumulates multiple --flag
-// invocations into a string slice. It implements flag.Value so that flag
-// parsing can call Set on each occurrence of the flag. For example:
-//
-//	--source-doc a.txt --source-doc b.txt
-//
-// results in []string{"a.txt", "b.txt"}.
-type stringSlice []string
-
-// String returns a comma-joined representation of the slice (required by flag.Value).
-func (s *stringSlice) String() string {
-	return strings.Join(*s, ",")
-}
-
-// Set appends each occurrence of the flag value to the slice.
-// Rejects blank values so --source-doc "" is caught at flag parse time
-// rather than producing a confusing os.Open("") error deep in the pipeline.
-func (s *stringSlice) Set(v string) error {
-	if strings.TrimSpace(v) == "" {
-		return errors.New("value must not be empty")
-	}
-	*s = append(*s, v)
-	return nil
-}
 
 // cmdExtract implements the "extract" subcommand.
 //
@@ -66,10 +39,10 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 	// sourceDocs and sourceDocRefs are repeatable flags, each occurrence
 	// appends one entry. sourceDocs must be non-empty; if sourceDocRefs is
 	// non-empty, its length must equal len(sourceDocs).
-	var sourceDocs stringSlice
+	var sourceDocs stringSliceFlag
 	fs.Var(&sourceDocs, "source-doc", "path to source document (repeatable; at least one required)")
 
-	var sourceDocRefs stringSlice
+	var sourceDocRefs stringSliceFlag
 	fs.Var(&sourceDocRefs, "source-doc-ref", "document reference string for provenance (repeatable; if provided, count must equal --source-doc count; defaults to path)")
 
 	var promptTemplate string
@@ -120,7 +93,7 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 
 	// Default each ref to its corresponding source doc path when no refs given.
 	if len(sourceDocRefs) == 0 {
-		sourceDocRefs = make(stringSlice, len(sourceDocs))
+		sourceDocRefs = make(stringSliceFlag, len(sourceDocs))
 		copy(sourceDocRefs, sourceDocs)
 	}
 
@@ -147,7 +120,7 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 	// Temp files are created with a recognisable prefix and removed on return.
 	var convertedAdapterName string
 	if sourceAdapter != nil {
-		converted := make(stringSlice, len(sourceDocs))
+		converted := make(stringSliceFlag, len(sourceDocs))
 		var tempFiles []string
 		defer func() {
 			for _, f := range tempFiles {
