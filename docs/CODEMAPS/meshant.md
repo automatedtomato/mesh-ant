@@ -134,18 +134,22 @@
 
 ### Files
 
-| File | Contains |
-|------|----------|
-| `store.go` | `TraceStore` interface; `QueryOpts` struct. |
-| `json_file_store.go` | `JSONFileStore` implementation; `NewJSONFileStore(path)`; `loadOrEmpty`, `matchesOpts`, `writeAtomic` helpers. |
+| File | Build tag | Contains |
+|------|-----------|----------|
+| `store.go` | (none) | `TraceStore` interface; `QueryOpts` struct. |
+| `json_file_store.go` | (none) | `JSONFileStore` implementation; `NewJSONFileStore(path)`; `loadOrEmpty`, `matchesOpts`, `writeAtomic` helpers. |
+| `neo4j_store.go` | `neo4j` | `Neo4jStore`; `Neo4jConfig`; `NewNeo4jStore(ctx, cfg)`; `traceFromRecord` helper. |
+| `neo4j_cypher.go` | `neo4j` | Cypher builders: `storeCypher`, `queryCypher`, `getCypher`; type conversion: `recordToTrace`, `anyListToStrings`, `anySliceToStrings`, `asString`. |
 
 ### Types
 
 | Type | Key Fields | Purpose |
 |------|-----------|---------|
-| `TraceStore` | (interface) | Narrow, swappable storage boundary. Four methods: `Store`, `Query`, `Get`, `Close`. Both `JSONFileStore` (Phase 3) and the Neo4j adapter (#143) implement this. The analytical engine (Articulate, Diff, etc.) receives `[]schema.Trace` from `Query` without knowing the backend. |
+| `TraceStore` | (interface) | Narrow, swappable storage boundary. Four methods: `Store`, `Query`, `Get`, `Close`. Both `JSONFileStore` and `Neo4jStore` implement this. The analytical engine receives `[]schema.Trace` from `Query` without knowing the backend. |
 | `QueryOpts` | `Observer string`, `Window graph.TimeWindow`, `Tags []string`, `Limit int` | Pre-filtering criteria for `Query`. AND semantics across all fields. `Tags` requires ALL listed tags (distinct from `graph.Articulate`'s OR). Zero values mean no filter. `Window` uses `graph.TimeWindow` (temporary coupling; will move to `schema`). |
-| `JSONFileStore` | `path string` | JSON-file-backed `TraceStore`. Wraps `loader.Load`; atomic write via temp-rename + fsync; idempotent upsert by ID; missing file → empty slice. Not safe for concurrent writes (single-user CLI). |
+| `JSONFileStore` | `path string` | JSON-file-backed `TraceStore`. Wraps `loader.Load`; atomic write via temp-rename + fsync; idempotent upsert by ID; missing file → empty slice. Not safe for concurrent writes. |
+| `Neo4jConfig` | `BoltURL`, `Username`, `Password`, `Database string` | Connection parameters for `Neo4jStore`. Credentials via env vars; never hardcode. Build tag: `neo4j`. |
+| `Neo4jStore` | `driver neo4j.DriverWithContext`, `database string`, `closeOnce sync.Once` | Neo4j-backed `TraceStore`. Single transaction per `Store()`. Timestamp strings RFC3339Nano UTC. MERGE semantics for idempotent upsert; FOREACH for element relationships. Build tag: `neo4j`. |
 
 ### Functions
 
@@ -156,14 +160,21 @@
 | `JSONFileStore.Query` | `(s *JSONFileStore) Query(ctx, QueryOpts) ([]schema.Trace, error)` | Loads all, applies in-memory AND filters, applies Limit. Missing file → `([], nil)`. |
 | `JSONFileStore.Get` | `(s *JSONFileStore) Get(ctx, id string) (Trace, bool, error)` | Linear scan by ID. Missing file → `(zero, false, nil)`. |
 | `JSONFileStore.Close` | `(s *JSONFileStore) Close() error` | No-op; idempotent. |
+| `NewNeo4jStore` | `func NewNeo4jStore(ctx, cfg Neo4jConfig) (*Neo4jStore, error)` | Creates driver, verifies connectivity (fail-fast), returns store. Build tag: `neo4j`. |
+| `Neo4jStore.Store` | `(s *Neo4jStore) Store(ctx, []schema.Trace) error` | Validates all, runs single write transaction (MERGE per trace + element FOREACH). Build tag: `neo4j`. |
+| `Neo4jStore.Query` | `(s *Neo4jStore) Query(ctx, QueryOpts) ([]schema.Trace, error)` | Dynamic Cypher WHERE from opts; two-stage OPTIONAL MATCH for sources/targets; ordered ASC. Build tag: `neo4j`. |
+| `Neo4jStore.Get` | `(s *Neo4jStore) Get(ctx, id string) (Trace, bool, error)` | MATCH by id + source/target collection. Returns `(zero, false, nil)` when not found. Build tag: `neo4j`. |
+| `Neo4jStore.Close` | `(s *Neo4jStore) Close() error` | Closes driver via `sync.Once`; idempotent. Build tag: `neo4j`. |
 
 ### Key Design Notes
 
 - **Narrow interface**: `TraceStore` does not prescribe transaction scope, batch size, or connection pooling — those are backend-specific concerns. The interface is the same size for both JSON and Neo4j adapters.
 - **Pre-filtering ≠ cut**: `QueryOpts` applies coarse pre-filtering. Cut logic (shadow assignment, element inclusion/exclusion) stays entirely in the analytical engine. Setting `Observer` on `QueryOpts` is a retrieval hint, not a cut commitment.
-- **Atomic write**: `writeAtomic` writes to a temp file in the same directory (same filesystem), calls `fsync`, then renames. Without `fsync`, `close(2)` does not guarantee dirty pages are flushed before rename.
+- **Atomic write (JSON)**: `writeAtomic` writes to a temp file in the same directory (same filesystem), calls `fsync`, then renames. Without `fsync`, `close(2)` does not guarantee dirty pages are flushed before rename.
+- **FOREACH not UNWIND (Neo4j)**: Element relationships use `FOREACH` because `UNWIND []` produces zero rows and would drop the trace. `FOREACH []` iterates zero times and leaves the trace visible in the transaction.
 - **TimeWindow coupling**: `QueryOpts.Window` imports `graph.TimeWindow` — documented temporary coupling. `TimeWindow` will eventually move to `schema`; this note is in both the code and `kg-scoping-v1.md` §2.1.
-- **Decision record**: `docs/decisions/kg-scoping-v1.md` §2 is the design contract this package implements.
+- **Build tag isolation**: `neo4j_store.go` and `neo4j_cypher.go` carry `//go:build neo4j`. `go test ./...` passes without Neo4j. Integration tests require `MESHANT_NEO4J_TEST_URL`. Run `go mod tidy -tags neo4j` to preserve the driver in go.mod.
+- **Decision records**: `docs/decisions/kg-scoping-v1.md` §2 is the contract; `docs/decisions/neo4j-adapter-v1.md` documents the #143 implementation decisions.
 
 ---
 
