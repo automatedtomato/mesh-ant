@@ -105,7 +105,7 @@ shared.go, stripPreamble extracted); ant-theorist (ALIGNED WITH TENSIONS); docs 
 
 ### Phase 4 — Layer 3: Interactive graph output (parent: #135)
 
-- [ ] **#145 — `meshant serve`** — localhost HTTP server; cut endpoints; provenance enforcement
+- [x] **#145 — `meshant serve`** — localhost HTTP server; `meshant/serve` package; 4 endpoints (`/articulate`, `/diff`, `/shadow`, `/traces`); `Envelope` with `CutMeta`; observer required on all endpoints (400 with ANT-reasoning error); graceful shutdown; 82.3% coverage; 4 ANT tensions documented; decision record `serve-v1.md`
 - [ ] **#146 — Web UI + provenance panel** — D3.js/Cytoscape.js; observer selector required; shadow named
 
 ### Phase 5 — Thread D datasets (parent: #136)
