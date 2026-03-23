@@ -135,6 +135,15 @@ The diff is read from observer-a toward observer-b. The envelope names observer-
 position; observer-b's full cut is in `data.to`. This is a positional reading, not
 a symmetric comparison.
 
+**T5: `CutMeta.Observer` is singular; forecloses multi-position cuts at the HTTP layer.**
+`CutMeta` carries `Observer string`, while the underlying `graph.Cut` carries
+`ObserverPositions []string`. `cutMetaFromGraph` extracts only the first position.
+This works for Phase 4 (single observer per request). The HTTP layer thereby commits
+to a one-observer-per-request constraint that the analytical engine does not share.
+When Phase 5 or the Web UI introduces multi-observer readings, `CutMeta` will need
+a plural representation. Risk: clients building against the singular `observer` field
+may assume a one-observer model. Deferred to Phase 5.
+
 ---
 
 ## Files

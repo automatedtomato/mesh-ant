@@ -152,7 +152,7 @@ func (s *Server) handleTraces(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	observer := q.Get("observer")
 	if observer == "" {
-		writeError(w, http.StatusBadRequest, "observer is required — every graph is a positioned reading")
+		writeError(w, http.StatusBadRequest, "observer is required — every reading is positioned")
 		return
 	}
 
