@@ -133,6 +133,43 @@ func TestCmdConvert_MissingAdapter(t *testing.T) {
 	}
 }
 
+// TestCmdConvert_SourceDocNotFound verifies that convert returns an error when
+// the --source-doc path does not exist (flag provided, file missing).
+// This is distinct from missing-flag tests and covers the Convert() error branch.
+func TestCmdConvert_SourceDocNotFound(t *testing.T) {
+	var buf bytes.Buffer
+	err := cmdConvert(&buf, []string{
+		"--adapter", "html",
+		"--source-doc", "/no/such/file.html",
+	})
+	if err == nil {
+		t.Fatal("cmdConvert() with missing source file: want error, got nil")
+	}
+}
+
+// TestCmdConvert_PDF_Stdout verifies that the pdf adapter path works through the
+// CLI layer (adapter lookup → Convert → write to stdout). Conversion correctness
+// is covered by the adapter unit tests; this test confirms CLI wiring.
+func TestCmdConvert_PDF_Stdout(t *testing.T) {
+	// Use the committed sample.pdf fixture from the adapter testdata directory.
+	src := filepath.Join("..", "..", "adapter", "testdata", "sample.pdf")
+	if _, err := os.Stat(src); err != nil {
+		t.Skipf("adapter testdata/sample.pdf not found: %v", err)
+	}
+
+	var buf bytes.Buffer
+	err := cmdConvert(&buf, []string{
+		"--adapter", "pdf",
+		"--source-doc", src,
+	})
+	if err != nil {
+		t.Fatalf("cmdConvert() with pdf adapter: want no error, got: %v", err)
+	}
+	if strings.TrimSpace(buf.String()) == "" {
+		t.Error("stdout: want non-empty output from PDF conversion")
+	}
+}
+
 // TestCmdConvert_AdapterNameInOutput verifies that the output includes a
 // confirmation line naming the adapter that was used.
 func TestCmdConvert_AdapterNameInOutput(t *testing.T) {

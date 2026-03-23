@@ -770,6 +770,27 @@ func TestCmdExtract_Adapter_HTML(t *testing.T) {
 	}
 }
 
+// TestCmdExtract_Adapter_SourceDocNotFound verifies that --adapter with a missing
+// source file returns an error and makes no LLM calls. Covers the adapter
+// Convert() error branch in cmdExtract (lines 158-161).
+func TestCmdExtract_Adapter_SourceDocNotFound(t *testing.T) {
+	prompt := writeExtractPromptTemplate(t)
+	client := &extractMockClient{response: "[]"}
+
+	var buf bytes.Buffer
+	err := cmdExtract(&buf, client, []string{
+		"--adapter", "html",
+		"--source-doc", "/no/such/file.html",
+		"--prompt-template", prompt,
+	})
+	if err == nil {
+		t.Fatal("cmdExtract() with missing source file: want error, got nil")
+	}
+	if client.calls != 0 {
+		t.Errorf("LLM was called %d times; should be 0 when adapter convert fails", client.calls)
+	}
+}
+
 // TestCmdExtract_UnknownAdapter verifies that an unrecognised --adapter value
 // returns an error before any LLM call.
 func TestCmdExtract_UnknownAdapter(t *testing.T) {

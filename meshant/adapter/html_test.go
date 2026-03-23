@@ -143,6 +143,24 @@ func TestHTMLAdapter_NoTagsInOutput(t *testing.T) {
 	}
 }
 
+// TestHTMLAdapter_EmptyFile verifies that an empty HTML file produces empty text with no error.
+// This mirrors TestJSONLogAdapter_EmptyFile for consistency across adapters.
+func TestHTMLAdapter_EmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.html")
+	if err := os.WriteFile(path, []byte{}, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	a := mustAdapter(t, "html")
+	result, err := a.Convert(path)
+	if err != nil {
+		t.Fatalf("Convert() on empty file: want no error, got: %v", err)
+	}
+	if strings.TrimSpace(result.Text) != "" {
+		t.Errorf("Text: want empty for empty file, got: %q", result.Text)
+	}
+}
+
 // TestForName_HTML verifies that ForName("html") returns a non-nil adapter.
 func TestForName_HTML(t *testing.T) {
 	a, err := adapter.ForName("html")

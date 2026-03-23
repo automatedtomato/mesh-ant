@@ -138,6 +138,28 @@ plain text line two
 	}
 }
 
+// TestJSONLogAdapter_NoMessageField verifies that a JSON object without a "message" key
+// is rendered using the first sorted key=value pair as the lead. This covers the branch
+// in formatLogLine where no "message" field is present.
+func TestJSONLogAdapter_NoMessageField(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "no_msg.jsonl")
+	content := `{"level":"ERROR","code":"500"}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	a := mustAdapter(t, "jsonlog")
+	result, err := a.Convert(path)
+	if err != nil {
+		t.Fatalf("Convert() on no-message JSON: want no error, got: %v", err)
+	}
+	// The formatted output should contain the key=value pairs.
+	// With no "message" field, all fields are rendered as key=value pairs.
+	if !strings.Contains(result.Text, "code=500") && !strings.Contains(result.Text, "level=ERROR") {
+		t.Errorf("Text: want key=value pairs in output, got: %q", result.Text)
+	}
+}
+
 // TestJSONLogAdapter_FileNotFound verifies that a missing file returns an error.
 func TestJSONLogAdapter_FileNotFound(t *testing.T) {
 	a := mustAdapter(t, "jsonlog")
