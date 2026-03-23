@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-23 (#140: non-text source adapters — new `adapter` package; `PDFAdapter`, `HTMLAdapter`, `JSONLogAdapter`; `meshant convert` subcommand; `--adapter` flag on `meshant extract`; `AdapterName` in `ExtractionConditions`; decision record `non-text-adapters-v1.md`)
+**Last Updated:** 2026-03-23 (#142: new `store` package — `TraceStore` interface, `JSONFileStore` implementation; `QueryOpts` with Observer/TimeWindow/Tags/Limit pre-filtering; decision record in `kg-scoping-v1.md` §2)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -11,6 +11,7 @@
 |---------|---------|
 | `adapter` | Format-conversion adapters: PDF, HTML, and JSONL → plain text. `Adapter` interface, `ConvertResult` struct, `ForName()` registry. Used by `cmd/meshant` for `meshant convert` and `meshant extract --adapter`. |
 | `schema` | Core trace types, graph-reference predicates, and validators. |
+| `store` | Storage interface and JSON-file backend. `TraceStore` interface (Store, Query, Get, Close), `QueryOpts`, `JSONFileStore`. Narrow abstraction between the CLI/analytical engine and trace backends; the Neo4j adapter (#143) implements the same interface. |
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
 | `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, bottleneck analysis, re-articulation suggestions, narrative drafts, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
@@ -126,6 +127,43 @@
 - **Self-identifying**: `ConvertResult.AdapterName` is set by the adapter, not the caller. The mediator names itself.
 - **Provenance chain**: `AdapterName` flows from `ConvertResult` → `ExtractionOptions.AdapterName` → `ExtractionConditions.AdapterName` (omitempty) → session record JSON.
 - **No circular deps**: `adapter` depends on no MeshAnt-internal packages; `llm` receives only the adapter name as a string.
+
+---
+
+## Package: store
+
+### Files
+
+| File | Contains |
+|------|----------|
+| `store.go` | `TraceStore` interface; `QueryOpts` struct. |
+| `json_file_store.go` | `JSONFileStore` implementation; `NewJSONFileStore(path)`; `loadOrEmpty`, `matchesOpts`, `writeAtomic` helpers. |
+
+### Types
+
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `TraceStore` | (interface) | Narrow, swappable storage boundary. Four methods: `Store`, `Query`, `Get`, `Close`. Both `JSONFileStore` (Phase 3) and the Neo4j adapter (#143) implement this. The analytical engine (Articulate, Diff, etc.) receives `[]schema.Trace` from `Query` without knowing the backend. |
+| `QueryOpts` | `Observer string`, `Window graph.TimeWindow`, `Tags []string`, `Limit int` | Pre-filtering criteria for `Query`. AND semantics across all fields. `Tags` requires ALL listed tags (distinct from `graph.Articulate`'s OR). Zero values mean no filter. `Window` uses `graph.TimeWindow` (temporary coupling; will move to `schema`). |
+| `JSONFileStore` | `path string` | JSON-file-backed `TraceStore`. Wraps `loader.Load`; atomic write via temp-rename + fsync; idempotent upsert by ID; missing file → empty slice. Not safe for concurrent writes (single-user CLI). |
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `NewJSONFileStore` | `func NewJSONFileStore(path string) *JSONFileStore` | Constructor; path fixed at construction. File need not exist; `Store` creates it on first write. |
+| `JSONFileStore.Store` | `(s *JSONFileStore) Store(ctx, []schema.Trace) error` | Validates all traces, loads existing, upserts by ID, sorts by timestamp, writes atomically. |
+| `JSONFileStore.Query` | `(s *JSONFileStore) Query(ctx, QueryOpts) ([]schema.Trace, error)` | Loads all, applies in-memory AND filters, applies Limit. Missing file → `([], nil)`. |
+| `JSONFileStore.Get` | `(s *JSONFileStore) Get(ctx, id string) (Trace, bool, error)` | Linear scan by ID. Missing file → `(zero, false, nil)`. |
+| `JSONFileStore.Close` | `(s *JSONFileStore) Close() error` | No-op; idempotent. |
+
+### Key Design Notes
+
+- **Narrow interface**: `TraceStore` does not prescribe transaction scope, batch size, or connection pooling — those are backend-specific concerns. The interface is the same size for both JSON and Neo4j adapters.
+- **Pre-filtering ≠ cut**: `QueryOpts` applies coarse pre-filtering. Cut logic (shadow assignment, element inclusion/exclusion) stays entirely in the analytical engine. Setting `Observer` on `QueryOpts` is a retrieval hint, not a cut commitment.
+- **Atomic write**: `writeAtomic` writes to a temp file in the same directory (same filesystem), calls `fsync`, then renames. Without `fsync`, `close(2)` does not guarantee dirty pages are flushed before rename.
+- **TimeWindow coupling**: `QueryOpts.Window` imports `graph.TimeWindow` — documented temporary coupling. `TimeWindow` will eventually move to `schema`; this note is in both the code and `kg-scoping-v1.md` §2.1.
+- **Decision record**: `docs/decisions/kg-scoping-v1.md` §2 is the design contract this package implements.
 
 ---
 
