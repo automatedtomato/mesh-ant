@@ -6,7 +6,7 @@
     "source": ["sec-10k-filing-acme-2026"],
     "target": ["orchestrator-agent"],
     "mediation": "orchestrator-task-decomposition-config",
-    "tags": ["delegation", "translation"],
+    "tags": ["translation"],
     "observer": "pipeline-auditor"
   },
   {
@@ -16,7 +16,7 @@
     "source": ["orchestrator-agent"],
     "target": ["ingestion-agent"],
     "mediation": "orchestrator-task-decomposition-config",
-    "tags": ["delegation"],
+    "tags": [],
     "observer": "pipeline-auditor"
   },
   {
@@ -36,7 +36,7 @@
     "source": ["ingestion-agent"],
     "target": ["extractor-agent"],
     "mediation": "",
-    "tags": ["delegation"],
+    "tags": [],
     "observer": "pipeline-auditor"
   },
   {
@@ -86,7 +86,7 @@
     "source": ["extractor-agent"],
     "target": ["classifier-agent"],
     "mediation": "",
-    "tags": ["delegation"],
+    "tags": [],
     "observer": "pipeline-auditor"
   },
   {
@@ -136,7 +136,7 @@
     "source": ["classifier-agent"],
     "target": ["validator-agent"],
     "mediation": "",
-    "tags": ["delegation"],
+    "tags": [],
     "observer": "pipeline-auditor"
   },
   {
@@ -176,7 +176,7 @@
     "source": ["validator-agent"],
     "target": ["drafter-agent", "rejection-audit-trail"],
     "mediation": "",
-    "tags": ["delegation"],
+    "tags": [],
     "observer": "pipeline-auditor"
   },
   {
@@ -236,7 +236,7 @@
     "source": ["reviewer-agent"],
     "target": ["router-agent"],
     "mediation": "",
-    "tags": ["delegation"],
+    "tags": [],
     "observer": "pipeline-auditor"
   },
   {
@@ -246,7 +246,7 @@
     "source": ["router-agent"],
     "target": ["senior-compliance-analyst"],
     "mediation": "routing-priority-matrix",
-    "tags": ["translation", "delegation"],
+    "tags": ["translation"],
     "observer": "pipeline-auditor"
   },
   {
@@ -267,7 +267,7 @@
     "target": ["pipeline-execution-log-acme-2026"],
     "mediation": "extract",
     "tags": ["session", "articulation"],
-    "observer": "dataset-author"
+    "observer": "dataset-analyst"
   },
   {
     "id": "d2000000-0000-4000-8000-000000000028",
@@ -277,6 +277,6 @@
     "target": ["session-d2-027"],
     "mediation": "critique",
     "tags": ["session", "articulation"],
-    "observer": "dataset-author"
+    "observer": "dataset-analyst"
   }
 ]
