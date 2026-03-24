@@ -28,7 +28,7 @@ type ExtractionConditions struct {
 	PromptTemplate string `json:"prompt_template"`
 	// PromptHash is the SHA-256 hash (first 16 hex chars) of the prompt template
 	// file contents at the time of extraction. Empty when PromptTemplate is empty.
-	// Detects content drift when the same template path is reused across sessions.
+	// Detects content change when the same template path is reused across sessions.
 	PromptHash         string    `json:"prompt_hash,omitempty"`
 	CriterionRef       string    `json:"criterion_ref,omitempty"`
 	SystemInstructions string    `json:"system_instructions"`
@@ -63,7 +63,7 @@ type CritiqueConditions struct {
 	PromptTemplate string `json:"prompt_template"`
 	// PromptHash is the SHA-256 hash (first 16 hex chars) of the prompt template
 	// file contents at the time of critique. Empty when PromptTemplate is empty.
-	// Detects content drift when the same template path is reused across sessions.
+	// Detects content change when the same template path is reused across sessions.
 	PromptHash         string    `json:"prompt_hash,omitempty"`
 	CriterionRef       string    `json:"criterion_ref,omitempty"`
 	SystemInstructions string    `json:"system_instructions"`

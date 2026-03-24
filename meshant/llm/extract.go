@@ -81,7 +81,7 @@ func RunExtraction(ctx context.Context, client LLMClient, opts ExtractionOptions
 	}
 
 	// Hash the prompt template for reproducibility tracking. The hash detects
-	// physical file drift when the same path is reused across sessions.
+	// physical file change when the same path is reused across sessions.
 	promptHash, err := HashPromptTemplate(opts.PromptTemplatePath)
 	if err != nil {
 		rec.ErrorNote = err.Error()

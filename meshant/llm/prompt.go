@@ -39,7 +39,7 @@ func LoadPromptTemplate(path string) (string, error) {
 //
 // The hash is computed from raw file bytes — Unicode normalization and
 // line-ending differences produce different hashes. This is intentional:
-// the hash detects physical file drift, not semantic equivalence.
+// the hash detects physical file change, not semantic equivalence.
 func HashPromptTemplate(path string) (string, error) {
 	if path == "" {
 		return "", nil

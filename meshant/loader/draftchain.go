@@ -54,13 +54,13 @@ const DraftSubKindEndorsement = "endorsement"
 // DraftStepClassification records the classification of one derivation step (chain[i-1]→chain[i]).
 type DraftStepClassification struct {
 	// StepIndex is the destination draft's index in the chain (1 = first step).
-	StepIndex int
+	StepIndex int `json:"step_index"`
 
 	// Kind is the classification: intermediary, mediator, or translation.
-	Kind DraftStepKind
+	Kind DraftStepKind `json:"kind"`
 
 	// Reason is a human-readable justification. Always non-empty.
-	Reason string
+	Reason string `json:"reason"`
 
 	// SubKind qualifies the Kind when a more specific classification is
 	// warranted. Currently only set for DraftMediator steps:
