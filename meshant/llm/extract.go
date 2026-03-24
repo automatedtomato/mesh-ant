@@ -164,27 +164,9 @@ func extractSingleDoc(
 		if err := validateIntentionallyBlank(d.IntentionallyBlank); err != nil { // D7
 			return nil, fmt.Errorf("draft %d: %w", i, err)
 		}
-
-		id, err := loader.NewUUID()
-		if err != nil {
-			return nil, fmt.Errorf("draft %d: generate UUID: %w", i, err)
+		if err := stampProvenance(d, now, modelID, sessionID, sourceDocRef, "weak-draft"); err != nil {
+			return nil, fmt.Errorf("draft %d: %w", i, err)
 		}
-		d.ID = id
-		d.Timestamp = now
-
-		// Framework-assigned provenance (D2, D4, F.0).
-		d.ExtractedBy = modelID
-		d.ExtractionStage = "weak-draft"
-		d.SessionRef = sessionID
-		d.SourceDocRef = sourceDocRef
-
-		// Append framework uncertainty note (D3); preserve any LLM-set note.
-		if d.UncertaintyNote != "" {
-			d.UncertaintyNote = d.UncertaintyNote + " " + frameworkUncertaintyNote
-		} else {
-			d.UncertaintyNote = frameworkUncertaintyNote
-		}
-
 		if err := d.Validate(); err != nil {
 			return nil, fmt.Errorf("draft %d validation: %w", i, err)
 		}
@@ -208,13 +190,3 @@ func parseResponse(raw string) ([]schema.TraceDraft, error) {
 	return drafts, nil
 }
 
-// validateIntentionallyBlank returns an error if any name is not a known content
-// field — provenance fields cannot be declared blank by the LLM (D7).
-func validateIntentionallyBlank(fields []string) error {
-	for _, name := range fields {
-		if !knownContentFields[name] {
-			return fmt.Errorf("intentionally_blank: %q is not a valid content field name", name)
-		}
-	}
-	return nil
-}

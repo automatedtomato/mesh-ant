@@ -62,7 +62,7 @@ Detailed plans: `tasks/done/plan_thread_{a,b,f}.md`.
 
 Small items deferred during v2.0.0 threads. Not yet assigned to a phase.
 
-- [ ] **Slice equality helper naming** — `slicesEqual`/`stringSlicesEqual` inconsistency; next refactor-clean pass
+- [x] **Slice equality helper naming** — renamed to `stringSlicesEqualOrdered`/`stringSlicesEqualUnordered`; fixed in per-thread refactor-clean 2026-03-24
 - [ ] **buildChain closure extraction** — candidate if a second consumer appears
 - [ ] **`PromptHash` in `ExtractionConditions`** — content hash of prompt template for reproducibility; deferred from Thread F
 - [ ] **`ExtractionConditions` bifurcation** — extract vs. critique conditions may need distinct types; deferred from Thread F ant-theorist review
@@ -107,6 +107,19 @@ shared.go, stripPreamble extracted); ant-theorist (ALIGNED WITH TENSIONS); docs 
 
 - [x] **#145 — `meshant serve`** — localhost HTTP server; `meshant/serve` package; 4 endpoints (`/articulate`, `/diff`, `/shadow`, `/traces`); `Envelope` with `CutMeta`; observer required on all endpoints (400 with ANT-reasoning error); graceful shutdown; 82.3% coverage; 4 ANT tensions documented; decision record `serve-v1.md`
 - [x] **#146 — Web UI + provenance panel** — Cytoscape.js 3.30.4 (vendored); observer gate (structural HTML); shadow panel (amber); detail panel (trace cards + provenance); `/element/{name}` endpoint; `go:embed web`; static file server; 93.4% coverage; decision record `web-ui-v1.md`
+
+### Per-thread pipeline — Post-v2.0.0 batch (all phases) — COMPLETE (2026-03-24)
+
+Refactor-clean: 6 MUST-FIX items resolved (stampProvenance extracted to shared.go,
+validateIntentionallyBlank moved to shared.go, splitErrNotes/joinErrNotes moved to
+shared.go, goto stamp eliminated in critique.go, slicesEqual/stringSlicesEqual renamed
+to reflect order vs unordered semantics, LimitReader cast fixed, readSessionFile +1 guard).
+7 NICE-TO-HAVE items logged; NH-3 (readSessionFile oversize) promoted and fixed.
+
+ANT-theorist: ALIGNED WITH TENSIONS — 5 tensions, all documented, none violations.
+Web UI is among the strongest embodiments of MeshAnt principles in the codebase.
+
+Deferred items (#95, #96, #150, #151) remain open for a future phase.
 
 ### Phase 5 — Thread D datasets (parent: #136) — COMPLETE
 
