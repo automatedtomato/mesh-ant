@@ -256,7 +256,7 @@
     "source": ["claude-sonnet-4-6"],
     "target": ["procurement-officer-narrative-2026.md"],
     "mediation": "extract",
-    "tags": ["session"],
+    "tags": ["session", "articulation"],
     "observer": "dataset-curator"
   },
   {
@@ -266,7 +266,7 @@
     "source": ["claude-sonnet-4-6"],
     "target": ["session-d3-026"],
     "mediation": "critique",
-    "tags": ["session"],
+    "tags": ["session", "articulation"],
     "observer": "dataset-curator"
   }
 ]
