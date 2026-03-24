@@ -152,10 +152,10 @@
   {
     "id": "d3000000-0000-4000-8000-000000000016",
     "timestamp": "2026-08-03T09:00:00Z",
-    "what_changed": "procurement-officer submitted budget-request-2026-071 ($2.4M) to approval-queue; approval-queue placed the request behind 3 pending requests with earlier timestamps; structural queue ordering imposed a delay independent of the request's urgency or merit",
+    "what_changed": "procurement-officer submitted budget-request-2026-071 ($2.4M) to approval-queue; approval-queue placed the request behind 3 pending requests with earlier timestamps; the queue's ordering logic transformed the request's effective priority — what entered as an urgent submission exited as position 4 in a FIFO sequence",
     "source": ["procurement-officer"],
     "target": ["approval-queue"],
-    "mediation": "",
+    "mediation": "approval-queue",
     "tags": ["delay"],
     "observer": "procurement-officer"
   },
