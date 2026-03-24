@@ -17,6 +17,7 @@
 package loader
 
 import (
+	"github.com/automatedtomato/mesh-ant/meshant/graph"
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
@@ -120,28 +121,65 @@ func FollowDraftChain(drafts []schema.TraceDraft, from string) []schema.TraceDra
 	return chain
 }
 
+// ClassifyDraftChainOptions parameterises classification for ClassifyDraftChain.
+// Zero value preserves v1 behaviour — all existing callers are unaffected (design rule C1).
+type ClassifyDraftChainOptions struct {
+	// Criterion is the interpretive declaration under which this classification
+	// is being conducted. Stored as envelope metadata only — does NOT alter step
+	// heuristics (design rule C1).
+	Criterion graph.EquivalenceCriterion
+}
+
+// ClassifiedDraftChain pairs a derivation chain's step classifications with
+// the interpretive conditions declared for the reading. Criterion is envelope
+// metadata only (design rule C1) — it does not affect how steps are classified.
+type ClassifiedDraftChain struct {
+	// Classifications has one entry per derivation step (len(chain)-1).
+	// Nil if the chain is shorter than 2.
+	Classifications []DraftStepClassification
+
+	// Criterion records the interpretive conditions under which this chain was
+	// classified. Slice fields are defensively copied so callers cannot mutate
+	// the envelope after the fact.
+	Criterion graph.EquivalenceCriterion
+}
+
 // ClassifyDraftChain classifies each derivation step in chain (len(chain)-1 entries).
-// Returns nil for chains shorter than 2. v1 heuristics: content+stage → translation;
-// content only → mediator; stage only → mediator (endorsement); neither → intermediary.
-// Content fields: what_changed, source, target, mediation, observer, tags.
-func ClassifyDraftChain(chain []schema.TraceDraft) []DraftStepClassification {
+// Classifications is nil for chains shorter than 2. v1 heuristics: content+stage →
+// translation; content only → mediator; stage only → mediator (endorsement);
+// neither → intermediary. Content fields: what_changed, source, target, mediation,
+// observer, tags.
+//
+// opts.Criterion is carried on the returned envelope as metadata only — it does not
+// alter step heuristics (design rule C1). Zero-value opts preserves v1 behaviour.
+func ClassifyDraftChain(chain []schema.TraceDraft, opts ClassifyDraftChainOptions) ClassifiedDraftChain {
+	// Defensively copy slice fields from opts.Criterion so that later mutations
+	// of the caller's slices cannot propagate into the returned envelope.
+	cdc := ClassifiedDraftChain{
+		Criterion: graph.EquivalenceCriterion{
+			Name:        opts.Criterion.Name,
+			Declaration: opts.Criterion.Declaration,
+			Preserve:    append([]string(nil), opts.Criterion.Preserve...),
+			Ignore:      append([]string(nil), opts.Criterion.Ignore...),
+		},
+	}
 	if len(chain) < 2 {
-		return nil
+		return cdc // Classifications stays nil
 	}
 
-	result := make([]DraftStepClassification, len(chain)-1)
+	cdc.Classifications = make([]DraftStepClassification, len(chain)-1)
 	for i := 1; i < len(chain); i++ {
 		prev := chain[i-1]
 		curr := chain[i]
 		kind, reason, subKind := classifyDraftStep(prev, curr)
-		result[i-1] = DraftStepClassification{
+		cdc.Classifications[i-1] = DraftStepClassification{
 			StepIndex: i,
 			Kind:      kind,
 			Reason:    reason,
 			SubKind:   subKind,
 		}
 	}
-	return result
+	return cdc
 }
 
 // classifyDraftStep applies the v1 heuristic to a single derivation step.
