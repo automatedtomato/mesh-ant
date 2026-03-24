@@ -72,7 +72,7 @@
   {
     "id": "d3000000-0000-4000-8000-000000000008",
     "timestamp": "2026-07-17T09:00:00Z",
-    "what_changed": "weighted-scoring-matrix-2024 translated vendor technical proposals and compliance scores into numerical ranking; vendor-beta ranked #1 (score 87.3), vendor-alpha ranked #2 (score 82.1); the matrix's inscribed weightings determined the outcome, not subjective judgment",
+    "what_changed": "weighted-scoring-matrix-2024 translated vendor technical proposals and compliance scores into numerical ranking; vendor-beta ranked #1 (score 87.3), vendor-alpha ranked #2 (score 82.1); the matrix's inscribed weightings determined the outcome — the ranking was produced by an inscription device, not by a human deliberating in the moment",
     "source": ["vendor-alpha-evaluation-2026-071", "vendor-beta-evaluation-2026-071"],
     "target": ["vendor-ranking-2026-071"],
     "mediation": "weighted-scoring-matrix-2024",
