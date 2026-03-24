@@ -306,7 +306,7 @@
     "source": ["claude-sonnet-4-6"],
     "target": ["incident-2026-0610-postmortem.md"],
     "mediation": "extract",
-    "tags": ["session"],
+    "tags": ["session", "articulation"],
     "observer": "dataset-analyst"
   },
   {
@@ -316,7 +316,7 @@
     "source": ["claude-sonnet-4-6"],
     "target": ["session-d1-031"],
     "mediation": "critique",
-    "tags": ["session"],
+    "tags": ["session", "articulation"],
     "observer": "dataset-analyst"
   }
 ]
