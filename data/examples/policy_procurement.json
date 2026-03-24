@@ -1,0 +1,272 @@
+[
+  {
+    "id": "d3000000-0000-4000-8000-000000000001",
+    "timestamp": "2026-06-01T09:00:00Z",
+    "what_changed": "it-department submitted purchase-requisition-2026-071 for citizen-services-platform; estimated cost $2.4M; requisition entered procurement workflow for standard review",
+    "source": ["it-department"],
+    "target": ["purchase-requisition-2026-071"],
+    "mediation": "",
+    "tags": [],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000002",
+    "timestamp": "2026-06-01T09:05:00Z",
+    "what_changed": "spending-threshold-policy ($500K threshold) intercepted purchase-requisition-2026-071 and reclassified it from direct-purchase to formal-competitive-procurement; the entire procurement workflow redirected — the threshold acted, no human decided to escalate",
+    "source": ["purchase-requisition-2026-071"],
+    "target": ["formal-procurement-process-2026-071"],
+    "mediation": "spending-threshold-policy",
+    "tags": ["threshold", "redirection"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000003",
+    "timestamp": "2026-06-02T10:00:00Z",
+    "what_changed": "procurement-regulation-2024 mandated minimum 45-day RFP open period for procurements over $1M; timeline extended from procurement-officer's planned 2-week schedule to the regulatory minimum; the regulation acted on the timeline without any human appeal process",
+    "source": ["procurement-regulation-2024"],
+    "target": ["rfp-timeline-2026-071"],
+    "mediation": "procurement-regulation-2024",
+    "tags": ["delay"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000004",
+    "timestamp": "2026-06-03T14:00:00Z",
+    "what_changed": "procurement-officer drafted RFP-2026-071; procurement-regulation-2024 section 12 requirements transformed technical requirements into mandated evaluation-criteria format with weighted scoring categories — the technical specification was translated into a regulatory document form",
+    "source": ["procurement-officer"],
+    "target": ["RFP-2026-071"],
+    "mediation": "procurement-regulation-2024",
+    "tags": ["translation"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000005",
+    "timestamp": "2026-07-15T17:00:00Z",
+    "what_changed": "deadline-enforcement-system closed submission portal at the required close time; three vendors had submitted proposals; vendor-gamma submission rejected automatically — it arrived 4 minutes after portal closure; the system acted without human adjudication",
+    "source": ["deadline-enforcement-system"],
+    "target": ["vendor-gamma-proposal"],
+    "mediation": "deadline-enforcement-system",
+    "tags": ["blockage", "threshold"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000006",
+    "timestamp": "2026-07-16T10:00:00Z",
+    "what_changed": "compliance-checklist-v3 evaluated vendor-alpha-proposal against 47 mandatory requirements; 3 items flagged non-compliant; proposal scored 91% on mandatory compliance — the checklist translated a heterogeneous proposal document into a pass/fail score",
+    "source": ["compliance-checklist-v3"],
+    "target": ["vendor-alpha-evaluation-2026-071"],
+    "mediation": "compliance-checklist-v3",
+    "tags": ["translation"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000007",
+    "timestamp": "2026-07-16T10:30:00Z",
+    "what_changed": "compliance-checklist-v3 evaluated vendor-beta-proposal; all 47 mandatory requirements met; proposal scored 100% on mandatory compliance — the same checklist apparatus that evaluated vendor-alpha produced a different result from different input",
+    "source": ["compliance-checklist-v3"],
+    "target": ["vendor-beta-evaluation-2026-071"],
+    "mediation": "compliance-checklist-v3",
+    "tags": ["translation"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000008",
+    "timestamp": "2026-07-17T09:00:00Z",
+    "what_changed": "weighted-scoring-matrix-2024 translated vendor technical proposals and compliance scores into numerical ranking; vendor-beta ranked #1 (score 87.3), vendor-alpha ranked #2 (score 82.1); the matrix's inscribed weightings determined the outcome, not subjective judgment",
+    "source": ["weighted-scoring-matrix-2024"],
+    "target": ["vendor-ranking-2026-071"],
+    "mediation": "weighted-scoring-matrix-2024",
+    "tags": ["translation"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000009",
+    "timestamp": "2026-07-18T09:00:00Z",
+    "what_changed": "public-comment-period-rule required 14-day public comment window before contract award; procurement-officer's planned award date of 2026-07-20 delayed to 2026-08-03 minimum; the rule imposed a structural delay independent of any participant's preference",
+    "source": ["public-comment-period-rule"],
+    "target": ["award-timeline-2026-071"],
+    "mediation": "public-comment-period-rule",
+    "tags": ["delay"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000010",
+    "timestamp": "2026-07-20T11:00:00Z",
+    "what_changed": "vendor-alpha submitted public comment challenging weighted-scoring-matrix-2024 weighting of cost versus technical merit; comment registered in public-record-2026-071; the public-comment-period-rule enabled this channel — without the rule, vendor-alpha had no formal avenue to contest the methodology",
+    "source": ["vendor-alpha"],
+    "target": ["public-record-2026-071"],
+    "mediation": "public-comment-period-rule",
+    "tags": ["blockage"],
+    "observer": "vendor-alpha"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000011",
+    "timestamp": "2026-07-22T10:00:00Z",
+    "what_changed": "vendor-alpha filed formal-objection-2026-071 under procurement-appeals-regulation section 4.2; objection challenged scoring methodology and requested independent review; the regulation provided the formal channel — vendor-alpha acted through the institutional apparatus",
+    "source": ["vendor-alpha"],
+    "target": ["formal-objection-2026-071"],
+    "mediation": "procurement-appeals-regulation",
+    "tags": ["blockage"],
+    "observer": "vendor-alpha"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000012",
+    "timestamp": "2026-07-22T10:05:00Z",
+    "what_changed": "procurement-appeals-regulation automatically suspended award-process-2026-071 upon receipt of formal-objection-2026-071; suspension mandatory for minimum 21 days; procurement-officer notified — the regulation acted on the process the moment the objection was filed, without human deliberation",
+    "source": ["procurement-appeals-regulation"],
+    "target": ["award-process-2026-071"],
+    "mediation": "procurement-appeals-regulation",
+    "tags": ["blockage", "delay"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000013",
+    "timestamp": "2026-07-24T09:00:00Z",
+    "what_changed": "independent-review-panel constituted under procurement-appeals-regulation section 4.5 with 3 independent evaluators; panel tasked to review weighted-scoring-matrix-2024 methodology and vendor-alpha objection grounds — the regulation translated the objection into a formal review structure",
+    "source": ["procurement-appeals-regulation"],
+    "target": ["independent-review-panel"],
+    "mediation": "procurement-appeals-regulation",
+    "tags": ["translation"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000014",
+    "timestamp": "2026-08-01T14:00:00Z",
+    "what_changed": "independent-review-panel issued review-determination-2026-071: scoring methodology valid on 2 of 3 challenged grounds; cost-weighting ground (1 of 3) remanded for re-scoring with adjusted weight; vendor-alpha objection partially sustained, process redirected to re-scoring phase",
+    "source": ["independent-review-panel"],
+    "target": ["review-determination-2026-071"],
+    "mediation": "procurement-appeals-regulation",
+    "tags": ["redirection", "translation"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000015",
+    "timestamp": "2026-08-02T10:00:00Z",
+    "what_changed": "weighted-scoring-matrix-2024 re-applied with adjusted cost weighting per review-determination-2026-071; vendor-beta remained #1 (revised score 85.9), vendor-alpha remained #2 (revised score 83.4); gap narrowed from 5.2 to 2.5 points but ranking unchanged",
+    "source": ["weighted-scoring-matrix-2024"],
+    "target": ["revised-vendor-ranking-2026-071"],
+    "mediation": "review-determination-2026-071",
+    "tags": ["translation"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000016",
+    "timestamp": "2026-08-03T09:00:00Z",
+    "what_changed": "procurement-officer submitted budget-request-2026-071 ($2.4M) to approval-queue; approval-queue placed the request behind 3 pending requests with earlier timestamps; structural queue ordering imposed a delay independent of the request's urgency or merit",
+    "source": ["procurement-officer"],
+    "target": ["approval-queue"],
+    "mediation": "",
+    "tags": ["delay"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000017",
+    "timestamp": "2026-08-03T09:10:00Z",
+    "what_changed": "budget-ceiling-policy ($2M per-project cap) flagged budget-request-2026-071 as over-ceiling; automatic escalation to city-council-finance-committee required; budget-approver's authority was exceeded — the policy redirected the request upward without human decision",
+    "source": ["budget-ceiling-policy"],
+    "target": ["budget-request-2026-071"],
+    "mediation": "budget-ceiling-policy",
+    "tags": ["threshold", "redirection"],
+    "observer": "budget-approver"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000018",
+    "timestamp": "2026-08-05T10:00:00Z",
+    "what_changed": "city-council-finance-committee deferred budget-request-2026-071 to next scheduled session on 2026-08-26; council-session-scheduling-rule provided no emergency-session mechanism for procurement items; a 3-week delay imposed by institutional calendar rhythm",
+    "source": ["city-council-finance-committee"],
+    "target": ["budget-request-2026-071"],
+    "mediation": "council-session-scheduling-rule",
+    "tags": ["delay", "blockage"],
+    "observer": "budget-approver"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000019",
+    "timestamp": "2026-08-26T15:00:00Z",
+    "what_changed": "city-council-finance-committee approved budget-request-2026-071 with condition: $200K held in escrow pending 6-month performance review; resolution-2026-FC-014 granted a budget-ceiling-policy exception; the resolution transformed an over-ceiling request into an approved-with-conditions authorization",
+    "source": ["city-council-finance-committee"],
+    "target": ["budget-approval-2026-071"],
+    "mediation": "resolution-2026-FC-014",
+    "tags": ["threshold", "translation"],
+    "observer": "budget-approver"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000020",
+    "timestamp": "2026-08-27T10:00:00Z",
+    "what_changed": "procurement-officer issued award-notification-2026-071 to vendor-beta; contract-template-standard-2024 transformed negotiated terms into binding municipal contract format — the template mediated by imposing standard clauses that altered the terms-as-negotiated into terms-as-legally-enforceable",
+    "source": ["procurement-officer"],
+    "target": ["contract-2026-071"],
+    "mediation": "contract-template-standard-2024",
+    "tags": ["translation"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000021",
+    "timestamp": "2026-08-28T09:00:00Z",
+    "what_changed": "audit-trail-requirement identified 4 of 17 required documentation items missing from procurement-file-2026-071; contract execution blocked until documentation complete — the requirement acted as a gate, preventing contract execution without human instruction to stop",
+    "source": ["audit-trail-requirement"],
+    "target": ["contract-execution-2026-071"],
+    "mediation": "audit-trail-requirement",
+    "tags": ["blockage"],
+    "observer": "compliance-auditor"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000022",
+    "timestamp": "2026-08-28T11:00:00Z",
+    "what_changed": "compliance-auditor identified audit-finding-2026-071-001: vendor-beta conflict-of-interest-disclosure missing from compliance-checklist-v3 evaluation phase; gap not detected during initial procurement review; conflict-of-interest-regulation section 7.1 defined the disclosure requirement",
+    "source": ["compliance-auditor"],
+    "target": ["audit-finding-2026-071-001"],
+    "mediation": "conflict-of-interest-regulation",
+    "tags": ["blockage"],
+    "observer": "compliance-auditor"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000023",
+    "timestamp": "2026-08-28T11:30:00Z",
+    "what_changed": "conflict-of-interest-regulation section 7.1 required vendor-beta to submit supplementary disclosure within 10 business days or face automatic disqualification; the regulation imposed the consequence — no human adjudicator was needed to set the deadline or penalty",
+    "source": ["conflict-of-interest-regulation"],
+    "target": ["vendor-beta-coi-disclosure"],
+    "mediation": "conflict-of-interest-regulation",
+    "tags": ["threshold", "delay"],
+    "observer": "compliance-auditor"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000024",
+    "timestamp": "2026-09-09T14:00:00Z",
+    "what_changed": "compliance-auditor cleared audit-finding-2026-071-001 after vendor-beta submitted conflict-of-interest disclosure on day 8 of the 10-day window; all 17 audit-trail-requirement documents now present; audit-trail-requirement authorized contract execution",
+    "source": ["compliance-auditor"],
+    "target": ["contract-execution-2026-071"],
+    "mediation": "audit-trail-requirement",
+    "tags": ["translation"],
+    "observer": "compliance-auditor"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000025",
+    "timestamp": "2026-09-10T10:00:00Z",
+    "what_changed": "contract-2026-071 executed between Metro City and vendor-beta; performance-monitoring-schedule-2024 attached as binding appendix; calendar-enforcement-system registered the 6-month performance review trigger for 2027-03-10 — institutional machinery will initiate the review automatically",
+    "source": ["contract-2026-071", "performance-monitoring-schedule-2024"],
+    "target": ["vendor-beta-performance-review-2027q1"],
+    "mediation": "calendar-enforcement-system",
+    "tags": ["threshold"],
+    "observer": "procurement-officer"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000026",
+    "timestamp": "2026-09-15T14:00:00Z",
+    "what_changed": "LLM extraction session (claude-sonnet-4-6) processed procurement-officer-narrative-2026.md and produced 15 candidate trace drafts covering the requisition, threshold trigger, vendor evaluation, and budget approval phases; session identifier session-d3-026",
+    "source": ["claude-sonnet-4-6"],
+    "target": ["procurement-officer-narrative-2026.md"],
+    "mediation": "extract",
+    "tags": ["session"],
+    "observer": "dataset-curator"
+  },
+  {
+    "id": "d3000000-0000-4000-8000-000000000027",
+    "timestamp": "2026-09-15T15:00:00Z",
+    "what_changed": "LLM critique session (claude-sonnet-4-6) reviewed 15 extraction drafts against MeshAnt schema and ANT vocabulary; flagged 3 drafts for mediator/intermediary conflation — spending-threshold-policy and procurement-appeals-regulation initially had empty mediation fields despite actively transforming the process flow; revised drafts corrected before promotion",
+    "source": ["claude-sonnet-4-6"],
+    "target": ["session-d3-026"],
+    "mediation": "critique",
+    "tags": ["session"],
+    "observer": "dataset-curator"
+  }
+]
