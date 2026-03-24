@@ -149,7 +149,7 @@ func compareSpan(span string, draftsA, draftsB []schema.TraceDraft) []FieldDisag
 			ValueB:     b.WhatChanged,
 		})
 	}
-	if !slicesEqual(a.Source, b.Source) {
+	if !stringSlicesEqualUnordered(a.Source, b.Source) {
 		ds = append(ds, FieldDisagreement{
 			SourceSpan: span,
 			Field:      "source",
@@ -157,7 +157,7 @@ func compareSpan(span string, draftsA, draftsB []schema.TraceDraft) []FieldDisag
 			ValueB:     renderSlice(b.Source),
 		})
 	}
-	if !slicesEqual(a.Target, b.Target) {
+	if !stringSlicesEqualUnordered(a.Target, b.Target) {
 		ds = append(ds, FieldDisagreement{
 			SourceSpan: span,
 			Field:      "target",
@@ -181,7 +181,7 @@ func compareSpan(span string, draftsA, draftsB []schema.TraceDraft) []FieldDisag
 			ValueB:     b.Observer,
 		})
 	}
-	if !slicesEqual(a.Tags, b.Tags) {
+	if !stringSlicesEqualUnordered(a.Tags, b.Tags) {
 		ds = append(ds, FieldDisagreement{
 			SourceSpan: span,
 			Field:      "tags",
@@ -197,7 +197,7 @@ func compareSpan(span string, draftsA, draftsB []schema.TraceDraft) []FieldDisag
 			ValueB:     b.UncertaintyNote,
 		})
 	}
-	if !slicesEqual(a.IntentionallyBlank, b.IntentionallyBlank) {
+	if !stringSlicesEqualUnordered(a.IntentionallyBlank, b.IntentionallyBlank) {
 		ds = append(ds, FieldDisagreement{
 			SourceSpan: span,
 			Field:      "intentionally_blank",
@@ -237,9 +237,10 @@ func renderSlice(ss []string) string {
 	return strings.Join(cp, ", ")
 }
 
-// slicesEqual reports whether a and b contain the same elements regardless of order.
-// nil and []string{} are equivalent.
-func slicesEqual(a, b []string) bool {
+// stringSlicesEqualUnordered reports whether a and b contain the same elements
+// regardless of order; nil and []string{} are equivalent. Use
+// stringSlicesEqualOrdered (draftchain.go) when element order matters.
+func stringSlicesEqualUnordered(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}

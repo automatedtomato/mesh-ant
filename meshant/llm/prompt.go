@@ -16,7 +16,7 @@ func LoadPromptTemplate(path string) (string, error) {
 	}
 	defer f.Close()
 
-	limited := io.LimitReader(f, maxSourceBytes+1)
+	limited := io.LimitReader(f, int64(maxSourceBytes)+1) // +1 to detect oversized files
 	data, err := io.ReadAll(limited)
 	if err != nil {
 		return "", fmt.Errorf("llm: read prompt template %q: %w", path, err)

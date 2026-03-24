@@ -158,10 +158,10 @@ func draftContentChanged(prev, curr schema.TraceDraft) bool {
 	if prev.WhatChanged != curr.WhatChanged {
 		return true
 	}
-	if !stringSlicesEqual(prev.Source, curr.Source) {
+	if !stringSlicesEqualOrdered(prev.Source, curr.Source) {
 		return true
 	}
-	if !stringSlicesEqual(prev.Target, curr.Target) {
+	if !stringSlicesEqualOrdered(prev.Target, curr.Target) {
 		return true
 	}
 	if prev.Mediation != curr.Mediation {
@@ -170,7 +170,7 @@ func draftContentChanged(prev, curr schema.TraceDraft) bool {
 	if prev.Observer != curr.Observer {
 		return true
 	}
-	if !stringSlicesEqual(prev.Tags, curr.Tags) {
+	if !stringSlicesEqualOrdered(prev.Tags, curr.Tags) {
 		return true
 	}
 	return false
@@ -182,8 +182,10 @@ func draftStageChanged(prev, curr schema.TraceDraft) bool {
 	return curr.ExtractionStage != "" && curr.ExtractionStage != prev.ExtractionStage
 }
 
-// stringSlicesEqual reports element-wise equality; nil and empty are equal.
-func stringSlicesEqual(a, b []string) bool {
+// stringSlicesEqualOrdered reports element-wise (order-sensitive) equality;
+// nil and empty are equal. Use stringSlicesEqualUnordered (extractiongap.go)
+// when element order does not matter.
+func stringSlicesEqualOrdered(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
