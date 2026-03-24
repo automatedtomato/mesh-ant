@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-24 (#145: new `serve` package — localhost HTTP server; `Envelope` with `CutMeta`; four endpoints; observer required on all endpoints; 82.3% coverage; decision record in `serve-v1.md`)
+**Last Updated:** 2026-03-24 (#146: Web UI + provenance panel — Cytoscape.js SPA; `/element/{name}` endpoint; `go:embed web`; static file server; `filterByElement`; 93.4% coverage; decision record `web-ui-v1.md`)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -17,7 +17,7 @@
 | `persist` | Read and write graphs to JSON files. |
 | `review` | Ambiguity detection, terminal rendering, and interactive accept/edit/skip/quit session for TraceDraft records (Thread A). Exports `DeriveAccepted`, `DeriveEdited`, `RunEditFlow` for reuse by `llm` (F.3). |
 | `llm` | LLM-mediated extraction, assist, critique, and split pipelines: `LLMClient` interface, `AnthropicClient`, `RunExtraction`, `RunAssistSession`, `ParseSpans`, `RunCritique`, `RunSplit`, `PromoteSession`, `SessionRecord`, and supporting types. Shared helpers (`readSourceDoc`, `isRefusal`) in `shared.go`. Enforces F.1 conventions (D1–D7): mediator framing, model-ID provenance, framework UncertaintyNote append, IntentionallyBlank validation (F.2, F.3, F.4, #137). `PromoteSession` closes the Principle 8 reflexivity gap: converts a SessionRecord to a canonical Trace (#138). Imports `review` (one-directional: `llm → review`) for derivation helpers and rendering in the assist session. |
-| `serve` | HTTP server for interactive trace graph querying. `Server` struct, `NewServer(ts store.TraceStore)` constructor. Four endpoints: `/articulate` (GET, returns Cut as Envelope), `/diff` (POST, diffs two cuts), `/shadow` (GET, names shadowed elements), `/traces` (GET, returns raw traces). All endpoints require `observer` query param (returns 400 with ANT reasoning if absent). `Envelope` type wraps response data + `CutMeta`. Response helpers: `writeJSON`, `writeError`, `cutMetaFromGraph`, query parameter parsers. Graceful shutdown. #145, Phase 4. |
+| `serve` | HTTP server for interactive trace graph querying. `Server` struct, `NewServer(ts store.TraceStore)` constructor. Five endpoints: `/articulate` (GET, returns Cut as Envelope), `/diff` (GET, diffs two cuts), `/shadow` (GET, names shadowed elements), `/traces` (GET, returns raw traces), `/element/{name}` (GET, traces mentioning named element — observer required). All endpoints require `observer` query param (returns 400 with ANT reasoning if absent). `Envelope` type wraps response data + `CutMeta`. `filterByElement` filters traces by Source/Target membership. Response helpers: `writeJSON`, `writeError`, `cutMetaFromGraph`, query parameter parsers. Static file server via `go:embed web` serves the SPA at `/`. Graceful shutdown. 93.4% coverage. #145, #146, Phase 4. Web assets: `web/index.html` (SPA shell: observer gate, cut header, graph + sidebar), `web/style.css`, `web/app.js` (init, API fetch, wiring), `web/render.js` (Cytoscape graph, shadow panel, detail panel), `web/export.js` (JSON + DOT download), `web/lib/cytoscape.min.js` (vendored Cytoscape.js 3.30.4). |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
 | `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique`, `split`, `promote-session`, `convert`, `store`, `serve` subcommands. `articulate`, `diff`, `shadow`, `gaps`, `follow`, `bottleneck` accept `--db bolt://...` to load traces from a Neo4j DB instead of a JSON file (mutually exclusive with the file arg). `store` writes JSON traces to the DB. `serve` starts a localhost HTTP server (#145); accepts `--db` and `--port` flags. `articulate` also supports `--narrative`; `gaps` supports `--suggest`. `review` and `assist` are interactive (read from stdin). `extract` calls an LLM for TraceDraft extraction (F.2, #139); supports `--adapter` (#140). `split` splits a source document into spans (#137). `promote-session` promotes a SessionRecord to a Trace (#138). `convert` converts non-text sources to plain text (#140). |
 
@@ -186,9 +186,15 @@
 | File | Contains |
 |------|----------|
 | `response.go` | `CutMeta`, `Envelope`, `ErrorBody`; `writeJSON`, `writeError`, `cutMetaFromGraph`, `parseQueryTime`, `parseLimit` helpers. |
-| `server.go` | `Server` struct, `NewServer(ts store.TraceStore) *Server`, `ServeHTTP` method. HTTP multiplexer registration for four endpoints. |
-| `handlers.go` | `handleArticulate`, `handleDiff`, `handleShadow`, `handleTraces` endpoint handlers; shared `filterTraces` helper; request parameter parsing and validation; graph articulation/diffing/shadow computation via graph package calls. |
-| `handlers_test.go` | Black-box tests via `httptest.NewRecorder` and `httptest.NewRequest`; 82.3% coverage. Tests for all four endpoints, observer validation, time-window parsing, tag filtering, limit application, error responses. |
+| `server.go` | `Server` struct, `NewServer(ts store.TraceStore) *Server`, `ServeHTTP` method. HTTP multiplexer registration for five API endpoints + static file handler (`go:embed web`). |
+| `handlers.go` | `handleArticulate`, `handleDiff`, `handleShadow`, `handleTraces`, `handleElement` endpoint handlers; shared `filterTraces`, `filterByElement` helpers; request parameter parsing and validation. |
+| `handlers_test.go` | Black-box tests via `httptest.NewRecorder` and `httptest.NewRequest`; 93.4% coverage. Tests for all five endpoints, observer validation, time-window parsing, tag filtering, limit application, URL encoding, element filtering, static file serving, API route precedence. |
+| `web/index.html` | SPA shell: observer gate (`<header id="observer-gate">`), cut header (`<div id="cut-header">`), main flex layout with Cytoscape canvas (`<div id="cy">`) and sidebar (shadow + detail panels). |
+| `web/style.css` | Layout: observer gate (centered, prominent), cut header (dark background, sticky), main flex row, sidebar (280px). Shadow panel (amber `#fef9e7`, left border `#f39c12`), detail panel (light grey). Trace cards, provenance block, shadow reason chips. |
+| `web/app.js` | Sections: observer gate form wiring, cut metadata rendering, `loadGraph()` (parallel articulate+shadow fetch), `handleNodeClick()` (element fetch), export button wiring, `apiFetch()` helper, error banner, DOMContentLoaded init. |
+| `web/render.js` | `initGraph(graphData, onNodeClick)` — Cytoscape init, element mapping, style; `renderShadowPanel(shadowData, onShadowClick)`; `renderDetailPanel(name, traces, observer)` — trace cards with provenance block for `session`-tagged traces. |
+| `web/export.js` | `exportJSON()`, `exportDOT()`, `setLastArticulateEnvelope(env)`; `buildDOT(cut, graphData)` — mirrors `PrintGraphDOT` conventions; `triggerDownload(filename, blob)`. |
+| `web/lib/cytoscape.min.js` | Vendored Cytoscape.js 3.30.4 (~374KB). Served at `/lib/cytoscape.min.js` via the embedded file server. |
 
 ### Types
 
@@ -209,7 +215,9 @@
 | `handleDiff` | Serves `POST /diff` with JSON body `{observer_a: string, observer_b: string, window: TimeWindow, tags: []string}` | Load traces, compute two cuts (observer_a vs observer_b), diff them, return Envelope with GraphDiff and CutMeta from observer_a. Both observers must be present. |
 | `handleShadow` | Serves `GET /shadow?observer=...&window=...&tags=...&limit=...` | Load traces, articulate, compute shadow, return Envelope with ShadowSummary and CutMeta. Observer required. |
 | `handleTraces` | Serves `GET /traces?observer=...&window=...&tags=...&limit=...` | Load traces from store (QueryOpts filtering applied), validate each, return Envelope with []Trace and CutMeta. Observer required (passed to store as retrieval hint; layer 1 pre-filter, not cut). |
-| `filterTraces` | `func filterTraces(traces []schema.Trace, window graph.TimeWindow, tags []string, limit int) []schema.Trace` | In-memory filtering: window-based time range, tag AND logic, limit application. Returns slice in original order (no re-sorting). Used by handlers after store retrieval. |
+| `filterTraces` | `func filterTraces(traces []schema.Trace, observer string, tw graph.TimeWindow, tags []string) []schema.Trace` | In-memory filtering: observer exact match, time-window bounds (inclusive), tag OR logic. Returns slice in original order. Used by `handleTraces` and `handleElement`. |
+| `filterByElement` | `func filterByElement(traces []schema.Trace, elementName string) []schema.Trace` | Returns traces where `elementName` appears in `tr.Source` or `tr.Target` (exact string equality). Used by `handleElement` after observer/time/tag filtering. |
+| `handleElement` | `(s *Server) handleElement(w http.ResponseWriter, r *http.Request)` | Serves `GET /element/{name}?observer=...`. Requires observer; optional from/to/tags. Loads full substrate, applies `filterTraces` then `filterByElement`. Returns `Envelope{Cut, Data: []schema.Trace}`. Returns `[]` (not null) for unknown elements. |
 | `writeJSON` | `func writeJSON(w http.ResponseWriter, status int, env Envelope) error` | Marshal Envelope to JSON, write status code + Content-Type header, write body. Returns marshal error. Used by all handlers for success responses. |
 | `writeError` | `func writeError(w http.ResponseWriter, status int, code, message, reason string) error` | Create ErrorBody, marshal Envelope with Error field, write response. Returns marshal error. Used by all handlers for error responses (observer missing, invalid time window, storage failure, etc.). |
 | `cutMetaFromGraph` | `func cutMetaFromGraph(g *graph.MeshGraph, ts []string, tw graph.TimeWindow) graph.CutMeta` | Extract CutMeta from a MeshGraph: observer (g.Cut.Observer), tags (ts), window (tw). Helper for populating Envelope.CutMeta. |
@@ -224,7 +232,9 @@
 - **No context enforcement**: Handlers accept request timeout via http.Request.Context but do not enforce it (defer to store implementations). Store.Query and Store.Get accept context parameter for cancellation.
 - **Stateless handlers**: No global state, no session storage, no in-process caching. Each request is independent.
 - **Time-window custom JSON**: TimeWindow encodes/decodes via custom codec (see `graph.serial.go`). HTTP endpoints parse RFC3339Nano strings and reconstruct TimeWindow structs on POST body.
-- **Decision record**: `docs/decisions/serve-v1.md` documents ANT tensions and design rationale for observer requirement, no silent cuts, Envelope structure, and graceful shutdown. Phase 4 (#145).
+- **Decision record (serve)**: `docs/decisions/serve-v1.md` — observer requirement, Envelope structure, graceful shutdown, Phase 4 (#145).
+- **Decision record (web-ui)**: `docs/decisions/web-ui-v1.md` — Cytoscape.js choice, `go:embed`, no build step, observer gate as structural HTML, `/element/{name}` in-memory design, client-side DOT duplication, provenance deferred, Phase 4 (#146).
+- **Static file server**: `go:embed web` in `server.go` embeds the entire `web/` directory. `fs.Sub(webFS, "web")` strips the prefix; `http.FileServerFS` serves at `GET /`. API routes are registered first and take precedence over the catch-all `/` handler.
 
 ---
 

@@ -217,6 +217,107 @@ func (s *Server) handleTraces(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, Envelope{Cut: meta, Data: filtered})
 }
 
+// filterByElement returns traces where elementName appears in tr.Source or tr.Target.
+// Matching is exact string equality on individual slice entries. Both Source and
+// Target are checked so that any trace mentioning the named element is included
+// regardless of the direction of the relationship.
+func filterByElement(traces []schema.Trace, elementName string) []schema.Trace {
+	var out []schema.Trace
+	for _, tr := range traces {
+		found := false
+		for _, s := range tr.Source {
+			if s == elementName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			for _, t := range tr.Target {
+				if t == elementName {
+					found = true
+					break
+				}
+			}
+		}
+		if found {
+			out = append(out, tr)
+		}
+	}
+	return out
+}
+
+// handleElement handles GET /element/{name}.
+//
+// Required: ?observer=<string>  (path variable: r.PathValue("name"))
+// Optional: ?from=RFC3339 ?to=RFC3339 ?tags=foo&tags=bar
+//
+// Returns all traces in which the named element appears as source or target,
+// filtered by the given observer position and optional time/tag constraints.
+// Observer is required — element visibility is always positioned. A named element
+// that is not found in any trace returns 200 with an empty array, not 404.
+func (s *Server) handleElement(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	observer := q.Get("observer")
+	if observer == "" {
+		writeError(w, http.StatusBadRequest, "observer is required — every graph is a positioned reading")
+		return
+	}
+
+	// Decode the path variable; net/http 1.22+ does percent-decoding automatically
+	// via PathValue, so "element%2Da" correctly yields "element-a".
+	elementName := r.PathValue("name")
+
+	tw, err := parseQueryTime(q.Get("from"), q.Get("to"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	tags := q["tags"]
+
+	allTraces, err := s.ts.Query(r.Context(), store.QueryOpts{})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Apply observer, time window, and tag filters first (consistent with the
+	// full-substrate design: all filtering is in-memory, no pre-filtering at store).
+	observerFiltered := filterTraces(allTraces, observer, tw, tags)
+
+	// Then narrow to traces that mention the named element.
+	result := filterByElement(observerFiltered, elementName)
+
+	// Nil-guard: always return a JSON array, never null.
+	if result == nil {
+		result = []schema.Trace{}
+	}
+
+	// Build cut metadata. shadow_count is approximate: total minus observer-filtered
+	// (mirrors the /traces approximation — T2 in serve-v1.md applies here too).
+	shadowCount := len(allTraces) - len(observerFiltered)
+	var fromPtr, toPtr *string
+	if !tw.Start.IsZero() {
+		fs := tw.Start.UTC().Format(time.RFC3339)
+		fromPtr = &fs
+	}
+	if !tw.End.IsZero() {
+		ts := tw.End.UTC().Format(time.RFC3339)
+		toPtr = &ts
+	}
+
+	meta := CutMeta{
+		Observer:    observer,
+		From:        fromPtr,
+		To:          toPtr,
+		Tags:        tags,
+		TraceCount:  len(result),
+		ShadowCount: shadowCount,
+	}
+
+	writeJSON(w, http.StatusOK, Envelope{Cut: meta, Data: result})
+}
+
 // filterTraces returns traces matching the given observer, time window, and tags.
 // Tags use OR semantics (any tag matches) — consistent with graph.ArticulationOptions.
 // Time window bounds are inclusive.

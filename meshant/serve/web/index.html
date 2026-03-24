@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MeshAnt</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Observer gate: visible on load; the ONLY thing shown until observer is named.
+       Every graph is a positioned reading — the UI enforces this structurally. -->
+  <header id="observer-gate">
+    <form id="observer-form">
+      <label for="observer-input">Observer position — every graph is a positioned reading</label>
+      <div id="observer-input-row">
+        <input id="observer-input" type="text" placeholder="e.g. alice" autocomplete="off" required>
+        <button type="submit">Load graph</button>
+      </div>
+    </form>
+    <div id="error-banner" hidden></div>
+  </header>
+
+  <!-- Cut header: permanent metadata bar shown after observer is committed.
+       Observer, window, trace/shadow counts, and export buttons.
+       Cannot be dismissed — every representation names its cut. -->
+  <div id="cut-header" hidden>
+    <span id="cut-observer"></span>
+    <span class="cut-sep">|</span>
+    <span id="cut-window"></span>
+    <span class="cut-sep">|</span>
+    <span id="cut-tags"></span>
+    <span class="cut-sep">|</span>
+    <span id="cut-trace-count"></span>
+    <span class="cut-sep">|</span>
+    <span id="cut-shadow-count"></span>
+    <div id="cut-export">
+      <button id="btn-export-json">Export JSON</button>
+      <button id="btn-export-dot">Export DOT</button>
+    </div>
+  </div>
+
+  <!-- Main layout: graph canvas + sidebar (shadow panel + detail panel). -->
+  <div id="main" hidden>
+    <div id="cy"></div>
+    <div id="sidebar">
+      <section id="shadow-panel">
+        <h3>Shadow</h3>
+        <div id="shadow-list"></div>
+      </section>
+      <section id="detail-panel">
+        <h3>Element detail</h3>
+        <div id="detail-content">
+          <p class="detail-placeholder">Click a node to see its traces.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="/lib/cytoscape.min.js"></script>
+  <script src="/render.js"></script>
+  <script src="/export.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
