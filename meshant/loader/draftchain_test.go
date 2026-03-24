@@ -842,3 +842,62 @@ func TestFollowDraftChain_Fork(t *testing.T) {
 		t.Errorf("chain[1] = %q; want one of childA or childB", chain[1].ID)
 	}
 }
+
+// --- draftContentChanged field-axis tests ---
+// These tests ensure each individual content field is checked by
+// draftContentChanged. A mutation removing any one comparison would be caught.
+
+func TestClassifyDraftChain_ContentChange_SourceDiffers(t *testing.T) {
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Source: []string{"a"}}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Source: []string{"b"}}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Source change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+}
+
+func TestClassifyDraftChain_ContentChange_TargetDiffers(t *testing.T) {
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Target: []string{"x"}}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Target: []string{"y"}}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Target change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+}
+
+func TestClassifyDraftChain_ContentChange_MediationDiffers(t *testing.T) {
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Mediation: "M1"}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Mediation: "M2"}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Mediation change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+}
+
+func TestClassifyDraftChain_ContentChange_ObserverDiffers(t *testing.T) {
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Observer: "op1"}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Observer: "op2"}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Observer change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+}
+
+func TestClassifyDraftChain_ContentChange_TagsDiffers(t *testing.T) {
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Tags: []string{"t1"}}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Tags: []string{"t2"}}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Tags change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+}
+
+func TestClassifyDraftChain_ContentChange_SourceLenDiffers(t *testing.T) {
+	// Exercises the len-mismatch branch in stringSlicesEqualOrdered.
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Source: []string{"a", "b"}}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Source: []string{"a"}}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Source len change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+}

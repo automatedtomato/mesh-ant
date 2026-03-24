@@ -68,16 +68,6 @@ func TestLoadPromptTemplate_Empty(t *testing.T) {
 
 // --- HashPromptTemplate ---
 
-// expectedHashFor computes the SHA-256 of content independently — it does NOT
-// call HashPromptTemplate so tests are not circular.
-func expectedHashFor(t *testing.T, content string) string {
-	t.Helper()
-	// Pre-computed via: python3 -c "import hashlib; print(hashlib.sha256(b'...').hexdigest()[:16])"
-	// Used inline in tests that pin the exact hex value; this helper is for
-	// tests that only need to check structural properties (length, hex chars).
-	return content // unused body — tests use the precomputed constant directly
-}
-
 // knownTemplateContent is the string written by writePromptTemplate in extract_test.go.
 // Pre-computed SHA-256: python3 -c "import hashlib; print(hashlib.sha256(b'Extract trace drafts.').hexdigest()[:16])"
 // Result: 77b3b25b097865b4
