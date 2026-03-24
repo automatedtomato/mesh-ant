@@ -62,10 +62,24 @@ func RunAssistSession(
 
 	now := time.Now().UTC()
 
-	// Empty path is valid — produces an empty system message.
+	// Empty path is valid — produces an empty system message and an empty hash.
 	var systemInstructions string
+	var promptHash string
 	if opts.PromptTemplatePath != "" {
 		systemInstructions, err = LoadPromptTemplate(opts.PromptTemplatePath)
+		if err != nil {
+			rec := SessionRecord{
+				ID:        sessionID,
+				Command:   "assist",
+				Timestamp: now,
+				ErrorNote: err.Error(),
+			}
+			return nil, rec, err
+		}
+		// Hash the template for reproducibility tracking. Error is only possible
+		// if the file is unreadable or oversized — same conditions as LoadPromptTemplate,
+		// so a failure here is a genuine configuration error.
+		promptHash, err = HashPromptTemplate(opts.PromptTemplatePath)
 		if err != nil {
 			rec := SessionRecord{
 				ID:        sessionID,
@@ -83,6 +97,7 @@ func RunAssistSession(
 		Conditions: ExtractionConditions{
 			ModelID:            opts.ModelID,
 			PromptTemplate:     opts.PromptTemplatePath,
+			PromptHash:         promptHash,
 			CriterionRef:       opts.CriterionRef,
 			SystemInstructions: systemInstructions,
 			SourceDocRefs:      []string{opts.SourceDocRef},

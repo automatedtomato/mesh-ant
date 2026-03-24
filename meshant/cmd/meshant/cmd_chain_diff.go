@@ -123,7 +123,7 @@ func cmdChainDiff(w io.Writer, args []string) error {
 		rootID := roots[0]
 
 		chain := loader.FollowDraftChain(spanDrafts, rootID)
-		return loader.ClassifyDraftChain(chain), nil
+		return loader.ClassifyDraftChain(chain, loader.ClassifyDraftChainOptions{}).Classifications, nil
 	}
 
 	chainA, err := buildChain(analystA, setA)

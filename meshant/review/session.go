@@ -58,7 +58,7 @@ func RunReviewSession(drafts []schema.TraceDraft, in io.Reader, out io.Writer) (
 draftLoop:
 	for i, d := range queue {
 		chain := loader.FollowDraftChain(drafts, d.ID)
-		classes := loader.ClassifyDraftChain(chain)
+		classes := loader.ClassifyDraftChain(chain, loader.ClassifyDraftChainOptions{}).Classifications
 
 		fmt.Fprint(out, RenderChain(chain, classes))
 		fmt.Fprint(out, RenderDraft(d, i+1, total))
