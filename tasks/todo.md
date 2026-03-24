@@ -108,8 +108,8 @@ shared.go, stripPreamble extracted); ant-theorist (ALIGNED WITH TENSIONS); docs 
 - [x] **#145 — `meshant serve`** — localhost HTTP server; `meshant/serve` package; 4 endpoints (`/articulate`, `/diff`, `/shadow`, `/traces`); `Envelope` with `CutMeta`; observer required on all endpoints (400 with ANT-reasoning error); graceful shutdown; 82.3% coverage; 4 ANT tensions documented; decision record `serve-v1.md`
 - [x] **#146 — Web UI + provenance panel** — Cytoscape.js 3.30.4 (vendored); observer gate (structural HTML); shadow panel (amber); detail panel (trace cards + provenance); `/element/{name}` endpoint; `go:embed web`; static file server; 93.4% coverage; decision record `web-ui-v1.md`
 
-### Phase 5 — Thread D datasets (parent: #136)
+### Phase 5 — Thread D datasets (parent: #136) — COMPLETE
 
-- [ ] **#147 — D.1 Software incident** — multi-service outage; competing observer positions; full LLM pipeline
-- [ ] **#148 — D.2 Multi-agent pipeline** — agents as actants; AI workflow domain
-- [ ] **#149 — D.3 Policy/procurement** — institutional non-human actants; regulatory/procurement domain
+- [x] **#147 — D.1 Software incident** — `data/examples/software_incident.json`; 32 traces; observers: `on-call-engineer`, `product-manager`, `customer-support-lead`, `dataset-analyst`; retry-buffer as key mediator; ANT aligned; merged PR #162
+- [x] **#148 — D.2 Multi-agent pipeline** — `data/examples/multi_agent_pipeline.json`; 28 traces; observers: `pipeline-auditor`, `ml-engineer`, `dataset-analyst`; 8 pipeline agents as non-human actants; inscription conflict demonstrated; merged PR #163
+- [x] **#149 — D.3 Policy/procurement** — `data/examples/policy_procurement.json`; 27 traces; observers: `procurement-officer`, `budget-approver`, `vendor-alpha`, `compliance-auditor`, `dataset-curator`; 17 institutional actants; 11 circular source==mediation violations fixed; ANT aligned with tensions (T1-T4); merged PR #164
