@@ -266,9 +266,89 @@ meshant articulate data/examples/software_incident.json \
 
 ---
 
+## End-to-end walkthrough: from real documents to the web UI
+
+This walkthrough takes three real-world source documents — a PDF meeting memo, an HTML news
+page, and a Markdown IR draft — and turns them into an interactive graph in the browser.
+
+### Step 1 — Convert non-text sources to plain text
+
+`meshant extract` reads plain text. PDF and HTML need converting first; Markdown is already
+plain text and can be passed directly.
+
+```bash
+meshant convert --adapter pdf   meeting_memo.pdf  --output memo.txt
+meshant convert --adapter html  news_page.html    --output news.txt
+# ir_draft.md needs no conversion
+```
+
+### Step 2 — Extract trace drafts from all three documents in one session
+
+Pass each document with a human-readable reference label. One LLM call is made per document;
+all drafts are aggregated into a single output file and share one session record.
+
+```bash
+export MESHANT_LLM_API_KEY=sk-ant-...
+
+meshant extract \
+  --source-doc memo.txt \
+  --source-doc news.txt \
+  --source-doc ir_draft.md \
+  --source-doc-ref "meeting-memo" \
+  --source-doc-ref "news-page" \
+  --source-doc-ref "ir-draft" \
+  --output raw_drafts.json \
+  --session-output session.json
+```
+
+Each draft in `raw_drafts.json` carries its provenance: which source doc, which model, which
+session. The LLM is a mediator here — every draft is a candidate, not a fact.
+
+### Step 3 — Interactive review
+
+Accept, edit, or skip each draft one at a time. This is where you name observer positions,
+correct mediations, and remove noise.
+
+```bash
+meshant review raw_drafts.json --output reviewed_drafts.json
+```
+
+### Step 4 — Optional: LLM critique pass
+
+Ask the LLM to check the reviewed drafts for consistency and ANT alignment. Review any
+flagged items before promoting.
+
+```bash
+meshant critique \
+  --input reviewed_drafts.json \
+  --output critiqued_drafts.json
+```
+
+### Step 5 — Promote to canonical traces
+
+```bash
+meshant promote --output traces.json reviewed_drafts.json
+```
+
+Each accepted draft becomes a `Trace`. Session-promoted traces carry a Provenance block
+visible in the web UI element detail panel.
+
+### Step 6 — Serve and open the web UI
+
+```bash
+meshant serve traces.json
+# → open http://localhost:8080
+```
+
+The observer gate appears. The chips below the input (fetched from `GET /observers`) show
+every observer position in the substrate — click a chip and press **Load graph** to
+see the graph, shadow panel, and element detail for that position.
+
+---
+
 ## LLM-assisted ingestion pipeline
 
-The full pipeline for extracting traces from a source document:
+The full pipeline for extracting traces from a single source document:
 
 ```bash
 export MESHANT_LLM_API_KEY=sk-ant-...
