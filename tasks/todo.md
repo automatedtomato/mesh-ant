@@ -58,20 +58,25 @@ Detailed plans: `tasks/done/plan_thread_{a,b,f}.md`.
 
 ---
 
-## Deferred Items (still open)
+## Deferred Items — COMPLETE (2026-03-25)
 
-Small items deferred during v2.0.0 threads. Not yet assigned to a phase.
+All deferred items from v2.0.0 threads resolved. Per-thread pipeline complete 2026-03-25.
 
 - [x] **Slice equality helper naming** — renamed to `stringSlicesEqualOrdered`/`stringSlicesEqualUnordered`; fixed in per-thread refactor-clean 2026-03-24
-- [ ] **buildChain closure extraction** — candidate if a second consumer appears
-- [ ] **`PromptHash` in `ExtractionConditions`** — content hash of prompt template for reproducibility; deferred from Thread F
-- [ ] **`ExtractionConditions` bifurcation** — extract vs. critique conditions may need distinct types; deferred from Thread F ant-theorist review
+- [ ] **buildChain closure extraction** — candidate if a second consumer appears (still deferred)
+- [x] **`PromptHash` in `ExtractionConditions`** — `HashPromptTemplate` + `PromptHash` field on `ExtractionConditions` and `CritiqueConditions`; merged PR #170 2026-03-24
+- [x] **`ExtractionConditions` bifurcation** — `CritiqueConditions` type added; `SessionRecord.CritiqueConditions *CritiqueConditions`; backward compat preserved; merged PR #168 2026-03-24
 
-Open GitHub issues (deferred, lower priority):
-- [#95](https://github.com/automatedtomato/mesh-ant/issues/95) — Govern `classifyDraftChain` heuristic with `EquivalenceCriterion`
-- [#96](https://github.com/automatedtomato/mesh-ant/issues/96) — sub-kind field for stage-only endorsement steps in draft chain
-- [#150](https://github.com/automatedtomato/mesh-ant/issues/150) — `PromptHash` in `ExtractionConditions` (reproducibility)
-- [#151](https://github.com/automatedtomato/mesh-ant/issues/151) — `ExtractionConditions` bifurcation (extract vs critique conditions)
+Resolved GitHub issues:
+- [x] [#95](https://github.com/automatedtomato/mesh-ant/issues/95) — `ClassifyDraftChainOptions` + `ClassifiedDraftChain` envelope; C1 enforced; merged PR #170 2026-03-24
+- [x] [#96](https://github.com/automatedtomato/mesh-ant/issues/96) — `DraftSubKindEndorsement` constant + `SubKind` field on `DraftStepClassification`; merged PR #169 2026-03-24
+- [x] [#150](https://github.com/automatedtomato/mesh-ant/issues/150) — merged PR #170 2026-03-24
+- [x] [#151](https://github.com/automatedtomato/mesh-ant/issues/151) — merged PR #168 2026-03-24
+
+Per-thread pipeline (2026-03-25):
+- Refactor-clean: MUST-FIX resolved (JSON tags on `DraftStepClassification`); 3 NICE-TO-HAVE deferred
+- ANT-theorist: ALIGNED WITH TENSIONS — T1 (SubKind not criterion-governed, deepened), T2 (`CritiqueConditions.SourceDocRef` provenance-chain reading), T3 (drift→change language fixed)
+- CODEMAPS updated; tests all green
 
 ---
 
