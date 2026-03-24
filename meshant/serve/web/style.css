@@ -1,0 +1,291 @@
+/* MeshAnt Web UI — positioned reading interface.
+   Every graph is a cut from somewhere; the UI makes that explicit.
+   Layout: observer gate (full-width on load) → cut header (permanent after commit)
+   → main (flex row: graph canvas + sidebar).
+*/
+
+/* === Reset / base === */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  background: #f5f5f5;
+  color: #222;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* === Observer gate === */
+/* Centered, prominent; the only thing visible on load. */
+#observer-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px 24px;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+}
+
+#observer-gate label {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #2c3e50;
+  text-align: center;
+}
+
+#observer-input-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 480px;
+}
+
+#observer-input {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+#observer-input:focus {
+  border-color: #2980b9;
+}
+
+#observer-form button[type="submit"] {
+  padding: 8px 16px;
+  background: #2980b9;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s;
+}
+
+#observer-form button[type="submit"]:hover {
+  background: #1f6fa1;
+}
+
+/* Error banner below the observer form */
+#error-banner {
+  margin-top: 12px;
+  padding: 8px 14px;
+  background: #fce4e4;
+  border: 1px solid #e57373;
+  border-radius: 4px;
+  color: #b71c1c;
+  max-width: 480px;
+  width: 100%;
+  font-size: 13px;
+}
+
+/* === Cut header === */
+/* Permanent bar once observer is committed; dark background, always visible. */
+#cut-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #2c3e50;
+  color: #ecf0f1;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+#cut-header span {
+  white-space: nowrap;
+}
+
+.cut-sep {
+  color: #7f8c8d;
+  padding: 0 2px;
+}
+
+#cut-export {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+#cut-export button {
+  padding: 4px 10px;
+  background: transparent;
+  color: #bdc3c7;
+  border: 1px solid #7f8c8d;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.15s, color 0.15s;
+}
+
+#cut-export button:hover {
+  background: #3d5166;
+  color: #fff;
+}
+
+/* === Main layout === */
+#main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Graph canvas: takes all remaining horizontal space. */
+#cy {
+  flex: 1;
+  min-height: 400px;
+  background: #fafafa;
+}
+
+/* === Sidebar === */
+#sidebar {
+  width: 280px;
+  overflow-y: auto;
+  border-left: 1px solid #ddd;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+#sidebar section {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+#sidebar h3 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  color: #555;
+}
+
+/* === Shadow panel === */
+/* Light amber background signals the blind spot of the current cut. */
+#shadow-panel {
+  background: #fef9e7;
+  border-left: 4px solid #f39c12;
+}
+
+.shadow-item {
+  margin-bottom: 8px;
+}
+
+.shadow-item-name {
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  color: #2c3e50;
+}
+
+.shadow-item-name:hover {
+  text-decoration: underline;
+}
+
+.shadow-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.shadow-reason-chip {
+  display: inline-block;
+  padding: 2px 6px;
+  background: #f39c12;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.shadow-empty {
+  font-size: 12px;
+  color: #7f8c8d;
+  font-style: italic;
+}
+
+/* === Detail panel === */
+/* Light grey; shows traces for the clicked node. */
+#detail-panel {
+  background: #f8f9fa;
+  border-left: 4px solid #6c757d;
+  flex: 1;
+}
+
+.detail-placeholder {
+  font-size: 12px;
+  color: #aaa;
+  font-style: italic;
+}
+
+/* Trace card in the detail panel */
+.trace-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.trace-card-what {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: #2c3e50;
+}
+
+.trace-card-meta {
+  color: #666;
+  margin-bottom: 2px;
+}
+
+.trace-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.trace-tag {
+  display: inline-block;
+  padding: 1px 5px;
+  background: #3498db;
+  color: #fff;
+  border-radius: 8px;
+  font-size: 10px;
+}
+
+/* Provenance block for session-promoted traces */
+.trace-provenance {
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: #e8f4f8;
+  border-left: 3px solid #2980b9;
+  font-size: 11px;
+  color: #1a5276;
+}
+
+.detail-empty {
+  font-size: 12px;
+  color: #aaa;
+  font-style: italic;
+}

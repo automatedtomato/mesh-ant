@@ -327,7 +327,9 @@ func TestHandleShadow_MissingObserver_400(t *testing.T) {
 		t.Errorf("expected 400, got %d", rr.Code)
 	}
 	var body map[string]interface{}
-	json.NewDecoder(rr.Body).Decode(&body)
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
 	errMsg, _ := body["error"].(string)
 	if !strings.Contains(errMsg, "observer is required") {
 		t.Errorf("error should mention 'observer is required': %q", errMsg)
@@ -652,5 +654,295 @@ func TestHandleTraces_StoreError_500(t *testing.T) {
 	rr := doGET(srv, "/traces?observer=alice")
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 on store failure, got %d", rr.Code)
+	}
+}
+
+// --- /element/{name} tests ---
+
+// TestHandleElement_MissingObserver_400: GET /element/element-a with no observer
+// must return 400 with ANT-flavoured observer error. Element visibility is always
+// positioned — no observer means no cut.
+func TestHandleElement_MissingObserver_400(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/element/element-a")
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rr.Code)
+	}
+	var body map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	errMsg, _ := body["error"].(string)
+	// Must use em dash (—) matching the canonical ANT error string.
+	if !strings.Contains(errMsg, "observer is required") {
+		t.Errorf("error should mention 'observer is required': %q", errMsg)
+	}
+}
+
+// TestHandleElement_HappyPath_200: GET /element/element-a?observer=alice returns 200
+// and traces whose Source or Target contains "element-a". Alice's first trace has
+// element-a in Source; her second trace does not mention element-a.
+func TestHandleElement_HappyPath_200(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/element/element-a?observer=alice")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	env := decodeEnvelope(t, rr)
+	cut := cutField(t, env)
+	if cut["observer"] != "alice" {
+		t.Errorf("cut.observer should be 'alice', got %v", cut["observer"])
+	}
+	data, ok := env["data"].([]interface{})
+	if !ok {
+		t.Fatalf("data should be an array, got %T: %v", env["data"], env["data"])
+	}
+	// Alice's first trace: Source=["element-a"] Target=["element-b"] — one match.
+	if len(data) != 1 {
+		t.Errorf("expected 1 trace mentioning element-a for alice, got %d", len(data))
+	}
+}
+
+// TestHandleElement_UnknownElement_EmptyArray: element not in any trace returns
+// 200 with data=[] (not null, not 404). The ANT response is: the element exists
+// nowhere in this observer's substrate.
+func TestHandleElement_UnknownElement_EmptyArray(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/element/element-does-not-exist?observer=alice")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rr.Code)
+	}
+	env := decodeEnvelope(t, rr)
+	data, ok := env["data"].([]interface{})
+	if !ok {
+		t.Fatalf("data should be a JSON array (not null) for unknown element; got %T", env["data"])
+	}
+	if len(data) != 0 {
+		t.Errorf("expected empty array for unknown element, got %d elements", len(data))
+	}
+}
+
+// TestHandleElement_FiltersByObserver: element-x appears in bob's traces but not
+// alice's. Requesting ?observer=alice must return an empty array; ?observer=bob
+// must return bob's traces mentioning element-x.
+func TestHandleElement_FiltersByObserver(t *testing.T) {
+	srv := testServer(t)
+
+	// Alice cannot see element-x (it's in bob's traces only).
+	rrAlice := doGET(srv, "/element/element-x?observer=alice")
+	if rrAlice.Code != http.StatusOK {
+		t.Errorf("expected 200 for alice/element-x, got %d", rrAlice.Code)
+	}
+	envAlice := decodeEnvelope(t, rrAlice)
+	dataAlice, ok := envAlice["data"].([]interface{})
+	if !ok {
+		t.Fatalf("alice/element-x data should be a JSON array, got %T", envAlice["data"])
+	}
+	if len(dataAlice) != 0 {
+		t.Errorf("alice should see 0 traces for element-x, got %d", len(dataAlice))
+	}
+
+	// Bob can see element-x (source of his first trace).
+	rrBob := doGET(srv, "/element/element-x?observer=bob")
+	if rrBob.Code != http.StatusOK {
+		t.Errorf("expected 200 for bob/element-x, got %d", rrBob.Code)
+	}
+	envBob := decodeEnvelope(t, rrBob)
+	dataBob, ok := envBob["data"].([]interface{})
+	if !ok {
+		t.Fatalf("bob/element-x data should be a JSON array, got %T", envBob["data"])
+	}
+	if len(dataBob) != 1 {
+		t.Errorf("bob should see 1 trace for element-x, got %d", len(dataBob))
+	}
+}
+
+// TestHandleElement_StoreError_500: errStore.Query failure → 500 with error field.
+func TestHandleElement_StoreError_500(t *testing.T) {
+	srv := serve.NewServer(errStore{})
+	rr := doGET(srv, "/element/element-a?observer=alice")
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on store failure, got %d", rr.Code)
+	}
+	var body map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body["error"] == nil {
+		t.Errorf("error body should have 'error' field")
+	}
+}
+
+// TestHandleElement_WithTimeWindow: ?from= filter applies on top of the element
+// filter. Alice has two traces; only the second (2026-01-02) mentions element-b
+// in Target. With ?from=2026-01-02, only the second trace passes the time window.
+func TestHandleElement_WithTimeWindow(t *testing.T) {
+	srv := testServer(t)
+	// element-b appears in alice's first trace (Target) and second trace (Source).
+	// With ?from=2026-01-02T00:00:00Z only the second trace is within window.
+	rr := doGET(srv, "/element/element-b?observer=alice&from=2026-01-02T00:00:00Z")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	env := decodeEnvelope(t, rr)
+	data, ok := env["data"].([]interface{})
+	if !ok {
+		t.Fatalf("data should be an array, got %T", env["data"])
+	}
+	// After from filter only alice's second trace (2026-01-02, Source=element-b) matches.
+	if len(data) != 1 {
+		t.Errorf("expected 1 trace after time-window filter for element-b, got %d", len(data))
+	}
+}
+
+// TestHandleElement_URLEncoding: an element name that is URL-encoded in the path
+// should be decoded correctly. "element%2Da" decodes to "element-a".
+func TestHandleElement_URLEncoding(t *testing.T) {
+	srv := testServer(t)
+	// "element%2Da" URL-decodes to "element-a"
+	rr := doGET(srv, "/element/element%2Da?observer=alice")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	env := decodeEnvelope(t, rr)
+	data, ok := env["data"].([]interface{})
+	if !ok {
+		t.Fatalf("data should be an array, got %T", env["data"])
+	}
+	if len(data) != 1 {
+		t.Errorf("expected 1 trace for URL-encoded element name, got %d", len(data))
+	}
+}
+
+// TestHandleElement_TargetMatch_200: element-b appears in alice's first trace as
+// a Target and in alice's second trace as a Source. Without a time-window filter
+// both traces match, exercising the Target-loop branch in filterByElement.
+func TestHandleElement_TargetMatch_200(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/element/element-b?observer=alice")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	env := decodeEnvelope(t, rr)
+	data, ok := env["data"].([]interface{})
+	if !ok {
+		t.Fatalf("data should be an array, got %T", env["data"])
+	}
+	// Trace 1 (2026-01-01): Source=["element-a"] Target=["element-b"] → Target match.
+	// Trace 2 (2026-01-02): Source=["element-b"] Target=["element-c"] → Source match.
+	// Both must be returned.
+	if len(data) != 2 {
+		t.Errorf("expected 2 traces for element-b (Source+Target matches), got %d", len(data))
+	}
+}
+
+// TestHandleArticulate_InvalidTo_400: invalid ?to= value → 400. Exercises the
+// parseQueryTime "to" error branch in response.go.
+func TestHandleArticulate_InvalidTo_400(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/articulate?observer=alice&to=not-a-date")
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid ?to=, got %d", rr.Code)
+	}
+	var body map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	errMsg, _ := body["error"].(string)
+	if !strings.Contains(errMsg, "invalid") || !strings.Contains(errMsg, "to") {
+		t.Errorf("error should mention 'invalid' and 'to': %q", errMsg)
+	}
+}
+
+// TestHandleShadow_InvalidFrom_400: invalid ?from= value on /shadow → 400.
+// Covers the parseQueryTime error branch in handleShadow.
+func TestHandleShadow_InvalidFrom_400(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/shadow?observer=alice&from=not-a-date")
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid ?from= on /shadow, got %d", rr.Code)
+	}
+	var body map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	errMsg, _ := body["error"].(string)
+	if !strings.Contains(errMsg, "invalid") || !strings.Contains(errMsg, "from") {
+		t.Errorf("error should mention 'invalid' and 'from': %q", errMsg)
+	}
+}
+
+// TestHandleElement_InvalidFrom_400: invalid ?from= value on /element/{name} → 400.
+// Covers the parseQueryTime error branch in handleElement.
+func TestHandleElement_InvalidFrom_400(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/element/element-a?observer=alice&from=not-a-date")
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid ?from= on /element, got %d", rr.Code)
+	}
+	var body map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	errMsg, _ := body["error"].(string)
+	if !strings.Contains(errMsg, "invalid") || !strings.Contains(errMsg, "from") {
+		t.Errorf("error should mention 'invalid' and 'from': %q", errMsg)
+	}
+}
+
+// --- static file serving tests ---
+
+// TestServer_Root_ServesHTML: GET / returns 200 with Content-Type containing
+// "text/html". Verifies that the go:embed web/ assets are mounted correctly.
+func TestServer_Root_ServesHTML(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 for GET /, got %d: %s", rr.Code, rr.Body.String())
+	}
+	ct := rr.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("expected Content-Type containing 'text/html', got %q", ct)
+	}
+}
+
+// TestServer_StaticCSS: GET /style.css returns 200 and correct Content-Type.
+func TestServer_StaticCSS(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/style.css")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 for GET /style.css, got %d", rr.Code)
+	}
+	ct := rr.Header().Get("Content-Type")
+	if !strings.Contains(ct, "css") {
+		t.Errorf("expected CSS Content-Type, got %q", ct)
+	}
+}
+
+// TestServer_StaticJS: GET /app.js returns 200 and a JS Content-Type.
+func TestServer_StaticJS(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/app.js")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 for GET /app.js, got %d", rr.Code)
+	}
+	ct := rr.Header().Get("Content-Type")
+	if !strings.Contains(ct, "javascript") {
+		t.Errorf("expected JS Content-Type, got %q", ct)
+	}
+}
+
+// TestServer_APIRoutesPrecedence: API routes (registered before the static file
+// handler) must not be masked by the static file server. An API path still
+// returns JSON even after the static handler is added.
+func TestServer_APIRoutesPrecedence(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/articulate?observer=alice")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 for /articulate, got %d", rr.Code)
+	}
+	ct := rr.Header().Get("Content-Type")
+	if ct != "application/json" {
+		t.Errorf("expected application/json for API route, got %q", ct)
 	}
 }
