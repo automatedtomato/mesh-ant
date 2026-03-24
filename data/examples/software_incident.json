@@ -122,17 +122,17 @@
   {
     "id": "d1000000-0000-4000-8000-000000000013",
     "timestamp": "2026-06-10T14:22:00Z",
-    "what_changed": "ticket-routing-rule automatically escalated all payment-related tickets to payment-specialist-queue; payment-specialist-queue had 3 agents for 187 queued tickets; escalation policy created 62-ticket-per-agent backlog rather than reducing customer wait time — routing mediated by creating a structural bottleneck",
+    "what_changed": "ticket-routing-rule automatically escalated all payment-related tickets to payment-specialist-queue; payment-specialist-queue had 3 agents for 187 queued tickets; the routing produced a 62-ticket-per-agent backlog rather than reducing wait time — the rule created a structural bottleneck as a consequence of its escalation logic, not its intention",
     "source": ["ticket-routing-rule"],
     "target": ["payment-specialist-queue"],
-    "mediation": "ticket-routing-rule",
+    "mediation": "",
     "tags": ["redirection", "blockage"],
     "observer": "customer-support-lead"
   },
   {
     "id": "d1000000-0000-4000-8000-000000000014",
     "timestamp": "2026-06-10T14:25:00Z",
-    "what_changed": "product-manager notified VP-customer-success of payment degradation affecting flash sale; VP-customer-success escalated urgency beyond standard incident-management-system protocol, requesting hourly executive updates; product-manager now bridging engineering timeline and executive expectations",
+    "what_changed": "product-manager notified VP-customer-success of payment degradation affecting flash sale; product-manager produced the notification from their own synthesis of engineering status and revenue impact — the PM is acting, not relaying; VP-customer-success escalated urgency beyond standard incident-management-system protocol, requesting hourly executive updates",
     "source": ["product-manager"],
     "target": ["VP-customer-success"],
     "mediation": "",
@@ -212,10 +212,10 @@
   {
     "id": "d1000000-0000-4000-8000-000000000022",
     "timestamp": "2026-06-10T15:05:00Z",
-    "what_changed": "escalation-policy triggered automatic callback offers for 89 customers with 3+ failed payment attempts; customer-support-lead observed escalation-policy creating 89 new support commitments without corresponding agent capacity — the policy's threshold was met but the consequence exceeded team bandwidth",
+    "what_changed": "escalation-policy triggered automatic callback offers for 89 customers with 3+ failed payment attempts; escalation-policy created 89 new support commitments without corresponding agent capacity — the policy's threshold was met and the policy acted; the consequence (capacity overrun) exceeded what any human had authorized",
     "source": ["escalation-policy"],
     "target": ["customer-support-lead"],
-    "mediation": "escalation-policy",
+    "mediation": "",
     "tags": ["threshold", "amplification"],
     "observer": "customer-support-lead"
   },
