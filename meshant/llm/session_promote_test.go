@@ -324,6 +324,153 @@ func TestPromoteSession_SourceDocRefsPriorityOverLegacy(t *testing.T) {
 	}
 }
 
+// --- Group: PromoteSession — CritiqueConditions bifurcation (#151) ---
+
+// TestPromoteSession_critiqueSession_newFormat verifies that a critique session
+// with CritiqueConditions populated (new format, post-#151) maps Source from
+// CritiqueConditions.ModelID and Target from CritiqueConditions.SourceDocRef.
+func TestPromoteSession_critiqueSession_newFormat(t *testing.T) {
+	rec := llm.SessionRecord{
+		ID:      "c3d4e5f6-a7b8-9012-cdef-012345678912",
+		Command: "critique",
+		CritiqueConditions: &llm.CritiqueConditions{
+			ModelID:      "claude-opus-4-6",
+			SourceDocRef: "data/incident-log.md",
+			Timestamp:    time.Now(),
+		},
+		Timestamp: time.Now(),
+	}
+
+	tr, err := llm.PromoteSession(rec, "analyst-alice")
+	if err != nil {
+		t.Fatalf("PromoteSession() want no error, got: %v", err)
+	}
+
+	// Source must come from CritiqueConditions.ModelID.
+	if len(tr.Source) == 0 {
+		t.Fatal("Source: want non-empty for new-format critique session, got empty")
+	}
+	if tr.Source[0] != "claude-opus-4-6" {
+		t.Errorf("Source[0]: want %q (CritiqueConditions.ModelID), got %q", "claude-opus-4-6", tr.Source[0])
+	}
+
+	// Target must come from CritiqueConditions.SourceDocRef.
+	if len(tr.Target) == 0 {
+		t.Fatal("Target: want non-empty for new-format critique session, got empty")
+	}
+	if tr.Target[0] != "data/incident-log.md" {
+		t.Errorf("Target[0]: want %q (CritiqueConditions.SourceDocRef), got %q", "data/incident-log.md", tr.Target[0])
+	}
+
+	// Trace must still pass Validate().
+	if err := tr.Validate(); err != nil {
+		t.Errorf("promoted trace fails Validate(): %v", err)
+	}
+}
+
+// TestPromoteSession_critiqueSession_backwardCompat verifies that a legacy
+// critique session (CritiqueConditions nil, Conditions populated) falls back
+// to Conditions for Source and Target mapping.
+func TestPromoteSession_critiqueSession_backwardCompat(t *testing.T) {
+	rec := llm.SessionRecord{
+		ID:      "d4e5f6a7-b8c9-0123-defa-bc1234567890",
+		Command: "critique",
+		// CritiqueConditions is nil — legacy format
+		Conditions: llm.ExtractionConditions{
+			ModelID:      "claude-haiku-4-5-20251001",
+			SourceDocRef: "data/legacy-source.md",
+			Timestamp:    time.Now(),
+		},
+		Timestamp: time.Now(),
+	}
+
+	tr, err := llm.PromoteSession(rec, "analyst-bob")
+	if err != nil {
+		t.Fatalf("PromoteSession() want no error for legacy critique session, got: %v", err)
+	}
+
+	// Source must come from Conditions.ModelID (fallback path).
+	found := false
+	for _, s := range tr.Source {
+		if s == "claude-haiku-4-5-20251001" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Source: want %q from Conditions.ModelID (legacy fallback), got %v", "claude-haiku-4-5-20251001", tr.Source)
+	}
+
+	// Target must come from Conditions.SourceDocRef (fallback path).
+	foundTarget := false
+	for _, s := range tr.Target {
+		if s == "data/legacy-source.md" {
+			foundTarget = true
+		}
+	}
+	if !foundTarget {
+		t.Errorf("Target: want %q from Conditions.SourceDocRef (legacy fallback), got %v", "data/legacy-source.md", tr.Target)
+	}
+
+	// Trace must pass Validate().
+	if err := tr.Validate(); err != nil {
+		t.Errorf("legacy critique promoted trace fails Validate(): %v", err)
+	}
+}
+
+// TestPromoteSession_critiqueConditionsPriorityOverConditions verifies that
+// when both CritiqueConditions and Conditions are populated, CritiqueConditions
+// takes priority for Source and Target mapping.
+func TestPromoteSession_critiqueConditionsPriorityOverConditions(t *testing.T) {
+	rec := llm.SessionRecord{
+		ID:      "e5f6a7b8-c9d0-1234-efab-cd1234567890",
+		Command: "critique",
+		CritiqueConditions: &llm.CritiqueConditions{
+			ModelID:      "claude-opus-4-6",
+			SourceDocRef: "data/new-source.md",
+			Timestamp:    time.Now(),
+		},
+		// Conditions also populated (e.g. from a mis-migration scenario).
+		Conditions: llm.ExtractionConditions{
+			ModelID:      "claude-haiku-4-5-20251001",
+			SourceDocRef: "data/old-source.md",
+			Timestamp:    time.Now(),
+		},
+		Timestamp: time.Now(),
+	}
+
+	tr, err := llm.PromoteSession(rec, "analyst-carol")
+	if err != nil {
+		t.Fatalf("PromoteSession() want no error, got: %v", err)
+	}
+
+	// Source must come from CritiqueConditions (takes priority).
+	if len(tr.Source) == 0 || tr.Source[0] != "claude-opus-4-6" {
+		t.Errorf("Source: want %q from CritiqueConditions (priority), got %v", "claude-opus-4-6", tr.Source)
+	}
+
+	// Target must come from CritiqueConditions (takes priority).
+	if len(tr.Target) == 0 || tr.Target[0] != "data/new-source.md" {
+		t.Errorf("Target: want %q from CritiqueConditions (priority), got %v", "data/new-source.md", tr.Target)
+	}
+
+	// Legacy values must not appear.
+	for _, s := range tr.Source {
+		if s == "claude-haiku-4-5-20251001" {
+			t.Errorf("Source: legacy ModelID %q must not appear when CritiqueConditions is present", s)
+		}
+	}
+	for _, s := range tr.Target {
+		if s == "data/old-source.md" {
+			t.Errorf("Target: legacy SourceDocRef %q must not appear when CritiqueConditions is present", s)
+		}
+	}
+
+	// Trace must pass Validate().
+	if err := tr.Validate(); err != nil {
+		t.Errorf("promoted trace fails Validate(): %v", err)
+	}
+}
+
 // TestPromoteSession_promotedTraceAlwaysValidates verifies Validate() passes
 // across a range of valid session configurations.
 func TestPromoteSession_promotedTraceAlwaysValidates(t *testing.T) {

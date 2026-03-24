@@ -45,12 +45,16 @@ func RunCritique(ctx context.Context, client LLMClient, drafts []schema.TraceDra
 		return nil, rec, err
 	}
 
-	rec.Conditions = ExtractionConditions{
+	// Critique sessions use CritiqueConditions (not Conditions) to record apparatus
+	// configuration. The distinction is analytically significant: critique input is
+	// a TraceDraft array, not a source document; SourceDocRef is singular; no adapter.
+	// rec.Conditions is intentionally left zero for critique sessions.
+	rec.CritiqueConditions = &CritiqueConditions{
 		ModelID:            opts.ModelID,
 		PromptTemplate:     opts.PromptTemplatePath,
 		CriterionRef:       opts.CriterionRef,
 		SystemInstructions: systemInstructions,
-		SourceDocRefs:      []string{opts.SourceDocRef},
+		SourceDocRef:       opts.SourceDocRef,
 		Timestamp:          now,
 	}
 

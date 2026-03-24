@@ -431,6 +431,70 @@ func TestRunCritique_EmptyInput(t *testing.T) {
 	}
 }
 
+// --- Group: RunCritique — CritiqueConditions bifurcation (#151) ---
+
+// TestRunCritique_SessionRecord_HasCritiqueConditions verifies that after a
+// successful RunCritique call, rec.CritiqueConditions is non-nil and carries
+// the correct ModelID and SourceDocRef from the opts.
+func TestRunCritique_SessionRecord_HasCritiqueConditions(t *testing.T) {
+	orig := makeDraft("cc-001", "The proxy timed out.", "service disruption")
+	opts := baseCritiqueOpts(t)
+	opts.ModelID = "claude-opus-4-6"
+	opts.SourceDocRef = "data/incident-log.md"
+	client := newMockClient(critiqueJSON("The proxy timed out."))
+
+	_, rec, err := llm.RunCritique(context.Background(), client, []schema.TraceDraft{orig}, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// CritiqueConditions must be non-nil for critique sessions.
+	if rec.CritiqueConditions == nil {
+		t.Fatal("CritiqueConditions: want non-nil for critique session, got nil")
+	}
+
+	// ModelID must match opts.
+	if rec.CritiqueConditions.ModelID != opts.ModelID {
+		t.Errorf("CritiqueConditions.ModelID: want %q, got %q", opts.ModelID, rec.CritiqueConditions.ModelID)
+	}
+
+	// SourceDocRef must match opts.
+	if rec.CritiqueConditions.SourceDocRef != opts.SourceDocRef {
+		t.Errorf("CritiqueConditions.SourceDocRef: want %q, got %q", opts.SourceDocRef, rec.CritiqueConditions.SourceDocRef)
+	}
+
+	// Timestamp must be set.
+	if rec.CritiqueConditions.Timestamp.IsZero() {
+		t.Error("CritiqueConditions.Timestamp: must not be zero")
+	}
+}
+
+// TestRunCritique_SessionRecord_ConditionsFieldZero verifies that after
+// RunCritique, rec.Conditions is the zero value of ExtractionConditions.
+// Critique sessions must not populate the shared extract/assist/split field.
+func TestRunCritique_SessionRecord_ConditionsFieldZero(t *testing.T) {
+	orig := makeDraft("cc-002", "The cache was evicted.", "eviction event")
+	opts := baseCritiqueOpts(t)
+	client := newMockClient(critiqueJSON("The cache was evicted."))
+
+	_, rec, err := llm.RunCritique(context.Background(), client, []schema.TraceDraft{orig}, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// rec.Conditions must be the zero value — critique sessions use CritiqueConditions.
+	// Slices cannot be compared with ==, so check the string fields individually.
+	if rec.Conditions.ModelID != "" {
+		t.Errorf("Conditions.ModelID: want empty for critique session, got %q", rec.Conditions.ModelID)
+	}
+	if rec.Conditions.SystemInstructions != "" {
+		t.Errorf("Conditions.SystemInstructions: want empty for critique session, got %q", rec.Conditions.SystemInstructions)
+	}
+	if len(rec.Conditions.SourceDocRefs) != 0 {
+		t.Errorf("Conditions.SourceDocRefs: want empty for critique session, got %v", rec.Conditions.SourceDocRefs)
+	}
+}
+
 // TestRunCritique_IDFilterNotFound verifies that when DraftID is set but no
 // draft has that ID, an error is returned alongside a non-nil SessionRecord.
 func TestRunCritique_IDFilterNotFound(t *testing.T) {
