@@ -16,6 +16,11 @@
         <input id="observer-input" type="text" placeholder="e.g. alice" autocomplete="off" required>
         <button type="submit">Load graph</button>
       </div>
+      <!-- Populated by app.js on load; shows available observer positions. -->
+      <div id="observer-hints" hidden>
+        <span class="observer-hints-label">Available:</span>
+        <span id="observer-chips"></span>
+      </div>
     </form>
     <div id="error-banner" hidden></div>
   </header>

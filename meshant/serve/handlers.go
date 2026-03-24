@@ -2,6 +2,7 @@ package serve
 
 import (
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/automatedtomato/mesh-ant/meshant/graph"
@@ -215,6 +216,41 @@ func (s *Server) handleTraces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, Envelope{Cut: meta, Data: filtered})
+}
+
+// handleObservers handles GET /observers.
+//
+// No parameters required. Returns the sorted, deduplicated list of observer
+// values present in the full trace substrate. This is a substrate-level query
+// (no cut applied) and does not require an observer parameter — it is the
+// mechanism by which a user discovers which positions are available.
+//
+// Response: Envelope{Cut: zero-value CutMeta, Data: []string{...observers...}}
+// The cut field is a zero-value CutMeta (no observer, no window) to signal that
+// this is a substrate-level listing, not a positioned reading.
+func (s *Server) handleObservers(w http.ResponseWriter, r *http.Request) {
+	allTraces, err := s.ts.Query(r.Context(), store.QueryOpts{})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Collect distinct observer values from the full substrate.
+	seen := make(map[string]bool)
+	for _, tr := range allTraces {
+		if tr.Observer != "" {
+			seen[tr.Observer] = true
+		}
+	}
+
+	// Sort for deterministic output.
+	observers := make([]string, 0, len(seen))
+	for obs := range seen {
+		observers = append(observers, obs)
+	}
+	sort.Strings(observers)
+
+	writeJSON(w, http.StatusOK, Envelope{Data: observers})
 }
 
 // filterByElement returns traces where elementName appears in tr.Source or tr.Target.

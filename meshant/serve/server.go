@@ -50,6 +50,7 @@ func NewServer(ts store.TraceStore) *Server {
 	mux.HandleFunc("GET /shadow", s.handleShadow)
 	mux.HandleFunc("GET /traces", s.handleTraces)
 	mux.HandleFunc("GET /element/{name}", s.handleElement)
+	mux.HandleFunc("GET /observers", s.handleObservers)
 
 	// Static file server for the embedded web/ SPA.
 	// fs.Sub strips the "web" prefix so that web/index.html is served at /.

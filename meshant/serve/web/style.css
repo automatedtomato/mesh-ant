@@ -79,6 +79,41 @@ body {
   background: #1f6fa1;
 }
 
+/* Observer hints: available positions shown as clickable chips below the input */
+#observer-hints {
+  margin-top: 10px;
+  width: 100%;
+  max-width: 480px;
+  font-size: 13px;
+  color: #555;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.observer-hints-label {
+  font-weight: 600;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.observer-chip {
+  padding: 3px 10px;
+  background: #eaf4fb;
+  border: 1px solid #a8d4ed;
+  border-radius: 12px;
+  color: #1a5276;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.observer-chip:hover {
+  background: #d0eaf8;
+  border-color: #2980b9;
+}
+
 /* Error banner below the observer form */
 #error-banner {
   margin-top: 12px;
