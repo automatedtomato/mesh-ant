@@ -1,0 +1,282 @@
+[
+  {
+    "id": "d2000000-0000-4000-8000-000000000001",
+    "timestamp": "2026-04-15T10:00:00Z",
+    "what_changed": "orchestrator-agent received sec-10k-filing-acme-2026 and decomposed it into 4 sequential sub-tasks (ingestion, extraction, classification, validation) using orchestrator-task-decomposition-config; the decomposition reframed a 247-page document as a structured pipeline of delegated operations",
+    "source": ["sec-10k-filing-acme-2026"],
+    "target": ["orchestrator-agent"],
+    "mediation": "orchestrator-task-decomposition-config",
+    "tags": ["delegation", "translation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000002",
+    "timestamp": "2026-04-15T10:02:00Z",
+    "what_changed": "orchestrator-agent delegated ingestion sub-task to ingestion-agent with PDF path and expected output schema attached; delegation carried forward the filing identity but reframed the task as a format conversion problem",
+    "source": ["orchestrator-agent"],
+    "target": ["ingestion-agent"],
+    "mediation": "orchestrator-task-decomposition-config",
+    "tags": ["delegation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000003",
+    "timestamp": "2026-04-15T10:05:00Z",
+    "what_changed": "ingestion-agent processed sec-10k-filing-acme-2026 (247 pages); OCR on scanned appendix C truncated 3 pages due to image-quality threshold in ingestion-ocr-pipeline-v2; structured text output is missing appendix C risk disclosures — ingestion-agent transformed (and lost) content rather than faithfully extracting it",
+    "source": ["ingestion-agent"],
+    "target": ["structured-text-acme-2026"],
+    "mediation": "ingestion-ocr-pipeline-v2",
+    "tags": ["translation", "blockage"],
+    "observer": "ml-engineer"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000004",
+    "timestamp": "2026-04-15T10:06:30Z",
+    "what_changed": "ingestion-agent delivered structured-text-acme-2026 to orchestrator-agent relay; orchestrator-agent forwarded to extractor-agent without inspecting content completeness — the truncation passed through the relay unchanged",
+    "source": ["ingestion-agent"],
+    "target": ["extractor-agent"],
+    "mediation": "",
+    "tags": ["delegation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000005",
+    "timestamp": "2026-04-15T10:07:00Z",
+    "what_changed": "orchestrator-task-decomposition-config inscribed a 4-stage sequential pipeline; no parallel execution paths exist; validator-agent cannot begin until classifier-agent completes; this serialization adds approximately 12 minutes of idle time across the pipeline run",
+    "source": ["orchestrator-task-decomposition-config"],
+    "target": ["orchestrator-agent"],
+    "mediation": "",
+    "tags": ["delay"],
+    "observer": "ml-engineer"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000006",
+    "timestamp": "2026-04-15T10:08:00Z",
+    "what_changed": "extraction-prompt-template-v3 inscribed extractor-agent with instruction to prioritize 'material risk factors' and ignore 'forward-looking statements'; this inscription determines what extractor-agent can see in structured-text-acme-2026 — the template is the non-human actant that constrains the extraction",
+    "source": ["extraction-prompt-template-v3"],
+    "target": ["extractor-agent"],
+    "mediation": "",
+    "tags": ["threshold"],
+    "observer": "ml-engineer"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000007",
+    "timestamp": "2026-04-15T10:15:00Z",
+    "what_changed": "extractor-agent extracted 23 risk factors from structured-text-acme-2026; 3 risk factors from appendix C absent due to ingestion truncation — extractor-agent reported 23 items without signaling incompleteness; extraction-prompt-template-v3 mediated what counted as a risk factor",
+    "source": ["extractor-agent"],
+    "target": ["extracted-risks-acme-2026"],
+    "mediation": "extraction-prompt-template-v3",
+    "tags": ["translation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000008",
+    "timestamp": "2026-04-15T10:15:00Z",
+    "what_changed": "extractor-agent operated with temperature=0.2 and max_tokens=4096 on claude-sonnet-4-6; model-parameter-config-v1 constrained output variability and length — from the ml-engineer's position, these parameters are the material inscription shaping what extractor-agent can produce, independent of the prompt template content",
+    "source": ["extractor-agent"],
+    "target": ["extracted-risks-acme-2026"],
+    "mediation": "model-parameter-config-v1",
+    "tags": ["threshold"],
+    "observer": "ml-engineer"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000009",
+    "timestamp": "2026-04-15T10:16:00Z",
+    "what_changed": "extractor-agent forwarded extracted-risks-acme-2026 to classifier-agent via orchestrator-agent relay; orchestrator-agent passed the 23-item set through without modification",
+    "source": ["extractor-agent"],
+    "target": ["classifier-agent"],
+    "mediation": "",
+    "tags": ["delegation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000010",
+    "timestamp": "2026-04-15T10:20:00Z",
+    "what_changed": "extraction-prompt-template-v3 was last updated 47 days ago; no re-validation against current SEC taxonomy has occurred; prompt drift risk exists but is undetected by pipeline monitoring — the inscription device ages while the regulatory domain it represents changes",
+    "source": ["extraction-prompt-template-v3"],
+    "target": ["extractor-agent"],
+    "mediation": "",
+    "tags": ["delay"],
+    "observer": "ml-engineer"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000011",
+    "timestamp": "2026-04-15T10:25:00Z",
+    "what_changed": "classifier-agent mapped 23 extracted risks to compliance-taxonomy-2026q1 categories; 19 mapped directly; 4 required classifier-agent to interpret ambiguous risk language and assign best-fit categories — the taxonomy mediated the translation from free-text risk descriptions to formal regulatory categories",
+    "source": ["classifier-agent"],
+    "target": ["classified-risks-acme-2026"],
+    "mediation": "compliance-taxonomy-2026q1",
+    "tags": ["translation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000012",
+    "timestamp": "2026-04-15T10:25:00Z",
+    "what_changed": "classifier-agent's 4 ambiguous mappings used a confidence threshold of 0.65 inscribed in classification-confidence-threshold configuration; items scoring below 0.65 are automatically flagged for human review — the threshold is the actant that determines which items pass through automated processing",
+    "source": ["classifier-agent"],
+    "target": ["classified-risks-acme-2026"],
+    "mediation": "classification-confidence-threshold",
+    "tags": ["threshold", "translation"],
+    "observer": "ml-engineer"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000013",
+    "timestamp": "2026-04-15T10:26:00Z",
+    "what_changed": "classifier-agent flagged 2 of the 4 ambiguous items (confidence scores 0.41 and 0.58) for human review; both items were redirected from automated pipeline into human-review-queue, exiting the automated processing chain",
+    "source": ["classifier-agent"],
+    "target": ["human-review-queue"],
+    "mediation": "classification-confidence-threshold",
+    "tags": ["blockage", "redirection"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000014",
+    "timestamp": "2026-04-15T10:27:00Z",
+    "what_changed": "classifier-agent forwarded 21 classified items (19 direct + 2 above-threshold ambiguous) to validator-agent for compliance schema validation",
+    "source": ["classifier-agent"],
+    "target": ["validator-agent"],
+    "mediation": "",
+    "tags": ["delegation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000015",
+    "timestamp": "2026-04-15T10:28:00Z",
+    "what_changed": "compliance-taxonomy-2026q1 was updated 2 weeks ago with 3 new sub-categories for cybersecurity risk; classifier-agent's prompt template still references taxonomy-2025q4 categories; the mismatch between the inscribed taxonomy version and the current taxonomy is undetected by pipeline monitoring",
+    "source": ["compliance-taxonomy-2026q1"],
+    "target": ["classifier-agent"],
+    "mediation": "",
+    "tags": ["delay"],
+    "observer": "ml-engineer"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000016",
+    "timestamp": "2026-04-15T10:35:00Z",
+    "what_changed": "validator-agent checked 21 classified items against validation-schema-v2; 19 passed; 2 rejected because they were missing required sub-fields for the 'operational-risk' category introduced in compliance-taxonomy-2026q1 — the validation schema mediated by enforcing a standard the classifier had not been trained to produce",
+    "source": ["validator-agent"],
+    "target": ["validated-risks-acme-2026"],
+    "mediation": "validation-schema-v2",
+    "tags": ["threshold", "blockage"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000017",
+    "timestamp": "2026-04-15T10:36:00Z",
+    "what_changed": "validator-agent rejection traced to taxonomy version mismatch: classifier-agent used taxonomy-2025q4 categories; validation-schema-v2 expects taxonomy-2026q1 sub-fields; this is an inscription conflict — two non-human actants inscribed at different times produced contradictory requirements that the pipeline could not resolve automatically",
+    "source": ["validation-schema-v2", "compliance-taxonomy-2026q1"],
+    "target": ["validator-agent"],
+    "mediation": "",
+    "tags": ["blockage"],
+    "observer": "ml-engineer"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000018",
+    "timestamp": "2026-04-15T10:37:00Z",
+    "what_changed": "validator-agent forwarded 19 validated items to drafter-agent; 2 rejected items logged to rejection-audit-trail with validation-schema-v2 violation codes — items split between the pipeline continuation path and the audit record",
+    "source": ["validator-agent"],
+    "target": ["drafter-agent", "rejection-audit-trail"],
+    "mediation": "",
+    "tags": ["delegation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000019",
+    "timestamp": "2026-04-15T10:38:00Z",
+    "what_changed": "2 items rejected by validator-agent and 2 items flagged by classifier-agent account for 4 items absent from pipeline; combined with 3 items lost to ingestion truncation, 7 of the original 26 risk factors are missing from the pipeline output — small losses at each stage compounded across agents into a material gap",
+    "source": ["validator-agent", "classifier-agent", "ingestion-agent"],
+    "target": ["draft-compliance-report-acme"],
+    "mediation": "",
+    "tags": ["amplification"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000020",
+    "timestamp": "2026-04-15T11:00:00Z",
+    "what_changed": "drafter-agent generated draft-compliance-report-acme from 19 validated items; narrative synthesized risk factors into regulatory prose using drafting-template-v4; the template mediated the form and register of the output — the report that emerged reflected the template's structural constraints, not just the validated risk content",
+    "source": ["drafter-agent"],
+    "target": ["draft-compliance-report-acme"],
+    "mediation": "drafting-template-v4",
+    "tags": ["translation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000021",
+    "timestamp": "2026-04-15T11:02:00Z",
+    "what_changed": "drafter-agent interpolated a revenue impact figure ($4.2M) not present in any of the 19 validated risk factors; from the ml-engineer's position, this hallucinated metric is evidence that drafter-agent is a mediator — its output is not predictable from its inputs; drafting-template-v4 invited the insertion of quantitative impact estimates",
+    "source": ["drafter-agent"],
+    "target": ["draft-compliance-report-acme"],
+    "mediation": "drafting-template-v4",
+    "tags": ["amplification"],
+    "observer": "ml-engineer"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000022",
+    "timestamp": "2026-04-15T11:15:00Z",
+    "what_changed": "reviewer-agent flagged draft-compliance-report-acme for hallucinated metric ($4.2M revenue impact figure absent from source material); draft rejected and returned to drafter-agent for re-generation under stricter grounding constraint; review-grounding-policy-v1 mediated by enforcing source-attestation requirements",
+    "source": ["reviewer-agent"],
+    "target": ["drafter-agent"],
+    "mediation": "review-grounding-policy-v1",
+    "tags": ["blockage", "redirection"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000023",
+    "timestamp": "2026-04-15T11:30:00Z",
+    "what_changed": "drafter-agent re-generated draft-compliance-report-acme with review-grounding-policy-v1 now active as a constraint; hallucinated metric removed; all quantitative figures now reference source-attested data — the same agent produced different output because the inscription changed",
+    "source": ["drafter-agent"],
+    "target": ["draft-compliance-report-acme"],
+    "mediation": "review-grounding-policy-v1",
+    "tags": ["translation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000024",
+    "timestamp": "2026-04-15T11:45:00Z",
+    "what_changed": "reviewer-agent approved re-drafted compliance report and forwarded it to router-agent for human review assignment; reviewer-agent passed the approved draft through without modification — faithful relay",
+    "source": ["reviewer-agent"],
+    "target": ["router-agent"],
+    "mediation": "",
+    "tags": ["delegation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000025",
+    "timestamp": "2026-04-15T12:00:00Z",
+    "what_changed": "router-agent assigned draft-compliance-report-acme to senior-compliance-analyst with priority 'high' based on routing-priority-matrix assessment of filing complexity and regulatory deadline proximity; the priority assignment is a translation — filing complexity reframed as an urgency level that shapes human analyst's scheduling",
+    "source": ["router-agent"],
+    "target": ["senior-compliance-analyst"],
+    "mediation": "routing-priority-matrix",
+    "tags": ["translation", "delegation"],
+    "observer": "pipeline-auditor"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000026",
+    "timestamp": "2026-04-15T12:00:00Z",
+    "what_changed": "routing-priority-matrix assigned 'high' priority based on 3 inscribed factors: filing page count > 200, rejection count > 1, and re-draft cycle detected; from the ml-engineer's position, the matrix is the non-human actant whose inscribed criteria determine urgency — not a human judgment call",
+    "source": ["routing-priority-matrix"],
+    "target": ["router-agent"],
+    "mediation": "",
+    "tags": ["threshold"],
+    "observer": "ml-engineer"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000027",
+    "timestamp": "2026-04-15T14:00:00Z",
+    "what_changed": "LLM extraction session (claude-sonnet-4-6) processed pipeline-execution-log-acme-2026 using extraction-prompt-template-v3; produced 15 candidate trace drafts covering pipeline stages A through D; session identifier session-d2-027",
+    "source": ["claude-sonnet-4-6"],
+    "target": ["pipeline-execution-log-acme-2026"],
+    "mediation": "extract",
+    "tags": ["session", "articulation"],
+    "observer": "dataset-author"
+  },
+  {
+    "id": "d2000000-0000-4000-8000-000000000028",
+    "timestamp": "2026-04-15T14:30:00Z",
+    "what_changed": "LLM critique session (claude-sonnet-4-6) reviewed 15 candidate traces for ANT alignment using critique-prompt-template-v2; flagged 3 traces for mediator/intermediary conflation — orchestrator-agent relay traces initially had mediation fields despite acting as faithful relays; revised drafts corrected before promotion",
+    "source": ["claude-sonnet-4-6"],
+    "target": ["session-d2-027"],
+    "mediation": "critique",
+    "tags": ["session", "articulation"],
+    "observer": "dataset-author"
+  }
+]
