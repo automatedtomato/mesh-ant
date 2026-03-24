@@ -45,6 +45,13 @@ func RunCritique(ctx context.Context, client LLMClient, drafts []schema.TraceDra
 		return nil, rec, err
 	}
 
+	// Hash the prompt template for reproducibility tracking.
+	promptHash, err := HashPromptTemplate(opts.PromptTemplatePath)
+	if err != nil {
+		rec.ErrorNote = err.Error()
+		return nil, rec, err
+	}
+
 	// Critique sessions use CritiqueConditions (not Conditions) to record apparatus
 	// configuration. The distinction is analytically significant: critique input is
 	// a TraceDraft array, not a source document; SourceDocRef is singular; no adapter.
@@ -52,6 +59,7 @@ func RunCritique(ctx context.Context, client LLMClient, drafts []schema.TraceDra
 	rec.CritiqueConditions = &CritiqueConditions{
 		ModelID:            opts.ModelID,
 		PromptTemplate:     opts.PromptTemplatePath,
+		PromptHash:         promptHash,
 		CriterionRef:       opts.CriterionRef,
 		SystemInstructions: systemInstructions,
 		SourceDocRef:       opts.SourceDocRef,

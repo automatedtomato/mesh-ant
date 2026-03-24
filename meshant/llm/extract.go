@@ -80,9 +80,18 @@ func RunExtraction(ctx context.Context, client LLMClient, opts ExtractionOptions
 		return nil, rec, err
 	}
 
+	// Hash the prompt template for reproducibility tracking. The hash detects
+	// physical file drift when the same path is reused across sessions.
+	promptHash, err := HashPromptTemplate(opts.PromptTemplatePath)
+	if err != nil {
+		rec.ErrorNote = err.Error()
+		return nil, rec, err
+	}
+
 	rec.Conditions = ExtractionConditions{
 		ModelID:            opts.ModelID,
 		PromptTemplate:     opts.PromptTemplatePath,
+		PromptHash:         promptHash,
 		CriterionRef:       opts.CriterionRef,
 		SystemInstructions: systemInstructions,
 		SourceDocRefs:      opts.SourceDocRefs,

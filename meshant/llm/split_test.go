@@ -353,3 +353,28 @@ func TestParseSplitResponse_invalid(t *testing.T) {
 		t.Fatal("want error for non-JSON array input, got nil")
 	}
 }
+
+// --- PromptHash tests ---
+
+// TestRunSplit_PromptHash_Set verifies that RunSplit populates
+// Conditions.PromptHash with a 16-character hex string when a prompt template
+// path is provided.
+func TestRunSplit_PromptHash_Set(t *testing.T) {
+	src := writeSourceDoc(t, "Some source document content.")
+	prompt := writePromptTemplate(t)
+	client := newMockClient(threeSpansJSON)
+
+	_, rec, err := llm.RunSplit(context.Background(), client, splitOpts(t, src, prompt))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	h := rec.Conditions.PromptHash
+	if len(h) != 16 {
+		t.Errorf("Conditions.PromptHash: want 16-char hex, got %q (len=%d)", h, len(h))
+	}
+	for _, c := range h {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			t.Errorf("non-hex character %q in PromptHash %q", c, h)
+		}
+	}
+}

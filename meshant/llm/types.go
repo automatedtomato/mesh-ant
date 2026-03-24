@@ -24,8 +24,12 @@ import (
 // compatibility with existing session files — both fields are read; new
 // session files write only SourceDocRefs.
 type ExtractionConditions struct {
-	ModelID            string    `json:"model_id"`
-	PromptTemplate     string    `json:"prompt_template"`
+	ModelID        string `json:"model_id"`
+	PromptTemplate string `json:"prompt_template"`
+	// PromptHash is the SHA-256 hash (first 16 hex chars) of the prompt template
+	// file contents at the time of extraction. Empty when PromptTemplate is empty.
+	// Detects content drift when the same template path is reused across sessions.
+	PromptHash         string    `json:"prompt_hash,omitempty"`
 	CriterionRef       string    `json:"criterion_ref,omitempty"`
 	SystemInstructions string    `json:"system_instructions"`
 	// SourceDocRefs holds the reference strings for all source documents
@@ -55,8 +59,12 @@ type ExtractionConditions struct {
 //
 // The API key is intentionally absent.
 type CritiqueConditions struct {
-	ModelID            string    `json:"model_id"`
-	PromptTemplate     string    `json:"prompt_template"`
+	ModelID        string `json:"model_id"`
+	PromptTemplate string `json:"prompt_template"`
+	// PromptHash is the SHA-256 hash (first 16 hex chars) of the prompt template
+	// file contents at the time of critique. Empty when PromptTemplate is empty.
+	// Detects content drift when the same template path is reused across sessions.
+	PromptHash         string    `json:"prompt_hash,omitempty"`
 	CriterionRef       string    `json:"criterion_ref,omitempty"`
 	SystemInstructions string    `json:"system_instructions"`
 	// SourceDocRef carries the reference of the original source document that

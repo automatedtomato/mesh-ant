@@ -521,3 +521,31 @@ func TestRunCritique_IDFilterNotFound(t *testing.T) {
 		t.Error("ErrorNote must record the ID-not-found reason")
 	}
 }
+
+// --- PromptHash tests ---
+
+// TestRunCritique_PromptHash_Set verifies that RunCritique populates
+// CritiqueConditions.PromptHash with a 16-character hex string when a prompt
+// template path is provided.
+func TestRunCritique_PromptHash_Set(t *testing.T) {
+	orig := makeDraft("draft-001", "The API went down.", "service interrupted")
+	opts := baseCritiqueOpts(t)
+	client := newMockClient(critiqueJSON("The API went down."))
+
+	_, rec, err := llm.RunCritique(context.Background(), client, []schema.TraceDraft{orig}, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.CritiqueConditions == nil {
+		t.Fatal("CritiqueConditions must be non-nil on success")
+	}
+	h := rec.CritiqueConditions.PromptHash
+	if len(h) != 16 {
+		t.Errorf("CritiqueConditions.PromptHash: want 16-char hex, got %q (len=%d)", h, len(h))
+	}
+	for _, c := range h {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			t.Errorf("non-hex character %q in PromptHash %q", c, h)
+		}
+	}
+}
