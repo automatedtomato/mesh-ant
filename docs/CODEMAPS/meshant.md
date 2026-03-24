@@ -861,6 +861,18 @@ cmd/demo/
 | Multi-Analyst Drafts | `data/examples/multi_analyst_drafts.json` | Output | 10 TraceDraft records from two analyst positions (`analyst-a`, `analyst-b`) over a shared incident scenario; exercises `extraction-gap` and `chain-diff` operations |
 | Multi-Analyst README | `data/examples/multi_analyst_drafts_README.md` | Documentation | Companion guide: scenario description, deliberate divergences between analyst positions, CLI commands to reproduce analysis output |
 
+### Thread D Reference Datasets (Phase 5 — #147, #148, #149)
+
+Hand-authored trace datasets covering three domains. Each exercises multi-observer articulation, mediation/intermediary distinction, and reflexive session traces. Validated with `meshant validate`. All reviews: ant-theorist ALIGNED, QA PASS, architect SHIP.
+
+| Dataset | Location | Traces | Observers | Domain |
+|---------|----------|--------|-----------|--------|
+| D.1 Software Incident | `data/examples/software_incident.json` | 32 | `on-call-engineer`, `product-manager`, `customer-support-lead`, `dataset-analyst` | Payment service degradation during flash sale; `retry-buffer` as key mediator |
+| D.2 Multi-Agent Pipeline | `data/examples/multi_agent_pipeline.json` | 28 | `pipeline-auditor`, `ml-engineer`, `dataset-analyst` | AI compliance pipeline; 8 agents as non-human actants; inscription conflict (taxonomy version mismatch) |
+| D.3 Policy/Procurement | `data/examples/policy_procurement.json` | 27 | `procurement-officer`, `budget-approver`, `vendor-alpha`, `compliance-auditor`, `dataset-curator` | Public-sector IT procurement; 17 institutional actants; apparatus-thick, humans-thin |
+
+All three datasets end with a structurally parallel reflexive pair: `source: ["claude-sonnet-4-6"]`, `mediation: "extract"/"critique"`, `tags: ["session", "articulation"]` — the observation apparatus recorded as a trace (Principle 8).
+
 ### Extraction Prompt Templates
 
 | File | Purpose |
