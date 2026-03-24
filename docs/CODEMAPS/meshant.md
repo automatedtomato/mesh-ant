@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-22 (F.5: `data/examples/llm_assisted_extraction/` + provenance validation tests; F.6: `docs/decisions/llm-boundary-v2.md`, README v2.0.0 section, v2.0.0 tag)
+**Last Updated:** 2026-03-24 (#146: Web UI + provenance panel — Cytoscape.js SPA; `/element/{name}` endpoint; `go:embed web`; static file server; `filterByElement`; 93.4% coverage; decision record `web-ui-v1.md`)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -9,14 +9,17 @@
 
 | Package | Purpose |
 |---------|---------|
+| `adapter` | Format-conversion adapters: PDF, HTML, and JSONL → plain text. `Adapter` interface, `ConvertResult` struct, `ForName()` registry. Used by `cmd/meshant` for `meshant convert` and `meshant extract --adapter`. |
 | `schema` | Core trace types, graph-reference predicates, and validators. |
+| `store` | Storage interface and JSON-file backend. `TraceStore` interface (Store, Query, Get, Close), `QueryOpts`, `JSONFileStore`. Narrow abstraction between the CLI/analytical engine and trace backends; the Neo4j adapter (#143) implements the same interface. |
 | `loader` | Load traces from JSON, summarize datasets, print summaries. |
 | `graph` | Articulate graphs, compute diffs, identify graphs as actors, reflexive tracing, follow translation chains, classify chains, shadow analysis, observer-gap analysis, bottleneck analysis, re-articulation suggestions, narrative drafts, export to JSON/DOT/Mermaid. |
 | `persist` | Read and write graphs to JSON files. |
 | `review` | Ambiguity detection, terminal rendering, and interactive accept/edit/skip/quit session for TraceDraft records (Thread A). Exports `DeriveAccepted`, `DeriveEdited`, `RunEditFlow` for reuse by `llm` (F.3). |
-| `llm` | LLM-mediated extraction, assist, and critique pipelines: `LLMClient` interface, `AnthropicClient`, `RunExtraction`, `RunAssistSession`, `ParseSpans`, `RunCritique`, `SessionRecord`, and supporting types. Enforces F.1 conventions (D1–D7): mediator framing, model-ID provenance, framework UncertaintyNote append, IntentionallyBlank validation (F.2, F.3, F.4). Imports `review` (one-directional: `llm → review`) for derivation helpers and rendering in the assist session. |
+| `llm` | LLM-mediated extraction, assist, critique, and split pipelines: `LLMClient` interface, `AnthropicClient`, `RunExtraction`, `RunAssistSession`, `ParseSpans`, `RunCritique`, `RunSplit`, `PromoteSession`, `SessionRecord`, and supporting types. Shared helpers (`readSourceDoc`, `isRefusal`) in `shared.go`. Enforces F.1 conventions (D1–D7): mediator framing, model-ID provenance, framework UncertaintyNote append, IntentionallyBlank validation (F.2, F.3, F.4, #137). `PromoteSession` closes the Principle 8 reflexivity gap: converts a SessionRecord to a canonical Trace (#138). Imports `review` (one-directional: `llm → review`) for derivation helpers and rendering in the assist session. |
+| `serve` | HTTP server for interactive trace graph querying. `Server` struct, `NewServer(ts store.TraceStore)` constructor. Five endpoints: `/articulate` (GET, returns Cut as Envelope), `/diff` (GET, diffs two cuts), `/shadow` (GET, names shadowed elements), `/traces` (GET, returns raw traces), `/element/{name}` (GET, traces mentioning named element — observer required). All endpoints require `observer` query param (returns 400 with ANT reasoning if absent). `Envelope` type wraps response data + `CutMeta`. `filterByElement` filters traces by Source/Target membership. Response helpers: `writeJSON`, `writeError`, `cutMetaFromGraph`, query parameter parsers. Static file server via `go:embed web` serves the SPA at `/`. Graceful shutdown. 93.4% coverage. #145, #146, Phase 4. Web assets: `web/index.html` (SPA shell: observer gate, cut header, graph + sidebar), `web/style.css`, `web/app.js` (init, API fetch, wiring), `web/render.js` (Cytoscape graph, shadow panel, detail panel), `web/export.js` (JSON + DOT download), `web/lib/cytoscape.min.js` (vendored Cytoscape.js 3.30.4). |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique` subcommands. `articulate` supports `--narrative` flag; `gaps` supports `--suggest` flag. `review` and `assist` are interactive subcommands (read from stdin). `extract` calls an LLM to produce TraceDraft records from a source document (F.2). `assist` presents one LLM candidate per span for accept/edit/skip/quit decisions (F.3). `critique` calls an LLM to produce derived "critiqued" drafts from existing TraceDrafts (F.4). |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique`, `split`, `promote-session`, `convert`, `store`, `serve` subcommands. `articulate`, `diff`, `shadow`, `gaps`, `follow`, `bottleneck` accept `--db bolt://...` to load traces from a Neo4j DB instead of a JSON file (mutually exclusive with the file arg). `store` writes JSON traces to the DB. `serve` starts a localhost HTTP server (#145); accepts `--db` and `--port` flags. `articulate` also supports `--narrative`; `gaps` supports `--suggest`. `review` and `assist` are interactive (read from stdin). `extract` calls an LLM for TraceDraft extraction (F.2, #139); supports `--adapter` (#140). `split` splits a source document into spans (#137). `promote-session` promotes a SessionRecord to a Trace (#138). `convert` converts non-text sources to plain text (#140). |
 
 ## Package: schema
 
@@ -33,7 +36,7 @@
 | Type | Key Fields | Purpose |
 |------|-----------|---------|
 | `Trace` | `ID` (uuid), `Timestamp` (time), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Tags` ([]string), `Observer` (string, required) | Fundamental unit of record: a moment where something made a difference in a network. |
-| `TagValue` | (string constant type) | Vocabulary for trace descriptors: `TagDelay`, `TagThreshold`, `TagBlockage`, `TagAmplification`, `TagRedirection`, `TagTranslation`, `TagValueArticulation`, `TagValueDraft` (M11). |
+| `TagValue` | (string constant type) | Vocabulary for trace descriptors: `TagDelay`, `TagThreshold`, `TagBlockage`, `TagAmplification`, `TagRedirection`, `TagTranslation`, `TagValueArticulation`, `TagValueDraft` (M11), `TagValueSession` (#138 — marks traces promoted from SessionRecords). |
 | `TraceDraft` | `ID` (uuid, optional), `Timestamp` (time), `SourceSpan` (string, required), `SourceDocRef` (string), `WhatChanged` (string), `Source` ([]string), `Target` ([]string), `Mediation` (string), `Observer` (string), `Tags` ([]string), `UncertaintyNote` (string), `ExtractionStage` (string), `ExtractedBy` (string), `DerivedFrom` (string), `CriterionRef` (string, M13), `SessionRef` (string, F.0), `IntentionallyBlank` ([]string, M12.5) | Provisional, provenance-bearing record from ingestion pipeline. Minimal requirement: `SourceSpan`. May be promoted to canonical `Trace` when sufficiently complete (M11). `CriterionRef` names the EquivalenceCriterion governing a critique skeleton (citation, not copy). `SessionRef` names the ingestion session that produced this draft — preserved through the review pipeline, not transferred by `Promote()`. `IntentionallyBlank` names content fields deliberately left empty (honest abstention, not missing data). |
 
 ### Functions
@@ -91,6 +94,149 @@
 | `PrintExtractionGap` | `func PrintExtractionGap(w io.Writer, gap ExtractionGap) error` | Write human-readable extraction gap report to io.Writer. Names both analyst positions, three-way partition with SourceSpan lists, field disagreement block, shadow note (neither position is authoritative), non-authoritative disclaimer (C.2). |
 | `CompareChainClassifications` | `func CompareChainClassifications(chainA, chainB []DraftStepClassification) []ClassificationDiff` | Compare two classified chains by position (0-indexed step index). Returns classifications differing by Kind or Reason, up to min(len(chainA), lenB) steps. Returns non-nil empty slice when chains are identical (C.3). |
 | `PrintClassificationDiffs` | `func PrintClassificationDiffs(w io.Writer, analystA, analystB string, lenA, lenB int, diffs []ClassificationDiff) error` | Write human-readable classification diff report to io.Writer. Names both analyst positions, overall chain length context (lenA/lenB steps), per-diff lines (step position, Kind/Reason for each analyst, position note), footer caveat (neither position is authoritative, data-dependent heuristics) (C.3). |
+
+## Package: adapter
+
+### Files
+
+| File | Contains |
+|------|----------|
+| `adapter.go` | `Adapter` interface, `ConvertResult` struct, `ForName()` registry, `maxRawBytes` cap (10 MiB). |
+| `pdf.go` | `PDFAdapter` — pure-Go PDF extraction via `github.com/ledongthuc/pdf`; page-by-page; `Metadata["page_count"]`; `AdapterName: "pdf-extractor"`. |
+| `html.go` | `HTMLAdapter` — iterative HTML tokenizer via `golang.org/x/net/html`; skips script/style/noscript; block elements produce newlines; `AdapterName: "html-extractor"`. |
+| `jsonlog.go` | `JSONLogAdapter` — `bufio.Scanner` line-by-line; JSON objects rendered as "message (key=val, ...)"; non-JSON lines verbatim; `Metadata["line_count"]`; `AdapterName: "jsonlog-parser"`. |
+| `pdf_test.go`, `html_test.go`, `jsonlog_test.go` | Black-box tests (`package adapter_test`); testdata fixtures in `testdata/`; cover happy path, adapter name, metadata, size cap, file-not-found, format errors, `ForName` registry (#140). |
+
+### Types
+
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `ConvertResult` | `Text` (string), `AdapterName` (string), `Metadata` (map[string]string) | Output of a format-conversion adapter. `AdapterName` is set by the adapter itself (self-identifying mediator) and travels to the session record for provenance. |
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `ForName` | `func ForName(name string) (Adapter, error)` | Resolve adapter by explicit name ("pdf", "html", "jsonlog"). Returns descriptive error naming all known adapters on mismatch. |
+| `PDFAdapter.Convert` | `(a *PDFAdapter) Convert(path string) (ConvertResult, error)` | Stat → size cap → open → page-by-page text extraction → concatenate. Known limitation: complex multi-column or scanned PDFs may produce degraded text. |
+| `HTMLAdapter.Convert` | `(a *HTMLAdapter) Convert(path string) (ConvertResult, error)` | Stat → size cap → open → tokenizer-based text extraction with whitespace normalisation. |
+| `JSONLogAdapter.Convert` | `(a *JSONLogAdapter) Convert(path string) (ConvertResult, error)` | Stat → size cap → line-by-line scanner with JSON-aware formatting. |
+
+### Key Design Notes
+
+- **Named mediator**: Analyst explicitly names the adapter (`--adapter pdf`). No auto-detection by extension — the act of format translation is a visible, recorded decision.
+- **Self-identifying**: `ConvertResult.AdapterName` is set by the adapter, not the caller. The mediator names itself.
+- **Provenance chain**: `AdapterName` flows from `ConvertResult` → `ExtractionOptions.AdapterName` → `ExtractionConditions.AdapterName` (omitempty) → session record JSON.
+- **No circular deps**: `adapter` depends on no MeshAnt-internal packages; `llm` receives only the adapter name as a string.
+
+---
+
+## Package: store
+
+### Files
+
+| File | Build tag | Contains |
+|------|-----------|----------|
+| `store.go` | (none) | `TraceStore` interface; `QueryOpts` struct. |
+| `json_file_store.go` | (none) | `JSONFileStore` implementation; `NewJSONFileStore(path)`; `loadOrEmpty`, `matchesOpts`, `writeAtomic` helpers. |
+| `neo4j_store.go` | `neo4j` | `Neo4jStore`; `Neo4jConfig`; `NewNeo4jStore(ctx, cfg)`; `traceFromRecord` helper. |
+| `neo4j_cypher.go` | `neo4j` | Cypher builders: `storeCypher`, `queryCypher`, `getCypher`; type conversion: `recordToTrace`, `anyListToStrings`, `anySliceToStrings`, `asString`. |
+
+### Types
+
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `TraceStore` | (interface) | Narrow, swappable storage boundary. Four methods: `Store`, `Query`, `Get`, `Close`. Both `JSONFileStore` and `Neo4jStore` implement this. The analytical engine receives `[]schema.Trace` from `Query` without knowing the backend. |
+| `QueryOpts` | `Observer string`, `Window graph.TimeWindow`, `Tags []string`, `Limit int` | Pre-filtering criteria for `Query`. AND semantics across all fields. `Tags` requires ALL listed tags (distinct from `graph.Articulate`'s OR). Zero values mean no filter. `Window` uses `graph.TimeWindow` (temporary coupling; will move to `schema`). |
+| `JSONFileStore` | `path string` | JSON-file-backed `TraceStore`. Wraps `loader.Load`; atomic write via temp-rename + fsync; idempotent upsert by ID; missing file → empty slice. Not safe for concurrent writes. |
+| `Neo4jConfig` | `BoltURL`, `Username`, `Password`, `Database string` | Connection parameters for `Neo4jStore`. Credentials via env vars; never hardcode. Build tag: `neo4j`. |
+| `Neo4jStore` | `driver neo4j.DriverWithContext`, `database string`, `closeOnce sync.Once` | Neo4j-backed `TraceStore`. Single transaction per `Store()`. Timestamp strings RFC3339Nano UTC. MERGE semantics for idempotent upsert; FOREACH for element relationships. Build tag: `neo4j`. |
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `NewJSONFileStore` | `func NewJSONFileStore(path string) *JSONFileStore` | Constructor; path fixed at construction. File need not exist; `Store` creates it on first write. |
+| `JSONFileStore.Store` | `(s *JSONFileStore) Store(ctx, []schema.Trace) error` | Validates all traces, loads existing, upserts by ID, sorts by timestamp, writes atomically. |
+| `JSONFileStore.Query` | `(s *JSONFileStore) Query(ctx, QueryOpts) ([]schema.Trace, error)` | Loads all, applies in-memory AND filters, applies Limit. Missing file → `([], nil)`. |
+| `JSONFileStore.Get` | `(s *JSONFileStore) Get(ctx, id string) (Trace, bool, error)` | Linear scan by ID. Missing file → `(zero, false, nil)`. |
+| `JSONFileStore.Close` | `(s *JSONFileStore) Close() error` | No-op; idempotent. |
+| `NewNeo4jStore` | `func NewNeo4jStore(ctx, cfg Neo4jConfig) (*Neo4jStore, error)` | Creates driver, verifies connectivity (fail-fast), returns store. Build tag: `neo4j`. |
+| `Neo4jStore.Store` | `(s *Neo4jStore) Store(ctx, []schema.Trace) error` | Validates all, runs single write transaction (MERGE per trace + element FOREACH). Build tag: `neo4j`. |
+| `Neo4jStore.Query` | `(s *Neo4jStore) Query(ctx, QueryOpts) ([]schema.Trace, error)` | Dynamic Cypher WHERE from opts; two-stage OPTIONAL MATCH for sources/targets; ordered ASC. Build tag: `neo4j`. |
+| `Neo4jStore.Get` | `(s *Neo4jStore) Get(ctx, id string) (Trace, bool, error)` | MATCH by id + source/target collection. Returns `(zero, false, nil)` when not found. Build tag: `neo4j`. |
+| `Neo4jStore.Close` | `(s *Neo4jStore) Close() error` | Closes driver via `sync.Once`; idempotent. Build tag: `neo4j`. |
+
+### Key Design Notes
+
+- **Narrow interface**: `TraceStore` does not prescribe transaction scope, batch size, or connection pooling — those are backend-specific concerns. The interface is the same size for both JSON and Neo4j adapters.
+- **Pre-filtering ≠ cut**: `QueryOpts` applies coarse pre-filtering. Cut logic (shadow assignment, element inclusion/exclusion) stays entirely in the analytical engine. Setting `Observer` on `QueryOpts` is a retrieval hint, not a cut commitment.
+- **Atomic write (JSON)**: `writeAtomic` writes to a temp file in the same directory (same filesystem), calls `fsync`, then renames. Without `fsync`, `close(2)` does not guarantee dirty pages are flushed before rename.
+- **FOREACH not UNWIND (Neo4j)**: Element relationships use `FOREACH` because `UNWIND []` produces zero rows and would drop the trace. `FOREACH []` iterates zero times and leaves the trace visible in the transaction.
+- **TimeWindow coupling**: `QueryOpts.Window` imports `graph.TimeWindow` — documented temporary coupling. `TimeWindow` will eventually move to `schema`; this note is in both the code and `kg-scoping-v1.md` §2.1.
+- **Build tag isolation**: `neo4j_store.go` and `neo4j_cypher.go` carry `//go:build neo4j`. `go test ./...` passes without Neo4j. Integration tests require `MESHANT_NEO4J_TEST_URL`. Run `go mod tidy -tags neo4j` to preserve the driver in go.mod.
+- **Decision records**: `docs/decisions/kg-scoping-v1.md` §2 is the contract; `docs/decisions/neo4j-adapter-v1.md` documents the #143 implementation decisions.
+
+---
+
+## Package: serve
+
+### Files
+
+| File | Contains |
+|------|----------|
+| `response.go` | `CutMeta`, `Envelope`, `ErrorBody`; `writeJSON`, `writeError`, `cutMetaFromGraph`, `parseQueryTime`, `parseLimit` helpers. |
+| `server.go` | `Server` struct, `NewServer(ts store.TraceStore) *Server`, `ServeHTTP` method. HTTP multiplexer registration for five API endpoints + static file handler (`go:embed web`). |
+| `handlers.go` | `handleArticulate`, `handleDiff`, `handleShadow`, `handleTraces`, `handleElement` endpoint handlers; shared `filterTraces`, `filterByElement` helpers; request parameter parsing and validation. |
+| `handlers_test.go` | Black-box tests via `httptest.NewRecorder` and `httptest.NewRequest`; 93.4% coverage. Tests for all five endpoints, observer validation, time-window parsing, tag filtering, limit application, URL encoding, element filtering, static file serving, API route precedence. |
+| `web/index.html` | SPA shell: observer gate (`<header id="observer-gate">`), cut header (`<div id="cut-header">`), main flex layout with Cytoscape canvas (`<div id="cy">`) and sidebar (shadow + detail panels). |
+| `web/style.css` | Layout: observer gate (centered, prominent), cut header (dark background, sticky), main flex row, sidebar (280px). Shadow panel (amber `#fef9e7`, left border `#f39c12`), detail panel (light grey). Trace cards, provenance block, shadow reason chips. |
+| `web/app.js` | Sections: observer gate form wiring, cut metadata rendering, `loadGraph()` (parallel articulate+shadow fetch), `handleNodeClick()` (element fetch), export button wiring, `apiFetch()` helper, error banner, DOMContentLoaded init. |
+| `web/render.js` | `initGraph(graphData, onNodeClick)` — Cytoscape init, element mapping, style; `renderShadowPanel(shadowData, onShadowClick)`; `renderDetailPanel(name, traces, observer)` — trace cards with provenance block for `session`-tagged traces. |
+| `web/export.js` | `exportJSON()`, `exportDOT()`, `setLastArticulateEnvelope(env)`; `buildDOT(cut, graphData)` — mirrors `PrintGraphDOT` conventions; `triggerDownload(filename, blob)`. |
+| `web/lib/cytoscape.min.js` | Vendored Cytoscape.js 3.30.4 (~374KB). Served at `/lib/cytoscape.min.js` via the embedded file server. |
+
+### Types
+
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `Server` | `store store.TraceStore` | HTTP server wrapping a `TraceStore`. Implements `http.Handler` via `ServeHTTP` method. No state beyond the store reference; stateless endpoint handlers. |
+| `Envelope` | `Data interface{}`, `CutMeta graph.CutMeta`, `Error *ErrorBody` | Response envelope for all HTTP responses. `Data` carries the endpoint's primary result (Cut, GraphDiff, ShadowSummary, or []Trace). `CutMeta` provides observer/window/tags metadata. `Error` is non-nil only on 4xx/5xx responses (mutually exclusive with Data). |
+| `ErrorBody` | `Code string`, `Message string`, `Reason string` | Error response body. `Code` is a machine-readable error classifier (e.g., "MissingObserver", "InvalidTimeWindow", "StorageError"). `Message` is human-friendly. `Reason` provides ANT-grounded context (e.g., "observer required on all endpoints—observer position is the first cut axis"). |
+| `CutMeta` (from graph package) | `Observer string`, `Window graph.TimeWindow`, `Tags []string` | Metadata about the cut applied to generate a response. Echoed back in Envelope so client knows what cut was performed. |
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `NewServer` | `func NewServer(ts store.TraceStore) *Server` | Constructor; wraps a TraceStore. Returns server ready to be passed to `http.ListenAndServe()`. |
+| `Server.ServeHTTP` | `(s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request)` | Implements `http.Handler`. Parses URL path and routes to appropriate handler. Returns 404 for unknown routes. |
+| `handleArticulate` | Serves `GET /articulate?observer=...&window=...&tags=...&limit=...` | Load traces from store via QueryOpts, articulate graph under observer cut, return Envelope with Cut and CutMeta. Returns 400 if observer is absent. |
+| `handleDiff` | Serves `POST /diff` with JSON body `{observer_a: string, observer_b: string, window: TimeWindow, tags: []string}` | Load traces, compute two cuts (observer_a vs observer_b), diff them, return Envelope with GraphDiff and CutMeta from observer_a. Both observers must be present. |
+| `handleShadow` | Serves `GET /shadow?observer=...&window=...&tags=...&limit=...` | Load traces, articulate, compute shadow, return Envelope with ShadowSummary and CutMeta. Observer required. |
+| `handleTraces` | Serves `GET /traces?observer=...&window=...&tags=...&limit=...` | Load traces from store (QueryOpts filtering applied), validate each, return Envelope with []Trace and CutMeta. Observer required (passed to store as retrieval hint; layer 1 pre-filter, not cut). |
+| `filterTraces` | `func filterTraces(traces []schema.Trace, observer string, tw graph.TimeWindow, tags []string) []schema.Trace` | In-memory filtering: observer exact match, time-window bounds (inclusive), tag OR logic. Returns slice in original order. Used by `handleTraces` and `handleElement`. |
+| `filterByElement` | `func filterByElement(traces []schema.Trace, elementName string) []schema.Trace` | Returns traces where `elementName` appears in `tr.Source` or `tr.Target` (exact string equality). Used by `handleElement` after observer/time/tag filtering. |
+| `handleElement` | `(s *Server) handleElement(w http.ResponseWriter, r *http.Request)` | Serves `GET /element/{name}?observer=...`. Requires observer; optional from/to/tags. Loads full substrate, applies `filterTraces` then `filterByElement`. Returns `Envelope{Cut, Data: []schema.Trace}`. Returns `[]` (not null) for unknown elements. |
+| `writeJSON` | `func writeJSON(w http.ResponseWriter, status int, env Envelope) error` | Marshal Envelope to JSON, write status code + Content-Type header, write body. Returns marshal error. Used by all handlers for success responses. |
+| `writeError` | `func writeError(w http.ResponseWriter, status int, code, message, reason string) error` | Create ErrorBody, marshal Envelope with Error field, write response. Returns marshal error. Used by all handlers for error responses (observer missing, invalid time window, storage failure, etc.). |
+| `cutMetaFromGraph` | `func cutMetaFromGraph(g *graph.MeshGraph, ts []string, tw graph.TimeWindow) graph.CutMeta` | Extract CutMeta from a MeshGraph: observer (g.Cut.Observer), tags (ts), window (tw). Helper for populating Envelope.CutMeta. |
+| `parseQueryTime` | `func parseQueryTime(s string) (time.Time, error)` | Parse query parameter as RFC3339Nano timestamp. Returns error if empty string or invalid format. Used by time-window parser. |
+| `parseLimit` | `func parseLimit(s string) (int, error)` | Parse query parameter as unsigned integer. Returns 0 if empty (no limit). Returns error if negative or non-numeric. |
+
+### Key Design Notes
+
+- **Observer on all endpoints**: All four endpoints require `observer` query param (400 with ErrorBody reason explaining ANT principle if absent). This enforces Principle 3 (observer position is a cut). Store's QueryOpts.Observer is a retrieval hint (layer 1 pre-filter), not a cut assertion.
+- **Envelope invariant**: Success response has Data + CutMeta; Error response has Error field only. Never both. Clients check Error presence to detect failure.
+- **CutMeta echo**: Every successful response echoes back the cut parameters (observer, window, tags) so client knows what was queried. Prevents silent mismatches.
+- **No context enforcement**: Handlers accept request timeout via http.Request.Context but do not enforce it (defer to store implementations). Store.Query and Store.Get accept context parameter for cancellation.
+- **Stateless handlers**: No global state, no session storage, no in-process caching. Each request is independent.
+- **Time-window custom JSON**: TimeWindow encodes/decodes via custom codec (see `graph.serial.go`). HTTP endpoints parse RFC3339Nano strings and reconstruct TimeWindow structs on POST body.
+- **Decision record (serve)**: `docs/decisions/serve-v1.md` — observer requirement, Envelope structure, graceful shutdown, Phase 4 (#145).
+- **Decision record (web-ui)**: `docs/decisions/web-ui-v1.md` — Cytoscape.js choice, `go:embed`, no build step, observer gate as structural HTML, `/element/{name}` in-memory design, client-side DOT duplication, provenance deferred, Phase 4 (#146).
+- **Static file server**: `go:embed web` in `server.go` embeds the entire `web/` directory. `fs.Sub(webFS, "web")` strips the prefix; `http.FileServerFS` serves at `GET /`. API routes are registered first and take precedence over the catch-all `/` handler.
+
+---
 
 ## Package: graph
 
@@ -262,12 +408,15 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `types.go` | Shared types: `ExtractionConditions`, `DraftDisposition`, `SessionRecord`, `ExtractionOptions`, `AssistOptions`, `CritiqueOptions`; error types `ErrLLMRefusal`, `ErrMalformedOutput`; constants `frameworkUncertaintyNote`, `maxSourceBytes`, `maxResponseBytes`, `httpTimeout`; `knownContentFields` map. `DraftDisposition.Action` values: `"accepted"`, `"edited"`, `"skipped"`, `"abandoned"`. |
+| `types.go` | Shared types: `ExtractionConditions`, `DraftDisposition`, `SessionRecord`, `ExtractionOptions`, `AssistOptions`, `CritiqueOptions`, `SplitOptions`; error types `ErrLLMRefusal`, `ErrMalformedOutput`; constants `frameworkUncertaintyNote`, `maxResponseBytes`, `httpTimeout`; `knownContentFields` map. `DraftDisposition.Action` values: `"accepted"`, `"edited"`, `"skipped"`, `"abandoned"`. `SessionRecord.DraftIDs` is nil (not set) for split sessions — spans are not TraceDraft records; use `DraftCount`. |
 | `client.go` | `LLMClient` interface; `AnthropicClient` implementation (net/http, zero external deps); `NewAnthropicClient()` (env-var key lookup); private `httpClient` with 180 s timeout; response body capped at 8 MiB; auth error scrubbing (401/403 bodies withheld). |
 | `prompt.go` | `LoadPromptTemplate(path)` — reads prompt template up to 1 MiB; empty file is valid (no error). |
-| `extract.go` | `RunExtraction(ctx, client, opts)` — LLM extraction pipeline; always returns non-nil `SessionRecord` even on error; validates `IntentionallyBlank` field names; detects refusals by prefix heuristic; strips LLM preamble before JSON parse; stamps provenance fields (D2–D7). Private helpers: `readSourceDoc`, `isRefusal`, `parseResponse`, `validateIntentionallyBlank`. |
+| `shared.go` | Package-internal shared helpers: `readSourceDoc(path)` — reads source document capped at `maxSourceBytes` (1 MiB); `isRefusal(response)` — conservative prefix-based refusal detection. Used by `extract.go` and `split.go` (#137). |
+| `extract.go` | `RunExtraction(ctx, client, opts)` — LLM extraction pipeline; supports multi-document ingestion via `opts.InputPaths`/`opts.SourceDocRefs` (#139); always returns non-nil `SessionRecord` even on error; validates `IntentionallyBlank` field names; strips LLM preamble before JSON parse; stamps provenance fields (D2–D7). Private helpers: `extractSingleDoc` (per-document helper), `parseResponse`, `validateIntentionallyBlank`. (`readSourceDoc` and `isRefusal` in `shared.go`.) |
+| `split.go` | `RunSplit(ctx, client, opts)` — LLM span-boundary detection pipeline; calls LLM to propose candidate observation spans from a source document; always returns non-nil `SessionRecord`; `DraftIDs` nil (spans are not TraceDraft records); `DraftCount` = number of non-blank spans; empty result is an error. Private helper: `parseSplitResponse` (preamble-tolerant JSON string-array parser with blank filtering) (#137). |
 | `assist.go` | `RunAssistSession(ctx, client, spans, opts, in, out)` — interactive per-span LLM-assist session; skip preserves draft (shadow is not absence); edit appends LLM draft + derived draft; EOF-during-edit records disposition `"abandoned"`. `ParseSpans(data)` — parses spans file from JSON array, newline-separated text, or single line. `parseSingleDraft` — stamps provenance, zeros `DerivedFrom`, validates `IntentionallyBlank`. Imports `review` for `RunEditFlow`, `DeriveEdited`, rendering (F.3). |
 | `critique.go` | `RunCritique(ctx, client, drafts, opts)` — LLM critique pipeline; one call per input draft; returns partial results (nil error on per-draft failures); always returns non-nil `SessionRecord`; hard SourceSpan integrity check (rejects mismatch, session continues). Private helpers: `buildCritiquePrompt`, `parseCritiqueDraft` (F.4). |
+| `session_promote.go` | `PromoteSession(rec SessionRecord, observer string) (schema.Trace, error)` — converts a SessionRecord to a canonical Trace, closing the Principle 8 reflexivity gap. Field mapping: ID←rec.ID, Source←[ModelID], Target←[SourceDocRef], Mediation←Command, Observer←caller-provided (required), Tags←["session","articulation"]; WhatChanged surfaces command + SourceDocRef + ModelID for self-situated description. Error sessions are promotable (a failed act is an observable act). Always validates the promoted trace before returning. Private helper: `sessionWhatChanged` (#138). |
 
 ### Types
 
@@ -275,11 +424,12 @@ None (persist carries no domain types; wraps graph types).
 |------|-----------|---------|
 | `LLMClient` | `Complete(ctx, system, prompt string) (string, error)` | Interface for LLM completion. Single method — models the analytical boundary: inputs in, text out. Implemented by `AnthropicClient`; tests inject a mock. |
 | `AnthropicClient` | `apiKey` (unexported), `model`, `baseURL`, `httpClient` | Anthropic Messages API client. API key never serialised or logged. Uses a private `http.Client` with explicit timeout; never `http.DefaultClient`. |
-| `ExtractionConditions` | `ModelID`, `PromptTemplate`, `CriterionRef`, `SystemInstructions`, `SourceDocRef`, `Timestamp` | Apparatus description for one LLM session. Intentionally excludes API key — conditions are written to disk. |
-| `SessionRecord` | `ID` (uuid), `Command` (string), `Conditions` (ExtractionConditions), `DraftIDs` ([]string), `Dispositions` ([]DraftDisposition), `InputPath`, `OutputPath`, `DraftCount`, `ErrorNote`, `Timestamp` | Mandatory companion to every LLM interaction. Returned on every code path. `ID` is stamped as `SessionRef` on every produced draft. `ErrorNote` makes failures inspectable from disk without re-running. |
-| `ExtractionOptions` | `ModelID`, `InputPath`, `PromptTemplatePath`, `CriterionRef`, `SourceDocRef`, `OutputPath`, `SessionOutputPath` | Input parameters for `RunExtraction`. |
+| `ExtractionConditions` | `ModelID`, `PromptTemplate`, `CriterionRef`, `SystemInstructions`, `SourceDocRefs` ([]string, #139), `SourceDocRef` (legacy string), `Timestamp` | Apparatus description for one LLM session. Intentionally excludes API key — conditions are written to disk. `SourceDocRefs` is the plural field for multi-doc sessions; `SourceDocRef` is retained for backward compatibility with pre-#139 session files. |
+| `SessionRecord` | `ID` (uuid), `Command` (string), `Conditions` (ExtractionConditions), `DraftIDs` ([]string), `Dispositions` ([]DraftDisposition), `InputPaths` ([]string, #139), `InputPath` (legacy string), `OutputPath`, `DraftCount`, `ErrorNote`, `Timestamp` | Mandatory companion to every LLM interaction. Returned on every code path. `ID` is stamped as `SessionRef` on every produced draft. `ErrorNote` makes failures inspectable from disk without re-running. `InputPaths` is the plural field for multi-doc sessions; `InputPath` is retained for backward compatibility. |
+| `ExtractionOptions` | `ModelID`, `InputPaths` ([]string, #139), `SourceDocRefs` ([]string, #139), `PromptTemplatePath`, `CriterionRef`, `OutputPath` | Input parameters for `RunExtraction`. Both `InputPaths` and `SourceDocRefs` must be non-empty and equal length. |
 | `AssistOptions` | `ModelID`, `InputPath`, `PromptTemplatePath`, `CriterionRef`, `SourceDocRef`, `OutputPath`, `SessionOutputPath` | Input parameters for `RunAssistSession`. `InputPath` is the spans file path — optional; recorded in SessionRecord for provenance. |
 | `CritiqueOptions` | `ModelID`, `InputPath`, `PromptTemplatePath`, `CriterionRef`, `SourceDocRef`, `OutputPath`, `SessionOutputPath`, `DraftID` | Input parameters for `RunCritique`. `DraftID` filters to a single draft by ID when non-empty (F.4). |
+| `SplitOptions` | `ModelID`, `InputPath`, `PromptTemplatePath`, `SourceDocRef`, `OutputPath` | Input parameters for `RunSplit`. No `CriterionRef` — split is boundary detection only; criterion enters at the assist stage (#137). |
 | `ErrLLMRefusal` | `RefusalText string` | LLM explicitly declined to produce output. |
 | `ErrMalformedOutput` | `RawResponse string`, `ParseErr error` | LLM returned text that does not parse as TraceDraft JSON. |
 
@@ -290,17 +440,21 @@ None (persist carries no domain types; wraps graph types).
 | `NewAnthropicClient` | `func NewAnthropicClient(model string) (*AnthropicClient, error)` | Read API key from `MESHANT_LLM_API_KEY` (fallback `ANTHROPIC_API_KEY`); construct client with 180 s timeout. Returns error if both env vars are absent or empty. |
 | `AnthropicClient.Complete` | `(c *AnthropicClient) Complete(ctx, system, prompt string) (string, error)` | Post to Anthropic Messages API; return first text content block. Caps response body at 8 MiB; scrubs auth error bodies. |
 | `LoadPromptTemplate` | `func LoadPromptTemplate(path string) (string, error)` | Read prompt template file up to 1 MiB. Empty file returns `""` without error. |
-| `RunExtraction` | `func RunExtraction(ctx context.Context, client LLMClient, opts ExtractionOptions) ([]schema.TraceDraft, SessionRecord, error)` | Full extraction pipeline: read source doc → load prompt → call LLM → detect refusal → parse JSON → validate/stamp each draft → return drafts + SessionRecord. Always returns non-nil SessionRecord. Stamps D2 (ExtractedBy), D3 (UncertaintyNote append), D4 (ExtractionStage "weak-draft"), D6 (SessionRef), D7 (IntentionallyBlank validation) per F.1 decision record. |
+| `RunExtraction` | `func RunExtraction(ctx context.Context, client LLMClient, opts ExtractionOptions) ([]schema.TraceDraft, SessionRecord, error)` | Full extraction pipeline: validate opts → generate session ID → load prompt once → loop over opts.InputPaths (one LLM call per document) via `extractSingleDoc` → aggregate drafts → return drafts + SessionRecord. Supports multi-document ingestion (#139). Always returns non-nil SessionRecord. Stamps D2 (ExtractedBy), D3 (UncertaintyNote append), D4 (ExtractionStage "weak-draft"), D6 (SessionRef), D7 (IntentionallyBlank validation). Fails fast on mismatched or empty InputPaths/SourceDocRefs. |
 | `ParseSpans` | `func ParseSpans(data []byte) ([]string, error)` | Parse a spans file into a slice of span strings. Tries JSON string array first, then newline-separated text, then single-line. Drops blank/whitespace-only entries. Returns error on empty input. |
 | `RunAssistSession` | `func RunAssistSession(ctx context.Context, client LLMClient, spans []string, opts AssistOptions, in io.Reader, out io.Writer) ([]schema.TraceDraft, SessionRecord, error)` | Interactive per-span assist session. For each span: call LLM → parse draft → present to user → read action. Accept: append LLM draft (disposition "accepted"). Edit: RunEditFlow + DeriveEdited → append both (disposition "edited"). Skip: append LLM draft (disposition "skipped"; shadow preserved). EOF or Quit: return partial results without error. Always returns SessionRecord. DraftCount may exceed len(Dispositions) when edits produce two drafts per span. |
 | `RunCritique` | `func RunCritique(ctx context.Context, client LLMClient, drafts []schema.TraceDraft, opts CritiqueOptions) ([]schema.TraceDraft, SessionRecord, error)` | LLM critique pipeline: one call per input draft → parse response → validate SourceSpan → stamp DerivedFrom and ExtractionStage "critiqued". Returns partial results with nil error on per-draft failures; errors accumulate in SessionRecord.ErrorNote. Returns non-nil SessionRecord on all code paths except UUID generation failure. DraftID filter (opts.DraftID non-empty) returns error with SessionRecord when ID not found (F.4). |
+| `RunSplit` | `func RunSplit(ctx context.Context, client LLMClient, opts SplitOptions) ([]string, SessionRecord, error)` | LLM span-boundary detection pipeline: read source doc → load prompt → call LLM → detect refusal → parse JSON string array → filter blanks → return spans + SessionRecord. Always returns non-nil SessionRecord. `DraftCount` = len(spans); `DraftIDs` = nil. Empty result (0 non-blank spans) is an error. No criterion involvement — boundary detection is pre-analytical (#137). |
+| `PromoteSession` | `func PromoteSession(rec SessionRecord, observer string) (schema.Trace, error)` | Converts a SessionRecord to a canonical schema.Trace. Observer is required — no trace without a position. Target is built from `Conditions.SourceDocRefs` (plural, #139) with fallback to legacy `Conditions.SourceDocRef`; multi-doc sessions produce a multi-element Target. WhatChanged surfaces command + all SourceDocRefs + ModelID for self-situated description. Tags: ["session", "articulation"]. Always validates before returning; invalid promoted traces are errors. Error sessions (ErrorNote non-empty) are promotable — a failed act is an observable act. Closes the Principle 8 reflexivity gap: the LLM observation apparatus enters the mesh (#138). |
 
 ### Key Design Notes
 
 - **Zero external dependencies**: Uses only Go stdlib (`net/http`, `encoding/json`, `io`, `os`, `context`).
-- **SessionRecord is mandatory**: `RunExtraction`, `RunAssistSession`, and `RunCritique` always return a SessionRecord. On error, `ErrorNote` is populated. The caller writes the record to disk; the `llm` package does not own the write.
-- **F.1 convention enforcement**: D2 (ExtractedBy = model ID string), D3 (frameworkUncertaintyNote always appended), D4 (ExtractionStage = "weak-draft" for extraction, "critiqued" for critique), D6 (SessionRecord mandatory return), D7 (IntentionallyBlank validates against content-field allowlist). See `docs/decisions/llm-as-mediator-v1.md`.
-- **Client injection**: `RunExtraction`, `RunAssistSession`, and `RunCritique` accept `LLMClient` interface — tests inject a mock; production code uses `AnthropicClient`. No live API calls in unit tests.
+- **SessionRecord is mandatory**: `RunExtraction`, `RunAssistSession`, `RunCritique`, and `RunSplit` always return a SessionRecord. On error, `ErrorNote` is populated. The caller writes the record to disk; the `llm` package does not own the write.
+- **Reflexivity via PromoteSession**: `PromoteSession` converts a `SessionRecord` to a canonical `Trace`, making the LLM observation apparatus visible inside the mesh it produced. This closes the Principle 8 gap left by all prior LLM pipeline work. The `"session"` and `"articulation"` tags mark these traces in articulations (#138).
+- **F.1 convention enforcement**: D2 (ExtractedBy = model ID string), D3 (frameworkUncertaintyNote always appended), D4 (ExtractionStage = "weak-draft" for extraction, "critiqued" for critique), D6 (SessionRecord mandatory return), D7 (IntentionallyBlank validates against content-field allowlist). See `docs/decisions/llm-as-mediator-v1.md`. `RunSplit` enforces D6 but not D2–D5 (spans are pre-trace material).
+- **Client injection**: `RunExtraction`, `RunAssistSession`, `RunCritique`, and `RunSplit` accept `LLMClient` interface — tests inject a mock; production code uses `AnthropicClient`. No live API calls in unit tests.
+- **shared.go helpers**: `readSourceDoc` and `isRefusal` are unexported package-internal helpers used by both `extract.go` and `split.go`. They were moved from `extract.go` to `shared.go` when split was added to avoid duplication (#137).
 - **Refusal detection**: `isRefusal()` matches conservative English-language prefixes. False negatives fall through to the malformed-output path, which is correct. The heuristic is English-only (documented in F.6 deferred notes).
 - **Security**: API key is an unexported struct field; never appears in `SessionRecord`, any error message, or any serialised output. Authentication error responses (401/403) are not echoed to the user. Span text is not echoed in ErrorNote (uses length only) to avoid PII leakage into session files.
 - **`llm → review` import**: `assist.go` imports `review` for rendering (`RenderDraft`, `RenderAmbiguities`, `DetectAmbiguities`) and derivation helpers (`RunEditFlow`, `DeriveEdited`). The direction is one-way and stable through F.4 (`review` has no `llm` imports). If a future feature requires `review → llm`, extract shared types into a new package to avoid a cycle.
@@ -318,28 +472,35 @@ None (persist carries no domain types; wraps graph types).
 
 | File | Contains |
 |------|----------|
-| `main.go` | CLI entry point: `main()`, `run()` dispatcher, `usage()`, and shared helpers (`loadCriterionFile`, `stringSliceFlag`, `parseTimeFlag`, `parseTimeWindow`, `outputWriter`, `confirmOutput`). ~259 lines. |
+| `main.go` | CLI entry point: `main()`, `run()` dispatcher, `usage()`, and shared helpers (`loadCriterionFile`, `stringSliceFlag`, `parseTimeFlag`, `parseTimeWindow`, `outputWriter`, `confirmOutput`, `loadTraces`, `noop`). |
+| `db_factory.go` | `//go:build !neo4j` — `openDB` stub: returns "rebuild with -tags neo4j" error for any non-empty dbURL. Default binary unchanged. |
+| `db_factory_neo4j.go` | `//go:build neo4j` — `openDB` implementation: reads MESHANT_DB_USER/MESHANT_DB_PASS/MESHANT_DB_NAME from env, creates `Neo4jStore`. |
+| `cmd_store.go` | `cmdStore` subcommand handler — reads JSON file via `loader.Load`, writes to injected or factory-created `TraceStore`. |
 | `cmd_summarize.go` | `cmdSummarize` subcommand handler. |
 | `cmd_validate.go` | `cmdValidate` subcommand handler. |
-| `cmd_articulate.go` | `cmdArticulate` subcommand handler (`--narrative` flag). |
-| `cmd_diff.go` | `cmdDiff` subcommand handler. |
-| `cmd_follow.go` | `cmdFollow` subcommand handler (`--criterion-file` flag). |
+| `cmd_articulate.go` | `cmdArticulate` subcommand handler (`--narrative` flag, `--db` flag). |
+| `cmd_diff.go` | `cmdDiff` subcommand handler (`--db` flag). |
+| `cmd_follow.go` | `cmdFollow` subcommand handler (`--criterion-file` flag, `--db` flag). |
 | `cmd_draft.go` | `cmdDraft` subcommand handler (M11). |
 | `cmd_promote.go` | `cmdPromote` subcommand handler (M11). |
 | `cmd_rearticulate.go` | `cmdRearticulate` subcommand handler (M12). |
 | `cmd_lineage.go` | `cmdLineage` subcommand handler plus 13 exclusive helpers: `lineageNode`, `lineageResult`, `buildLineage`, `detectCycleDFS`, `idPrefix`, `spanPreview`, `printLineageText`, `printLineageStep`, `lineageJSONChain`, `collectMembers`, `printLineageJSON`, `filterLineageByID`, `chainContainsID` (M12). |
-| `cmd_shadow.go` | `cmdShadow` subcommand handler (M13). |
-| `cmd_gaps.go` | `cmdGaps` subcommand handler (`--suggest` flag, B.2) (M13). |
-| `cmd_bottleneck.go` | `cmdBottleneck` subcommand handler (B.1). |
+| `cmd_shadow.go` | `cmdShadow` subcommand handler (`--db` flag) (M13). |
+| `cmd_gaps.go` | `cmdGaps` subcommand handler (`--suggest` flag, B.2; `--db` flag) (M13). |
+| `cmd_bottleneck.go` | `cmdBottleneck` subcommand handler (`--db` flag) (B.1). |
 | `cmd_review.go` | `cmdReview` subcommand handler — only interactive subcommand; accepts `in io.Reader` (A.5). |
 | `cmd_extraction_gap.go` | `cmdExtractionGap` subcommand handler (C.2). |
 | `cmd_chain_diff.go` | `cmdChainDiff` subcommand handler (C.3). |
-| `cmd_extract.go` | `cmdExtract` subcommand handler — calls LLM via injected `llm.LLMClient`; writes TraceDraft JSON and SessionRecord JSON; session output defaulting: `<output>.session.json` (file mode) or `session_<timestamp>.json` in cwd (stdout mode) (F.2). |
+| `cmd_extract.go` | `cmdExtract` subcommand handler — `--source-doc` and `--source-doc-ref` are repeatable flags (multi-doc ingestion, #139) via `stringSlice` flag type; `--adapter` flag enables format-conversion before extraction (#140); adapter validated early (before any LLM call); converted text written to OS temp files (deferred removal); calls LLM via injected `llm.LLMClient`; writes TraceDraft JSON and SessionRecord JSON (0o600); session output defaulting: `<output>.session.json` (file mode) or `session_<timestamp>.json` in cwd (stdout mode) (F.2). Also houses `writeSessionRecord` shared by all LLM subcommands. |
+| `cmd_convert.go` | `cmdConvert` subcommand handler — `meshant convert` two-step workflow entry: convert non-text source to plain text, write to stdout or `--output`, print confirmation with adapter name and metadata. Flags: `--adapter` (required), `--source-doc` (required), `--output` (optional) (#140). |
 | `cmd_assist.go` | `cmdAssist` subcommand handler — interactive per-span LLM-assist session; reads spans file (capped at 4 MiB); accepts injected `llm.LLMClient`; reads user decisions from injected `io.Reader`; writes TraceDraft JSON and SessionRecord JSON on every code path (F.3). |
 | `cmd_critique.go` | `cmdCritique` subcommand handler — calls LLM via injected `llm.LLMClient`; reads input drafts file (capped at 4 MiB); writes critiqued TraceDraft JSON and SessionRecord JSON; session output defaulting: `<output>.session.json` (file mode) or not written (stdout mode, unless `--session-output` explicit) (F.4). |
+| `cmd_split.go` | `cmdSplit` subcommand handler — calls LLM via injected `llm.LLMClient`; writes candidate observation spans as JSON string array and SessionRecord JSON on every code path; session output defaulting mirrors extract; no `--criterion-file` (split is boundary detection only) (#137). |
+| `cmd_promote_session.go` | `cmdPromoteSession` subcommand handler — reads SessionRecord from `--session-file` (JSON, capped at 1 MiB, no DisallowUnknownFields for forward compatibility); requires `--observer`; calls `llm.PromoteSession`; writes single-element `[]schema.Trace` JSON array to `--output` or stdout. Private helper: `readSessionFile` (#138). |
 | `main_test.go` | Tests: all subcommands, flag parsing, file output, error handling, criterion file loading, draft/promote pipeline (M11). |
 | `cmd_assist_test.go` | Tests: `cmdAssist` CLI handler — happy path (field assertions on ExtractionStage/ExtractedBy/UncertaintyNote), missing flags, missing file, session file written, quit-outputs-partial-results, LLM error, malformed spans, size cap (F.3). |
 | `cmd_critique_test.go` | Tests: `cmdCritique` happy path, missing input, missing file, session file written, LLM error, ID filter, ID filter not found, malformed JSON input, empty array input, stdout mode, session output confirmation (F.4). |
+| `cmd_split_test.go` | Tests: `cmdSplit` — missing source-doc, success (JSON array + session file), LLM error with session written, refusal, output file, default/explicit session path, --help flag, file-not-found, malformed output, stdout output (#137). |
 
 ### Types
 
@@ -356,7 +517,10 @@ None (persist carries no domain types; wraps graph types).
 | `parseTimeFlag` | `func parseTimeFlag(name, value string) (time.Time, error)` | Parse RFC3339 string to time.Time with contextual error message naming the flag. |
 | `parseTimeWindow` | `func parseTimeWindow(fromName, fromStr, toName, toStr string) (graph.TimeWindow, error)` | Parse two RFC3339 strings (one or both may be empty) into a TimeWindow. Validates only when both bounds are set. |
 | `main` | `func main()` | Entry point. Calls `run(os.Stdout, os.Args[1:])` and exits non-zero on error. |
-| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, `cmdExtractionGap()`, `cmdChainDiff()`, `cmdReview()`, `cmdExtract()`, `cmdAssist()`, or `cmdCritique()`. For `review` and `assist`, passes `os.Stdin`; for `extract`, `assist`, and `critique`, passes `nil` client (real client constructed from env). |
+| `run` | `func run(w io.Writer, args []string) error` | Command dispatcher. Routes to `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`, `cmdFollow()`, `cmdDraft()`, `cmdPromote()`, `cmdRearticulate()`, `cmdLineage()`, `cmdShadow()`, `cmdGaps()`, `cmdBottleneck()`, `cmdExtractionGap()`, `cmdChainDiff()`, `cmdReview()`, `cmdExtract()`, `cmdAssist()`, `cmdCritique()`, `cmdSplit()`, `cmdPromoteSession()`, `cmdConvert()`, or `cmdStore()`. For `review` and `assist`, passes `os.Stdin`; for `extract`, `assist`, `critique`, `split`, passes `nil` client; for `store`, passes `nil` TraceStore (real store created from --db). |
+| `loadTraces` | `func loadTraces(ctx context.Context, dbURL string, fileArgs []string) ([]schema.Trace, func(), error)` | Resolve traces from either a Neo4j database (dbURL non-empty → `openDB` + `Query(ctx, QueryOpts{})`) or a JSON file (dbURL empty → `loader.Load(fileArgs[0])`). Returns traces, a cleanup function (defer it to close the store), and any error. No pre-filtering — full substrate returned to analytical engine. Callers validate mutual exclusion before calling. |
+| `openDB` | `func openDB(ctx context.Context, dbURL string) (store.TraceStore, error)` | Factory: in `!neo4j` builds, returns "rebuild with -tags neo4j" error. In `neo4j` builds, reads MESHANT_DB_USER/MESHANT_DB_PASS/MESHANT_DB_NAME from env and returns a `Neo4jStore`. |
+| `cmdStore` | `func cmdStore(w io.Writer, ts store.TraceStore, args []string) error` | Subcommand: Load canonical Traces from JSON file, write to `TraceStore` via `Store()`. `ts` may be nil (openDB called from --db flag) or injected (test). Reports stored count. Idempotent on trace ID. |
 | `cmdSummarize` | `func cmdSummarize(w io.Writer, args []string) error` | Subcommand: Load traces, compute mesh summary, print via `loader.PrintSummary()`. Usage: `meshant summarize <file>`. |
 | `cmdValidate` | `func cmdValidate(w io.Writer, args []string) error` | Subcommand: Load and validate traces. Reports success message or errors. Usage: `meshant validate <file>`. |
 | `cmdArticulate` | `func cmdArticulate(w io.Writer, args []string) error` | Subcommand: Load traces, articulate a cut with `--observer` (repeatable), `--tag` (repeatable, any-match), `--from`, `--to` (RFC3339), `--format text\|json\|dot\|mermaid`, `--output <file>`. Optional `--narrative` flag appends a positioned narrative draft (text format only, skipped for JSON/DOT/Mermaid). |
@@ -376,7 +540,8 @@ None (persist carries no domain types; wraps graph types).
 | `cmdAssist` | `func cmdAssist(w io.Writer, client llm.LLMClient, in io.Reader, args []string) error` | Subcommand: Read spans file, call LLM once per span, present candidate draft to user for accept/edit/skip/quit decisions via `llm.RunAssistSession()`. Accepts injected `llm.LLMClient` (nil = construct `AnthropicClient` from env) and `in io.Reader` (testability). Always writes SessionRecord on every code path. Flags: `--spans-file <path>` (required), `--prompt-template <path>`, `--model <id>`, `--source-doc-ref <ref>`, `--criterion-file <path>`, `--output <file>`, `--session-output <file>` (F.3). |
 | `cmdCritique` | `func cmdCritique(w io.Writer, client llm.LLMClient, args []string) error` | Subcommand: Call LLM to produce "critiqued" derived drafts from existing TraceDrafts. Reads input drafts file (capped at 4 MiB). Accepts an injected `llm.LLMClient` (nil = construct `AnthropicClient` from env). Writes critiqued TraceDraft JSON array and a `SessionRecord` JSON file. Session output defaulting: `<output>.session.json` when `--output` is a file; not written when stdout unless `--session-output` is explicit. Returns error when input non-empty but zero critiques produced. Flags: `--input <path>` (required), `--prompt-template <path>` (default: `data/prompts/critique_pass.md`), `--model <id>` (default: `claude-sonnet-4-6`), `--source-doc-ref <ref>`, `--criterion-file <path>`, `--output <file>`, `--session-output <file>`, `--id <id>` (F.4). |
 | `readSpansFile` | `func readSpansFile(path string) ([]byte, error)` | Read spans file capped at 4 MiB via `io.LimitReader`. Returns error if file exceeds cap (n > maxSpansBytes). Used only by `cmdAssist`. |
-| `writeSessionRecord` | `func writeSessionRecord(path string, rec llm.SessionRecord) error` | Serialise SessionRecord as indented JSON to path. Encodes to buffer first; creates file only on success (avoids empty file on encode failure). Used by `cmdExtract`, `cmdAssist`, and `cmdCritique`. |
+| `cmdSplit` | `func cmdSplit(w io.Writer, client llm.LLMClient, args []string) error` | Subcommand: Call LLM to split source document into candidate observation spans. Accepts injected `llm.LLMClient` (nil = construct `AnthropicClient` from env). Writes spans as JSON string array and SessionRecord JSON on every code path. Prints "proposed N candidate observation spans" summary. Session output defaulting mirrors extract. No `--criterion-file` flag. Flags: `--source-doc <path>` (required), `--source-doc-ref <ref>`, `--prompt-template <path>` (default: `data/prompts/split_pass.md`), `--model <id>` (default: `claude-sonnet-4-6`), `--output <file>`, `--session-output <file>` (#137). |
+| `writeSessionRecord` | `func writeSessionRecord(path string, rec llm.SessionRecord) error` | Serialise SessionRecord as indented JSON to path (permissions 0o600 — owner read/write only). Encodes to buffer first; creates file only on success (avoids empty file on encode failure). Used by `cmdExtract`, `cmdAssist`, `cmdCritique`, and `cmdSplit`. |
 | `loadCriterionFile` | `func loadCriterionFile(path string) (graph.EquivalenceCriterion, error)` | Load, decode, and validate an EquivalenceCriterion from a JSON file. Uses `DisallowUnknownFields()` for precision. Zero-value criterion is a hard error. Returns validated criterion or descriptive error. |
 | `outputWriter` | `func outputWriter(w io.Writer, outputPath string) (io.Writer, error)` | Return file writer if `--output` is set, otherwise stdout. |
 | `confirmOutput` | `func confirmOutput(w io.Writer, outputPath string) error` | Print "wrote <path>" confirmation to stdout when file output is used. |
@@ -384,14 +549,17 @@ None (persist carries no domain types; wraps graph types).
 
 ### Key Design Notes
 
-- **Stdlib only**: No external dependencies; uses only Go standard library (`flag`, `time`, `io`, `fmt`, `errors`, etc.)
+- **External dependencies**: `cmd/meshant` imports `adapter` which uses `github.com/ledongthuc/pdf` (pure Go, no CGo) and `golang.org/x/net/html` for format-conversion. All other packages use stdlib only.
 - **Testable structure**: Core logic in `run()`, `cmdSummarize()`, `cmdValidate()`, `cmdArticulate()`, `cmdDiff()`; `main()` is thin wrapper that wires os.Stdout/os.Args and exits non-zero on error
 - **Flag parsing**: Uses stdlib `flag.FlagSet` for subcommand isolation; `stringSliceFlag` enables repeatable `--observer` flags without comma-separation
+- **DB backend**: `--db` flag on analytical commands + `meshant store` switches the trace source from JSON to Neo4j. The `loadTraces` helper centralises the DB/file branching. Build-tag factory (`db_factory.go`/`db_factory_neo4j.go`) keeps the default binary lean. Credentials never exposed as CLI flags — read from MESHANT_DB_USER/MESHANT_DB_PASS env vars.
+- **No pre-filtering via TraceStore.Query**: `loadTraces` passes `QueryOpts{}` (no filters) so the analytical engine receives the full substrate. Cut logic (observer, time window, tags) remains exclusively in `graph.Articulate` — see decision record `store-cli-v1.md` for rationale.
 - **Time handling**: RFC3339 timestamps throughout; `parseTimeFlag()` and `parseTimeWindow()` provide clear error messages with formatting hints
 - **Format options**: `articulate` and `diff` both support text/json/dot/mermaid; `follow` supports text/json
 - **File output**: `--output <file>` writes to file instead of stdout; `cmdReview` uses explicit `f.Close()` (not deferred) to surface write errors
 - **Interactive subcommands**: `cmdReview` and `cmdAssist` both accept `in io.Reader` for stdin injection (testability). Both write interactive prompts to `os.Stderr` and JSON output to `w` (stdout). `run()` passes `os.Stdin` for both. All other subcommands are non-interactive.
-- **LLM-injected subcommands**: `cmdExtract` and `cmdAssist` both accept `llm.LLMClient` as a parameter (nil = real client from env). This is the same injection pattern as `in io.Reader` — enables testing without live API calls. `run()` passes `nil` for both; tests pass a mock (F.2, F.3).
+- **LLM-injected subcommands**: `cmdExtract`, `cmdAssist`, `cmdCritique`, and `cmdSplit` all accept `llm.LLMClient` as a parameter (nil = real client from env). This is the same injection pattern as `in io.Reader` — enables testing without live API calls. `run()` passes `nil` for all; tests pass a mock (F.2, F.3, F.4, #137).
+- **Session file permissions**: `writeSessionRecord` creates files with `0o600` (owner read/write only). Session records may contain prompt template text; world-readable permissions are inappropriate.
 - **Stderr/stdout separation**: `cmdReview` writes interactive prompts to `os.Stderr` and JSON output to `w` (stdout), enabling `meshant review file.json | jq .` and `--output` file routing without prompt contamination.
 - **Ingestion pipeline** (M11): `draft` command ingests LLM extraction JSON and produces TraceDraft records; `promote` command converts promotable TraceDraft records to canonical Traces (tagged with `draft` provenance signal)
 - **Re-articulation pipeline** (M12): `rearticulate` command produces critique skeletons (SourceSpan + DerivedFrom set, all content fields blank); `lineage` command walks DerivedFrom links and renders positional reading sequences as CLI output
@@ -693,6 +861,18 @@ cmd/demo/
 | Multi-Analyst Drafts | `data/examples/multi_analyst_drafts.json` | Output | 10 TraceDraft records from two analyst positions (`analyst-a`, `analyst-b`) over a shared incident scenario; exercises `extraction-gap` and `chain-diff` operations |
 | Multi-Analyst README | `data/examples/multi_analyst_drafts_README.md` | Documentation | Companion guide: scenario description, deliberate divergences between analyst positions, CLI commands to reproduce analysis output |
 
+### Thread D Reference Datasets (Phase 5 — #147, #148, #149)
+
+Hand-authored trace datasets covering three domains. Each exercises multi-observer articulation, mediation/intermediary distinction, and reflexive session traces. Validated with `meshant validate`. All reviews: ant-theorist ALIGNED, QA PASS, architect SHIP.
+
+| Dataset | Location | Traces | Observers | Domain |
+|---------|----------|--------|-----------|--------|
+| D.1 Software Incident | `data/examples/software_incident.json` | 32 | `on-call-engineer`, `product-manager`, `customer-support-lead`, `dataset-analyst` | Payment service degradation during flash sale; `retry-buffer` as key mediator |
+| D.2 Multi-Agent Pipeline | `data/examples/multi_agent_pipeline.json` | 28 | `pipeline-auditor`, `ml-engineer`, `dataset-analyst` | AI compliance pipeline; 8 agents as non-human actants; inscription conflict (taxonomy version mismatch) |
+| D.3 Policy/Procurement | `data/examples/policy_procurement.json` | 27 | `procurement-officer`, `budget-approver`, `vendor-alpha`, `compliance-auditor`, `dataset-curator` | Public-sector IT procurement; 17 institutional actants; apparatus-thick, humans-thin |
+
+All three datasets end with a structurally parallel reflexive pair: `source: ["claude-sonnet-4-6"]`, `mediation: "extract"/"critique"`, `tags: ["session", "articulation"]` — the observation apparatus recorded as a trace (Principle 8).
+
 ### Extraction Prompt Templates
 
 | File | Purpose |
@@ -722,6 +902,7 @@ cmd/demo/
 - `docs/decisions/tracedraft-v2.md` — TraceDraft design, ingestion pipeline as analytical object, source span as anchor text, promotion criterion, provenance chain (M11)
 - `docs/decisions/rearticulation-v1.md` — Re-articulation as cut not correction, SourceSpan invariant, blank scaffold as correct output, DerivedFrom positional vocabulary, cmdLineage as first-class CLI output, E3/E14 as demonstration material (M12)
 - `docs/decisions/shadow-analysis-v1.md` — Shadow as cut decision, ObserverGap composability, FollowDraftChain design, CriterionRef as citation metadata, DraftStepKind v1 heuristics, shadow/gaps CLI-first design (M13)
+- `docs/decisions/serve-v1.md` — HTTP server design for interactive trace graph querying: observer required on all endpoints (enforces Principle 3), Envelope response structure with CutMeta echo, four endpoints (/articulate, /diff, /shadow, /traces), error responses with ANT reasoning, stateless handlers, no silent cuts, graceful shutdown, Phase 4 (#145)
 - `docs/decisions/interactive-review-v1.md` — Interactive review CLI design: session as cut, render-as-string, ExtractedBy sameness, provenance/content partition, stdin/stderr separation, main.go size debt (Thread A)
 - `docs/decisions/llm-as-mediator-v1.md` — 7 conventions for LLM participation in the ingestion pipeline: mediator framing, model ID strings, framework-imposed UncertaintyNote, ExtractionStage values (incl. "critiqued"), SessionRecord mandate, IntentionallyBlank requirement; 3 named ANT tensions (F.1)
 - `docs/decisions/llm-boundary-v2.md` — 9 implementation decisions for Thread F: llm package boundary, LLMClient interface, SessionRecord mandate, "critiqued" semantics, span splitting deferred, API key from env, no retry, main.go file split, no ExtractionCut type; 5 named ANT tensions; deferred items (F.6)
@@ -748,6 +929,8 @@ cmd/demo/
 - `graph/chain_e2e_test.go` — E2E tests using deforestation, evacuation_order, and incident_response datasets
 - `graph/incident_e2e_test.go` — E2E tests using incident response dataset
 - `persist/persist_test.go` — tests for file I/O functions
+- `store/store_test.go` — integration and unit tests for TraceStore interface, JSONFileStore, and Neo4j adapter (build tag `neo4j`); atomic write verification, QueryOpts filtering
+- `serve/handlers_test.go` — 82.3% coverage; black-box HTTP tests via `httptest.NewRecorder` and `httptest.NewRequest`; all four endpoints (/articulate, /diff, /shadow, /traces), observer validation, time-window parsing, tag filtering, limit application, error responses
 - `cmd/demo/main_test.go` — E2E test
 - `graph/shadow_test.go` — 10 tests for SummariseShadow and PrintShadowSummary (M13)
 - `graph/gaps_test.go` — 9 tests for AnalyseGaps and PrintObserverGap (M13)

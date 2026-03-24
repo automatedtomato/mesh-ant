@@ -17,13 +17,30 @@ import (
 // The API key is intentionally absent. Two runs with different keys but the
 // same conditions are analytically indistinguishable — the key is an
 // operational detail, not an analytical position.
+//
+// SourceDocRefs replaces the old SourceDocRef string to support multi-document
+// ingestion (#139). Single-doc sessions carry a one-element slice. The old
+// JSON key "source_doc_ref" is preserved via SourceDocRef for backward
+// compatibility with existing session files — both fields are read; new
+// session files write only SourceDocRefs.
 type ExtractionConditions struct {
 	ModelID            string    `json:"model_id"`
 	PromptTemplate     string    `json:"prompt_template"`
 	CriterionRef       string    `json:"criterion_ref,omitempty"`
 	SystemInstructions string    `json:"system_instructions"`
-	SourceDocRef       string    `json:"source_doc_ref"`
-	Timestamp          time.Time `json:"timestamp"`
+	// SourceDocRefs holds the reference strings for all source documents
+	// processed in this session. Single-doc sessions use a one-element slice.
+	SourceDocRefs []string `json:"source_doc_refs,omitempty"`
+	// SourceDocRef is the legacy single-document field, retained for backward
+	// compatibility with session files written before #139. New code writes
+	// SourceDocRefs and leaves this empty. Reading code checks both fields.
+	SourceDocRef string    `json:"source_doc_ref,omitempty"`
+	// AdapterName is the name of the format-conversion adapter used before LLM
+	// extraction, e.g. "pdf-extractor" or "html-extractor" (#140). Empty when
+	// no adapter was used (plain-text source). This field names the mediating
+	// act of format conversion so it is visible in the session provenance.
+	AdapterName string    `json:"adapter_name,omitempty"`
+	Timestamp   time.Time `json:"timestamp"`
 }
 
 // DraftDisposition records the reviewer's decision about a single draft within a session.
@@ -50,27 +67,48 @@ type DraftDisposition struct {
 // SessionRecord.ID is the SessionRef stamped on every draft produced in
 // the session, linking each draft back to the conditions under which it
 // was produced (FM4 from plan_thread_f.md).
+//
+// InputPaths replaces InputPath to support multi-document ingestion (#139).
+// Single-doc sessions carry a one-element slice. InputPath is retained for
+// backward compatibility with existing session files.
 type SessionRecord struct {
-	ID           string               `json:"id"`
-	Command      string               `json:"command"` // "extract", "assist", "critique"
-	Conditions   ExtractionConditions `json:"conditions"`
-	DraftIDs     []string             `json:"draft_ids"`
-	Dispositions []DraftDisposition   `json:"dispositions,omitempty"`
-	InputPath    string               `json:"input_path"`
-	OutputPath   string               `json:"output_path"`
-	DraftCount   int                  `json:"draft_count"`
-	ErrorNote    string               `json:"error_note,omitempty"`
-	Timestamp    time.Time            `json:"timestamp"`
+	ID      string               `json:"id"`
+	Command string               `json:"command"` // "extract", "assist", "critique", "split"
+	Conditions ExtractionConditions `json:"conditions"`
+	// DraftIDs holds the UUIDs of TraceDraft records produced in this session.
+	// Nil (serialized as null) is intentional for "split" sessions — spans are
+	// not TraceDraft records. Use DraftCount to determine span count for split.
+	DraftIDs     []string           `json:"draft_ids"`
+	Dispositions []DraftDisposition `json:"dispositions,omitempty"`
+	// InputPaths holds the source document paths for all documents processed in
+	// this session. Single-doc sessions use a one-element slice.
+	InputPaths []string `json:"input_paths,omitempty"`
+	// InputPath is the legacy single-document field, retained for backward
+	// compatibility with session files written before #139. New code writes
+	// InputPaths and leaves this empty.
+	InputPath  string    `json:"input_path,omitempty"`
+	OutputPath string    `json:"output_path"`
+	DraftCount int       `json:"draft_count"`
+	ErrorNote  string    `json:"error_note,omitempty"`
+	Timestamp  time.Time `json:"timestamp"`
 }
 
 // ExtractionOptions configures a single RunExtraction call.
+//
+// InputPaths and SourceDocRefs support multi-document ingestion (#139).
+// For single-document ingestion, both slices must have exactly one element.
+// len(InputPaths) must equal len(SourceDocRefs); both must be >= 1.
 type ExtractionOptions struct {
 	ModelID            string
-	InputPath          string
+	InputPaths         []string // one or more source document paths
+	SourceDocRefs      []string // one provenance ref per document (parallel to InputPaths)
 	PromptTemplatePath string
 	CriterionRef       string
-	SourceDocRef       string
 	OutputPath         string
+	// AdapterName is the name of the format-conversion adapter applied to source
+	// documents before extraction (#140). Empty for plain-text sources. When set,
+	// it is recorded in ExtractionConditions.AdapterName on the session record.
+	AdapterName string
 }
 
 // AssistOptions configures a single RunAssistSession call.
@@ -97,6 +135,16 @@ type CritiqueOptions struct {
 	DraftID            string // empty = critique all; non-empty = single draft by ID
 }
 
+// SplitOptions configures a single RunSplit call.
+// No CriterionRef: split is boundary detection only, not analytical classification.
+type SplitOptions struct {
+	ModelID            string
+	InputPath          string // path to source document
+	PromptTemplatePath string
+	SourceDocRef       string
+	OutputPath         string
+}
+
 // ErrLLMRefusal indicates the LLM explicitly declined to produce output.
 // The RefusalText carries whatever the LLM returned for debugging.
 type ErrLLMRefusal struct {
@@ -121,9 +169,6 @@ func (e *ErrMalformedOutput) Error() string {
 // frameworkUncertaintyNote is always appended to UncertaintyNote on LLM-produced
 // drafts — the framework never delegates this signal to the LLM (D3).
 const frameworkUncertaintyNote = "LLM-produced candidate; unverified by human review"
-
-// maxSourceBytes caps source document size at 1 MiB to prevent unexpected token costs.
-const maxSourceBytes = 1 * 1024 * 1024
 
 // knownContentFields lists TraceDraft field names valid for IntentionallyBlank (D7).
 // Provenance fields are framework-assigned and cannot be declared blank by the LLM.

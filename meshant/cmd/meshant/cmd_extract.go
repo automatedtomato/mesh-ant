@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/automatedtomato/mesh-ant/meshant/adapter"
 	"github.com/automatedtomato/mesh-ant/meshant/llm"
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
 )
@@ -24,9 +25,10 @@ const defaultExtractModel = "claude-sonnet-4-6"
 
 // cmdExtract implements the "extract" subcommand.
 //
-// Calls the LLM to produce TraceDraft records from a source document. Writes
-// TraceDraft JSON to --output (or stdout) and a SessionRecord to
-// --session-output (defaults: <output>.session.json for file output, or
+// Calls the LLM to produce TraceDraft records from one or more source
+// documents. Supports multi-document ingestion via repeated --source-doc
+// flags. Writes TraceDraft JSON to --output (or stdout) and a SessionRecord
+// to --session-output (defaults: <output>.session.json for file output, or
 // session_<timestamp>.json in cwd for stdout output).
 //
 // client may be nil; a real AnthropicClient is then constructed from env vars.
@@ -34,11 +36,14 @@ const defaultExtractModel = "claude-sonnet-4-6"
 func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 	fs := flag.NewFlagSet("extract", flag.ContinueOnError)
 
-	var sourceDoc string
-	fs.StringVar(&sourceDoc, "source-doc", "", "path to source document (required)")
+	// sourceDocs and sourceDocRefs are repeatable flags, each occurrence
+	// appends one entry. sourceDocs must be non-empty; if sourceDocRefs is
+	// non-empty, its length must equal len(sourceDocs).
+	var sourceDocs stringSliceFlag
+	fs.Var(&sourceDocs, "source-doc", "path to source document (repeatable; at least one required)")
 
-	var sourceDocRef string
-	fs.StringVar(&sourceDocRef, "source-doc-ref", "", "document reference string for provenance (defaults to --source-doc path)")
+	var sourceDocRefs stringSliceFlag
+	fs.Var(&sourceDocRefs, "source-doc-ref", "document reference string for provenance (repeatable; if provided, count must equal --source-doc count; defaults to path)")
 
 	var promptTemplate string
 	fs.StringVar(&promptTemplate, "prompt-template", defaultExtractionPrompt, "path to extraction prompt template")
@@ -55,16 +60,41 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 	var sessionOutputPath string
 	fs.StringVar(&sessionOutputPath, "session-output", "", "write SessionRecord JSON to file (see default rules)")
 
+	var adapterName string
+	fs.StringVar(&adapterName, "adapter", "", "format-conversion adapter to run before extraction: pdf, html, jsonlog (optional)")
+
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	if sourceDoc == "" {
+	// Validate adapter name early — before any LLM calls — so unknown adapters
+	// fail fast without wasting API quota or writing misleading session files.
+	var sourceAdapter adapter.Adapter
+	if adapterName != "" {
+		a, err := adapter.ForName(adapterName)
+		if err != nil {
+			return fmt.Errorf("extract: %w", err)
+		}
+		sourceAdapter = a
+	}
+
+	// Validate: at least one source document is required.
+	if len(sourceDocs) == 0 {
 		return fmt.Errorf("extract: --source-doc is required\n\nUsage: meshant extract --source-doc <path> [--source-doc-ref <ref>] [--prompt-template <path>] [--model <id>] [--criterion-file <path>] [--output <file>] [--session-output <file>]")
 	}
 
-	if sourceDocRef == "" {
-		sourceDocRef = sourceDoc
+	// Validate: if refs provided, count must match docs.
+	if len(sourceDocRefs) > 0 && len(sourceDocRefs) != len(sourceDocs) {
+		return fmt.Errorf(
+			"extract: --source-doc-ref count (%d) must equal --source-doc count (%d)",
+			len(sourceDocRefs), len(sourceDocs),
+		)
+	}
+
+	// Default each ref to its corresponding source doc path when no refs given.
+	if len(sourceDocRefs) == 0 {
+		sourceDocRefs = make(stringSliceFlag, len(sourceDocs))
+		copy(sourceDocRefs, sourceDocs)
 	}
 
 	// Default session output path when not explicitly provided.
@@ -85,6 +115,40 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 		criterionRef = c.Name
 	}
 
+	// If an adapter was specified, convert each source document to plain text
+	// and replace the source doc paths with the converted temp files.
+	// Temp files are created with a recognisable prefix and removed on return.
+	var convertedAdapterName string
+	if sourceAdapter != nil {
+		converted := make(stringSliceFlag, len(sourceDocs))
+		var tempFiles []string
+		defer func() {
+			for _, f := range tempFiles {
+				os.Remove(f)
+			}
+		}()
+		for i, srcPath := range sourceDocs {
+			result, err := sourceAdapter.Convert(srcPath)
+			if err != nil {
+				return fmt.Errorf("extract: adapter convert %q: %w", srcPath, err)
+			}
+			// Write converted text to a temp file for the extraction pipeline.
+			tmp, err := os.CreateTemp("", "meshant-convert-*.txt")
+			if err != nil {
+				return fmt.Errorf("extract: create temp file: %w", err)
+			}
+			tempFiles = append(tempFiles, tmp.Name())
+			if _, err := tmp.WriteString(result.Text); err != nil {
+				tmp.Close()
+				return fmt.Errorf("extract: write temp file: %w", err)
+			}
+			tmp.Close()
+			converted[i] = tmp.Name()
+			convertedAdapterName = result.AdapterName
+		}
+		sourceDocs = converted
+	}
+
 	if client == nil {
 		c, err := llm.NewAnthropicClient(modelID)
 		if err != nil {
@@ -95,11 +159,12 @@ func cmdExtract(w io.Writer, client llm.LLMClient, args []string) error {
 
 	opts := llm.ExtractionOptions{
 		ModelID:            modelID,
-		InputPath:          sourceDoc,
+		InputPaths:         []string(sourceDocs),
+		SourceDocRefs:      []string(sourceDocRefs),
 		PromptTemplatePath: promptTemplate,
 		CriterionRef:       criterionRef,
-		SourceDocRef:       sourceDocRef,
 		OutputPath:         outputPath,
+		AdapterName:        convertedAdapterName,
 	}
 
 	drafts, rec, err := llm.RunExtraction(context.Background(), client, opts)
@@ -159,7 +224,7 @@ func writeSessionRecord(path string, rec llm.SessionRecord) error {
 	if err := enc.Encode(rec); err != nil {
 		return fmt.Errorf("encode session record: %w", err)
 	}
-	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("write %q: %w", path, err)
 	}
 	return nil

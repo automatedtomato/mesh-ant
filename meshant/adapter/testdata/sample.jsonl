@@ -1,0 +1,3 @@
+{"timestamp":"2026-03-23T09:00:00Z","level":"ERROR","message":"database connection exhausted","service":"api"}
+{"timestamp":"2026-03-23T09:01:00Z","level":"INFO","message":"restarting connection pool","service":"api"}
+{"timestamp":"2026-03-23T09:05:00Z","level":"INFO","message":"service recovered","service":"api"}

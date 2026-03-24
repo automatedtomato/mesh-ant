@@ -1,0 +1,322 @@
+[
+  {
+    "id": "d1000000-0000-4000-8000-000000000001",
+    "timestamp": "2026-06-10T14:00:00Z",
+    "what_changed": "prometheus-alert-rule payment-latency-p99 fired: payment-service P99 response latency crossed 3000ms threshold (measured: 4280ms at T+0); alert emitted to alerting-pipeline for severity classification",
+    "source": [],
+    "target": ["alerting-pipeline"],
+    "mediation": "prometheus-alert-rule",
+    "tags": ["threshold"],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000002",
+    "timestamp": "2026-06-10T14:01:15Z",
+    "what_changed": "alerting-pipeline translated latency metric into Severity-1 incident classification using escalation-rule-engine; pagerduty-webhook triggered with on-call rotation lookup; escalation-rule-engine determined Sev-1 based on payment-service criticality tier and threshold exceedance duration exceeding 60 seconds",
+    "source": ["alerting-pipeline"],
+    "target": ["pagerduty-webhook"],
+    "mediation": "escalation-rule-engine",
+    "tags": ["translation"],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000003",
+    "timestamp": "2026-06-10T14:02:30Z",
+    "what_changed": "pagerduty-webhook delivered Sev-1 alert to on-call-engineer mobile device; delivery registered 75-second lag from initial metric emission due to pagerduty-webhook retry queue congestion under flash sale load",
+    "source": ["pagerduty-webhook"],
+    "target": ["on-call-engineer"],
+    "mediation": "pagerduty-escalation-policy-v3",
+    "tags": ["delay"],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000004",
+    "timestamp": "2026-06-10T14:03:00Z",
+    "what_changed": "on-call-engineer acknowledged Sev-1 alert; incident-management-system created incident-2026-0610-001 and assigned on-call-engineer as incident commander; incident severity confirmed P1",
+    "source": ["on-call-engineer"],
+    "target": ["incident-2026-0610-001"],
+    "mediation": "incident-management-system",
+    "tags": [],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000005",
+    "timestamp": "2026-06-10T14:05:00Z",
+    "what_changed": "on-call-engineer reviewed monitoring-dashboard and identified flash sale traffic spike as context: payment-service handling 3.2x normal request volume; connection-pool exhaustion pattern consistent with traffic surge, not infrastructure hardware failure",
+    "source": ["monitoring-dashboard"],
+    "target": ["on-call-engineer"],
+    "mediation": "",
+    "tags": [],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000006",
+    "timestamp": "2026-06-10T14:08:00Z",
+    "what_changed": "on-call-engineer found payment-service connection pool at 98% utilization (196/200 connections); payment-gateway timeouts occurring on all connections above 190; active requests queuing behind exhausted pool; checkout API response times now averaging 8.1 seconds",
+    "source": ["on-call-engineer"],
+    "target": ["payment-service-connection-pool"],
+    "mediation": "",
+    "tags": [],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000007",
+    "timestamp": "2026-06-10T14:10:00Z",
+    "what_changed": "customer-impact-metric aggregated checkout failure rate at 23%; monitoring-dashboard surfaced projected $47K/hour revenue impact; product-manager alerted by automated dashboard alert configured on checkout failure rate crossing 15% threshold",
+    "source": ["monitoring-dashboard"],
+    "target": ["product-manager"],
+    "mediation": "customer-impact-metric",
+    "tags": ["threshold"],
+    "observer": "product-manager"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000008",
+    "timestamp": "2026-06-10T14:12:00Z",
+    "what_changed": "retry-buffer in payment-service-client amplified connection pool exhaustion: failed payment requests were retried 3 times with 1-second fixed backoff; 3x request volume generated from original failures; on-call-engineer identified retry-buffer as the mechanism transforming individual timeouts into a cascading saturation event — retry-buffer was mediating, not just relaying; without it, exhaustion would have been ~65% rather than 98%",
+    "source": ["payment-service-client"],
+    "target": ["payment-service-connection-pool"],
+    "mediation": "retry-buffer",
+    "tags": ["amplification"],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000009",
+    "timestamp": "2026-06-10T14:14:30Z",
+    "what_changed": "on-call-engineer activated circuit-breaker-policy on payment-gateway; circuit breaker rejected 60% of incoming payment requests to halt further connection pool exhaustion; payment success rate dropped to 40% but stopped degrading further",
+    "source": ["on-call-engineer"],
+    "target": ["payment-gateway"],
+    "mediation": "circuit-breaker-policy",
+    "tags": ["blockage", "threshold"],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000010",
+    "timestamp": "2026-06-10T14:15:00Z",
+    "what_changed": "customer-ticket-volume spiked from 14 to 203 tickets/hour within 15 minutes of payment degradation onset; customer-support-lead identified payment failure as dominant issue category across 78% of new tickets",
+    "source": ["customer-ticket-volume"],
+    "target": ["customer-support-lead"],
+    "mediation": "customer-impact-metric",
+    "tags": ["amplification", "threshold"],
+    "observer": "customer-support-lead"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000011",
+    "timestamp": "2026-06-10T14:20:00Z",
+    "what_changed": "on-call-engineer traced connection pool exhaustion to ORM connection leak in payment-service-v2.3: each checkout request opened 2 database connections but released only 1; unreleased connections accumulated over 47 minutes of flash sale traffic until pool saturated",
+    "source": ["on-call-engineer"],
+    "target": ["payment-service-v2.3"],
+    "mediation": "",
+    "tags": [],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000012",
+    "timestamp": "2026-06-10T14:20:00Z",
+    "what_changed": "product-manager updated status-page-service to 'degraded' for payment processing; status-page-update-policy required PM to select from pre-defined severity labels — 'degraded' chosen over 'outage' to minimize customer alarm; the policy constrained how the incident could be described publicly, translating a 60% failure rate into the label 'degraded'",
+    "source": ["product-manager"],
+    "target": ["status-page-service"],
+    "mediation": "status-page-update-policy",
+    "tags": ["translation"],
+    "observer": "product-manager"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000013",
+    "timestamp": "2026-06-10T14:22:00Z",
+    "what_changed": "ticket-routing-rule automatically escalated all payment-related tickets to payment-specialist-queue; payment-specialist-queue had 3 agents for 187 queued tickets; the routing produced a 62-ticket-per-agent backlog rather than reducing wait time — the rule created a structural bottleneck as a consequence of its escalation logic, not its intention",
+    "source": ["ticket-routing-rule"],
+    "target": ["payment-specialist-queue"],
+    "mediation": "",
+    "tags": ["redirection", "blockage"],
+    "observer": "customer-support-lead"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000014",
+    "timestamp": "2026-06-10T14:25:00Z",
+    "what_changed": "product-manager notified VP-customer-success of payment degradation affecting flash sale; product-manager produced the notification from their own synthesis of engineering status and revenue impact — the PM is acting, not relaying; VP-customer-success escalated urgency beyond standard incident-management-system protocol, requesting hourly executive updates",
+    "source": ["product-manager"],
+    "target": ["VP-customer-success"],
+    "mediation": "",
+    "tags": [],
+    "observer": "product-manager"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000015",
+    "timestamp": "2026-06-10T14:28:00Z",
+    "what_changed": "on-call-engineer initiated rollback of payment-service from v2.3 to v2.2 via deployment-pipeline; deployment-pipeline enforced rollback verification checklist and canary deployment (10% traffic) before full cutover; ORM connection leak not present in v2.2",
+    "source": ["on-call-engineer"],
+    "target": ["payment-service"],
+    "mediation": "deployment-pipeline",
+    "tags": [],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000016",
+    "timestamp": "2026-06-10T14:30:00Z",
+    "what_changed": "retry-buffer caused customers to submit duplicate checkout attempts after failed payments; customer-support-lead identified 127 customers with 2-4 pending payment authorizations from repeated automatic retry attempts; retry-buffer behavior was not communicated in customer-facing status updates — customers did not know retries were occurring on their behalf",
+    "source": ["payment-service-client"],
+    "target": ["customer-support-lead"],
+    "mediation": "retry-buffer",
+    "tags": ["delay", "amplification"],
+    "observer": "customer-support-lead"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000017",
+    "timestamp": "2026-06-10T14:35:00Z",
+    "what_changed": "payment-service-v2.2 deployed to 100% of traffic; connection pool utilization began recovering (196 → 140 connections over 7 minutes); circuit-breaker-policy maintained while recovery confirmed",
+    "source": ["payment-service-v2.2"],
+    "target": ["payment-service-connection-pool"],
+    "mediation": "",
+    "tags": [],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000018",
+    "timestamp": "2026-06-10T14:40:00Z",
+    "what_changed": "status-page-service published customer-notice to 12,400 email subscribers; customer-notice-template-v4 constrained message length to 280 characters and required a recovery ETA field; product-manager could not communicate technical root cause — the template mediated customer understanding of the incident into a brief, ETA-focused message",
+    "source": ["status-page-service"],
+    "target": ["customer-email-list"],
+    "mediation": "customer-notice-template-v4",
+    "tags": ["translation"],
+    "observer": "product-manager"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000019",
+    "timestamp": "2026-06-10T14:42:00Z",
+    "what_changed": "status-page-service 'degraded' label relayed to customer-support-lead as basis for customer response scripts; customer-support-lead used the 'degraded' framing in all customer communications without modification — status-page-service acted as intermediary here, passing product-manager's chosen framing through unchanged to support operations",
+    "source": ["status-page-service"],
+    "target": ["customer-support-lead"],
+    "mediation": "",
+    "tags": [],
+    "observer": "customer-support-lead"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000020",
+    "timestamp": "2026-06-10T14:50:00Z",
+    "what_changed": "circuit-breaker-policy lifted after payment-service connection pool stabilized at 45% utilization (90/200 connections); payment success rate recovered to 97.8%; on-call-engineer confirmed incident contained",
+    "source": ["on-call-engineer"],
+    "target": ["payment-gateway"],
+    "mediation": "circuit-breaker-policy",
+    "tags": [],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000021",
+    "timestamp": "2026-06-10T14:55:00Z",
+    "what_changed": "revenue-impact-dashboard reported $52K cumulative revenue impact at T+55min; product-manager used this metric to authorize emergency engineering overtime pay and bypass standard change-management-review-board sign-off requirement for rate limiter changes",
+    "source": ["revenue-impact-dashboard"],
+    "target": ["product-manager"],
+    "mediation": "",
+    "tags": ["threshold"],
+    "observer": "product-manager"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000022",
+    "timestamp": "2026-06-10T15:05:00Z",
+    "what_changed": "escalation-policy triggered automatic callback offers for 89 customers with 3+ failed payment attempts; escalation-policy created 89 new support commitments without corresponding agent capacity — the policy's threshold was met and the policy acted; the consequence (capacity overrun) exceeded what any human had authorized",
+    "source": ["escalation-policy"],
+    "target": ["customer-support-lead"],
+    "mediation": "",
+    "tags": ["threshold", "amplification"],
+    "observer": "customer-support-lead"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000023",
+    "timestamp": "2026-06-10T15:10:00Z",
+    "what_changed": "product-manager attempted to update status-page-service to 'resolved'; status-page-update-policy enforced mandatory 15-minute monitoring window before resolved status permitted; update delayed until 15:25 — the policy added a structural delay to the recovery announcement",
+    "source": ["product-manager"],
+    "target": ["status-page-service"],
+    "mediation": "status-page-update-policy",
+    "tags": ["delay"],
+    "observer": "product-manager"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000024",
+    "timestamp": "2026-06-10T15:30:00Z",
+    "what_changed": "rate-limiter-configuration updated to enforce flash-sale-rate-limit-policy: payment-service now throttled to 80% of peak capacity during promotional events; on-call-engineer deployed configuration as immediate remediation, with post-incident review to formalize the policy",
+    "source": ["on-call-engineer"],
+    "target": ["rate-limiter-configuration"],
+    "mediation": "flash-sale-rate-limit-policy",
+    "tags": ["threshold"],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000025",
+    "timestamp": "2026-06-10T16:00:00Z",
+    "what_changed": "on-call-engineer closed incident-2026-0610-001 in incident-management-system after 113 minutes; RCA documented: ORM connection leak in payment-service-v2.3 amplified by retry-buffer fixed-backoff under flash sale load; deployment-pipeline rollback procedure worked as designed",
+    "source": ["on-call-engineer"],
+    "target": ["incident-2026-0610-001"],
+    "mediation": "incident-management-system",
+    "tags": [],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000026",
+    "timestamp": "2026-06-10T16:30:00Z",
+    "what_changed": "product-manager submitted post-incident-review-request via incident-management-system covering: flash sale capacity planning, retry-buffer configuration standards, rate limiting policy for promotional events, and status-page communication template adequacy",
+    "source": ["product-manager"],
+    "target": ["incident-2026-0610-001"],
+    "mediation": "incident-management-system",
+    "tags": [],
+    "observer": "product-manager"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000027",
+    "timestamp": "2026-06-10T17:00:00Z",
+    "what_changed": "customer-support-lead resolved 340 duplicate orders created by retry-buffer behavior; resolution required manual order deduplication across payment-processor records, authorization void requests, and individual customer notifications; retry-buffer side effects persisted 2 hours after incident resolution",
+    "source": ["customer-support-lead"],
+    "target": ["duplicate-order-queue"],
+    "mediation": "",
+    "tags": ["delay"],
+    "observer": "customer-support-lead"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000028",
+    "timestamp": "2026-06-10T18:00:00Z",
+    "what_changed": "customer-support-lead created support-knowledge-base-article-2026-0610 documenting retry-buffer duplicate-order pattern and recommended customer response script; article flagged retry-buffer behavior as undocumented from customer-facing perspective — support team had no prior guidance on communicating retry behavior",
+    "source": ["customer-support-lead"],
+    "target": ["support-knowledge-base-article-2026-0610"],
+    "mediation": "",
+    "tags": [],
+    "observer": "customer-support-lead"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000029",
+    "timestamp": "2026-06-10T19:00:00Z",
+    "what_changed": "on-call-engineer documented retry-buffer configuration gap: fixed 1-second backoff without jitter created synchronized retry storms under load; retry-buffer-configuration-v2 drafted with exponential backoff (base 2s, max 30s) and 30% jitter; scheduled for deployment in next release cycle",
+    "source": ["on-call-engineer"],
+    "target": ["retry-buffer-configuration-v2"],
+    "mediation": "incident-2026-0610-001",
+    "tags": [],
+    "observer": "on-call-engineer"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000030",
+    "timestamp": "2026-06-10T19:15:00Z",
+    "what_changed": "product-manager and on-call-engineer identified status-page-update-policy gap: 'degraded' label did not communicate retry behavior to customer-support-lead; status-page-update-policy revision added 'internal notes' field visible only in support dashboard; this trace exists from product-manager's position because PM drove the policy change",
+    "source": ["product-manager", "on-call-engineer"],
+    "target": ["status-page-update-policy"],
+    "mediation": "",
+    "tags": [],
+    "observer": "product-manager"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000031",
+    "timestamp": "2026-06-10T19:30:00Z",
+    "what_changed": "LLM extraction session (claude-sonnet-4-6) processed incident-2026-0610-postmortem.md and produced 18 candidate trace drafts covering automated detection, technical investigation, product-manager communication, and customer-support phases; session identifier session-d1-031",
+    "source": ["claude-sonnet-4-6"],
+    "target": ["incident-2026-0610-postmortem.md"],
+    "mediation": "extract",
+    "tags": ["session", "articulation"],
+    "observer": "dataset-analyst"
+  },
+  {
+    "id": "d1000000-0000-4000-8000-000000000032",
+    "timestamp": "2026-06-10T19:45:00Z",
+    "what_changed": "LLM critique session (claude-sonnet-4-6) reviewed 18 extraction drafts for ANT alignment; flagged 4 traces for mediator/intermediary conflation — retry-buffer traces initially had empty mediation field despite retry-buffer actively transforming the failure cascade; revised drafts corrected before promotion to this dataset",
+    "source": ["claude-sonnet-4-6"],
+    "target": ["session-d1-031"],
+    "mediation": "critique",
+    "tags": ["session", "articulation"],
+    "observer": "dataset-analyst"
+  }
+]

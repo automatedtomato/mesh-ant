@@ -28,7 +28,8 @@ This file is a **catalog**, not a specification. Read the documents it points to
 ## Active work
 
 - `tasks/todo.md` — milestone tracking, all tasks
-- `tasks/plan_m*.md` — detailed plans for in-progress milestones
+- `tasks/plan_post_v2.md` — active plan: ANT-like Knowledge Graph (post-v2.0.0)
+- `tasks/plan_m*.md`, `tasks/plan_thread_*.md` — completed milestone plans
 
 When new work is requested, record it in `tasks/todo.md`.
 

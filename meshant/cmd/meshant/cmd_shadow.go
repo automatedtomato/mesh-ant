@@ -1,13 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/automatedtomato/mesh-ant/meshant/graph"
-	"github.com/automatedtomato/mesh-ant/meshant/loader"
 )
 
 // cmdShadow implements the "shadow" subcommand.
@@ -31,6 +31,10 @@ func cmdShadow(w io.Writer, args []string) error {
 	var outputPath string
 	fs.StringVar(&outputPath, "output", "", "write output to file (e.g. shadow.txt)")
 
+	var dbURL string
+	fs.StringVar(&dbURL, "db", os.Getenv("MESHANT_DB_URL"),
+		"Neo4j Bolt URL; mutually exclusive with <traces.json> (or set MESHANT_DB_URL)")
+
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -45,15 +49,18 @@ func cmdShadow(w io.Writer, args []string) error {
 	}
 
 	remaining := fs.Args()
-	if len(remaining) == 0 {
-		return fmt.Errorf("shadow: path to traces.json required\n\nUsage: meshant shadow --observer <pos> [--tag <tag>] [--from RFC3339] [--to RFC3339] [--output <file>] <traces.json>")
+	if dbURL != "" && len(remaining) > 0 {
+		return fmt.Errorf("shadow: --db and <file> are mutually exclusive")
 	}
-	path := remaining[0]
+	if dbURL == "" && len(remaining) == 0 {
+		return fmt.Errorf("shadow: path to traces.json or --db required\n\nUsage: meshant shadow --observer <pos> [--tag <tag>] [--from RFC3339] [--to RFC3339] [--output <file>] [--db bolt://...] <traces.json>")
+	}
 
-	traces, err := loader.Load(path)
+	traces, closeStore, err := loadTraces(context.Background(), dbURL, remaining)
 	if err != nil {
 		return fmt.Errorf("shadow: %w", err)
 	}
+	defer closeStore()
 
 	opts := graph.ArticulationOptions{
 		ObserverPositions: []string(observers),

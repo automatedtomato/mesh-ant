@@ -44,17 +44,6 @@ func ParseSpans(data []byte) ([]string, error) {
 	return spans, nil
 }
 
-// filterBlanks returns only the non-blank (after TrimSpace) strings from src.
-func filterBlanks(src []string) []string {
-	var result []string
-	for _, s := range src {
-		if strings.TrimSpace(s) != "" {
-			result = append(result, s)
-		}
-	}
-	return result
-}
-
 // RunAssistSession presents each span with an LLM-produced draft, collecting
 // accept/edit/skip/quit decisions. Always returns a non-nil SessionRecord.
 // EOF on in is treated as quit; results collected so far are returned with nil error.
@@ -96,10 +85,10 @@ func RunAssistSession(
 			PromptTemplate:     opts.PromptTemplatePath,
 			CriterionRef:       opts.CriterionRef,
 			SystemInstructions: systemInstructions,
-			SourceDocRef:       opts.SourceDocRef,
+			SourceDocRefs:      []string{opts.SourceDocRef},
 			Timestamp:          now,
 		},
-		InputPath:  opts.InputPath,
+		InputPaths: []string{opts.InputPath},
 		OutputPath: opts.OutputPath,
 		Timestamp:  now,
 	}
