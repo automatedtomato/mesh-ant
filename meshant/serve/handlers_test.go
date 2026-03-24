@@ -946,3 +946,105 @@ func TestServer_APIRoutesPrecedence(t *testing.T) {
 		t.Errorf("expected application/json for API route, got %q", ct)
 	}
 }
+
+// --- handleObservers tests ---
+
+func TestHandleObservers_HappyPath_200(t *testing.T) {
+	srv := testServer(t)
+	rr := doGET(srv, "/observers")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rr.Code, rr.Body.String())
+	}
+	env := decodeEnvelope(t, rr)
+
+	// data field must be a JSON array.
+	data, ok := env["data"].([]interface{})
+	if !ok {
+		t.Fatalf("expected data to be array, got %T: %v", env["data"], env["data"])
+	}
+
+	// testTraces() has "alice" and "bob" — sorted alphabetically.
+	if len(data) != 2 {
+		t.Fatalf("expected 2 observers, got %d: %v", len(data), data)
+	}
+	if data[0].(string) != "alice" || data[1].(string) != "bob" {
+		t.Errorf("expected [alice bob], got %v", data)
+	}
+}
+
+func TestHandleObservers_Sorted(t *testing.T) {
+	// Populate store with observers in non-alphabetical order.
+	ts := store.NewJSONFileStore(t.TempDir() + "/traces.json")
+	traces := []schema.Trace{
+		{ID: "b0000000-0000-0000-0000-000000000001", Timestamp: time.Now(), WhatChanged: "z", Observer: "zara"},
+		{ID: "b0000000-0000-0000-0000-000000000002", Timestamp: time.Now(), WhatChanged: "a", Observer: "alice"},
+		{ID: "b0000000-0000-0000-0000-000000000003", Timestamp: time.Now(), WhatChanged: "m", Observer: "mike"},
+	}
+	if err := ts.Store(context.Background(), traces); err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	srv := serve.NewServer(ts)
+	rr := doGET(srv, "/observers")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	env := decodeEnvelope(t, rr)
+	data := env["data"].([]interface{})
+	names := make([]string, len(data))
+	for i, d := range data {
+		names[i] = d.(string)
+	}
+	want := []string{"alice", "mike", "zara"}
+	for i, w := range want {
+		if names[i] != w {
+			t.Errorf("position %d: want %q got %q", i, w, names[i])
+		}
+	}
+}
+
+func TestHandleObservers_EmptyStore_EmptyArray(t *testing.T) {
+	ts := store.NewJSONFileStore(t.TempDir() + "/traces.json")
+	srv := serve.NewServer(ts)
+	rr := doGET(srv, "/observers")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	env := decodeEnvelope(t, rr)
+	// data should be null or empty array — either is acceptable for an empty store.
+	// The endpoint returns whatever []string{} marshals to (null when nil, [] when empty).
+	// Verify no error field is set.
+	if errField, ok := env["error"]; ok && errField != nil {
+		t.Errorf("unexpected error field: %v", errField)
+	}
+}
+
+func TestHandleObservers_StoreError_500(t *testing.T) {
+	srv := serve.NewServer(errStore{})
+	rr := doGET(srv, "/observers")
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rr.Code)
+	}
+}
+
+func TestHandleObservers_Deduplicated(t *testing.T) {
+	// Multiple traces with the same observer should produce one entry.
+	ts := store.NewJSONFileStore(t.TempDir() + "/traces.json")
+	traces := []schema.Trace{
+		{ID: "c0000000-0000-0000-0000-000000000001", Timestamp: time.Now(), WhatChanged: "a", Observer: "alice"},
+		{ID: "c0000000-0000-0000-0000-000000000002", Timestamp: time.Now(), WhatChanged: "b", Observer: "alice"},
+		{ID: "c0000000-0000-0000-0000-000000000003", Timestamp: time.Now(), WhatChanged: "c", Observer: "alice"},
+	}
+	if err := ts.Store(context.Background(), traces); err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	srv := serve.NewServer(ts)
+	rr := doGET(srv, "/observers")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	env := decodeEnvelope(t, rr)
+	data := env["data"].([]interface{})
+	if len(data) != 1 {
+		t.Errorf("expected 1 deduplicated observer, got %d: %v", len(data), data)
+	}
+}

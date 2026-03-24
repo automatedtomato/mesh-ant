@@ -34,6 +34,42 @@ function initObserverGate() {
   });
 }
 
+/**
+ * loadObserverHints — fetches GET /observers and renders clickable chips
+ * below the observer input. Clicking a chip fills the input with that observer name.
+ * Silently does nothing on error (hints are cosmetic; the gate still works without them).
+ *
+ * Called once on DOMContentLoaded.
+ */
+async function loadObserverHints() {
+  let observers;
+  try {
+    const envelope = await apiFetch('/observers');
+    observers = envelope.data || [];
+  } catch (_) {
+    // Hints are non-critical; ignore fetch errors.
+    return;
+  }
+
+  if (!observers.length) return;
+
+  const hintsEl = document.getElementById('observer-hints');
+  const chipsEl = document.getElementById('observer-chips');
+
+  observers.forEach(name => {
+    const chip = document.createElement('button');
+    chip.type = 'button'; // prevent form submit
+    chip.className = 'observer-chip';
+    chip.textContent = name;
+    chip.addEventListener('click', () => {
+      document.getElementById('observer-input').value = name;
+    });
+    chipsEl.appendChild(chip);
+  });
+
+  hintsEl.hidden = false;
+}
+
 // === SECTION 2: Cut Metadata ===
 
 /**
@@ -222,4 +258,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initObserverGate();
   initExportButtons();
+  loadObserverHints();
 });
