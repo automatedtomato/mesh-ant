@@ -385,6 +385,172 @@ func TestClassifyDraftChain_MultiStepWithEndorsement(t *testing.T) {
 	}
 }
 
+// --- SubKind field tests (RED phase for #96) ---
+
+// TestClassifyDraftChain_EndorsementSubKind_StageOnly verifies that a stage-only
+// derivation step (no content change) is classified as DraftMediator with
+// SubKind == DraftSubKindEndorsement ("endorsement"). The stage advance
+// transforms the draft's epistemic standing without reformulating content.
+func TestClassifyDraftChain_EndorsementSubKind_StageOnly(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "weak-draft",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing", // content unchanged
+		ExtractionStage: "reviewed",         // stage advanced — endorsement
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftMediator)
+	}
+	if classifications[0].SubKind != loader.DraftSubKindEndorsement {
+		t.Errorf("sub_kind: got %q; want %q", classifications[0].SubKind, loader.DraftSubKindEndorsement)
+	}
+}
+
+// TestClassifyDraftChain_ContentMediatorHasEmptySubKind verifies that a content-change
+// mediator step (no stage change) carries an empty SubKind. SubKind is only set
+// for the stage-only endorsement path.
+func TestClassifyDraftChain_ContentMediatorHasEmptySubKind(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "weak-draft",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "reformulated framing", // content changed
+		ExtractionStage: "weak-draft",           // stage unchanged
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftMediator)
+	}
+	if classifications[0].SubKind != "" {
+		t.Errorf("sub_kind: got %q; want empty string", classifications[0].SubKind)
+	}
+}
+
+// TestClassifyDraftChain_TranslationHasEmptySubKind verifies that a translation step
+// (content change + stage advance) has Kind == DraftTranslation and SubKind == "".
+// SubKind is not used for the translation path.
+func TestClassifyDraftChain_TranslationHasEmptySubKind(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "weak-draft",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "reformulated framing", // content changed
+		ExtractionStage: "reviewed",             // stage advanced
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftTranslation {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftTranslation)
+	}
+	if classifications[0].SubKind != "" {
+		t.Errorf("sub_kind: got %q; want empty string", classifications[0].SubKind)
+	}
+}
+
+// TestClassifyDraftChain_IntermediaryHasEmptySubKind verifies that an intermediary
+// step (no content change, no stage change) carries an empty SubKind.
+func TestClassifyDraftChain_IntermediaryHasEmptySubKind(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "weak-draft",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing", // unchanged
+		ExtractionStage: "weak-draft",       // unchanged
+		UncertaintyNote: "provenance note",  // provenance-only change
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftIntermediary {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftIntermediary)
+	}
+	if classifications[0].SubKind != "" {
+		t.Errorf("sub_kind: got %q; want empty string", classifications[0].SubKind)
+	}
+}
+
+// TestClassifyDraftChain_MultiStepSubKinds verifies per-step SubKind values across a
+// three-draft chain that includes both mediator types:
+//
+//	A → B: content-change mediator (SubKind empty)
+//	B → C: stage-only endorsement mediator (SubKind == "endorsement")
+func TestClassifyDraftChain_MultiStepSubKinds(t *testing.T) {
+	a := schema.TraceDraft{
+		ID: "a0000000-0000-4000-8000-000000000001", SourceSpan: "span",
+		WhatChanged: "original", ExtractionStage: "weak-draft",
+	}
+	b := schema.TraceDraft{
+		ID: "b0000000-0000-4000-8000-000000000002", SourceSpan: "span",
+		WhatChanged: "reformulated", ExtractionStage: "weak-draft", // content changed, stage same
+		DerivedFrom: a.ID,
+	}
+	c := schema.TraceDraft{
+		ID: "c0000000-0000-4000-8000-000000000003", SourceSpan: "span",
+		WhatChanged: "reformulated", ExtractionStage: "reviewed", // stage advanced, content same
+		DerivedFrom: b.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{a, b, c})
+	if len(classifications) != 2 {
+		t.Fatalf("multi-step: got %d classifications; want 2", len(classifications))
+	}
+
+	// Step A→B: content mediator — SubKind must be empty.
+	if classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("step 0 kind: got %q; want %q", classifications[0].Kind, loader.DraftMediator)
+	}
+	if classifications[0].SubKind != "" {
+		t.Errorf("step 0 sub_kind: got %q; want empty string", classifications[0].SubKind)
+	}
+
+	// Step B→C: endorsement mediator — SubKind must be DraftSubKindEndorsement.
+	if classifications[1].Kind != loader.DraftMediator {
+		t.Errorf("step 1 kind: got %q; want %q", classifications[1].Kind, loader.DraftMediator)
+	}
+	if classifications[1].SubKind != loader.DraftSubKindEndorsement {
+		t.Errorf("step 1 sub_kind: got %q; want %q", classifications[1].SubKind, loader.DraftSubKindEndorsement)
+	}
+}
+
 // TestFollowDraftChain_Fork verifies that when a parent has two children,
 // FollowDraftChain follows exactly one branch (the first child by input order)
 // and returns a linear chain — not both branches. This documents the
