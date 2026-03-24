@@ -44,6 +44,12 @@ const (
 	DraftTranslation DraftStepKind = "translation"
 )
 
+// DraftSubKindEndorsement is the SubKind value for a DraftMediator step where
+// the stage advanced but no content field changed — the derivation act was an
+// endorsement: it transformed the draft's epistemic standing without
+// reformulating its content.
+const DraftSubKindEndorsement = "endorsement"
+
 // DraftStepClassification records the classification of one derivation step (chain[i-1]→chain[i]).
 type DraftStepClassification struct {
 	// StepIndex is the destination draft's index in the chain (1 = first step).
@@ -54,6 +60,12 @@ type DraftStepClassification struct {
 
 	// Reason is a human-readable justification. Always non-empty.
 	Reason string
+
+	// SubKind qualifies the Kind when a more specific classification is
+	// warranted. Currently only set for DraftMediator steps:
+	// "endorsement" when the step is stage-only (no content change).
+	// Empty for all other kinds and for content-change mediator steps.
+	SubKind string `json:"sub_kind,omitempty"`
 }
 
 // FollowDraftChain traverses DerivedFrom links starting from from, returning drafts
@@ -121,34 +133,41 @@ func ClassifyDraftChain(chain []schema.TraceDraft) []DraftStepClassification {
 	for i := 1; i < len(chain); i++ {
 		prev := chain[i-1]
 		curr := chain[i]
-		kind, reason := classifyDraftStep(prev, curr)
+		kind, reason, subKind := classifyDraftStep(prev, curr)
 		result[i-1] = DraftStepClassification{
 			StepIndex: i,
 			Kind:      kind,
 			Reason:    reason,
+			SubKind:   subKind,
 		}
 	}
 	return result
 }
 
 // classifyDraftStep applies the v1 heuristic to a single derivation step.
-func classifyDraftStep(prev, curr schema.TraceDraft) (DraftStepKind, string) {
+// Returns (kind, reason, subKind). subKind is non-empty only for stage-only
+// DraftMediator steps, where it is set to DraftSubKindEndorsement.
+func classifyDraftStep(prev, curr schema.TraceDraft) (DraftStepKind, string, string) {
 	content := draftContentChanged(prev, curr)
 	stage := draftStageChanged(prev, curr)
 
 	switch {
 	case content && stage:
 		return DraftTranslation,
-			"content fields reformulated and extraction_stage advanced — interpretive frame shifted"
+			"content fields reformulated and extraction_stage advanced — interpretive frame shifted",
+			""
 	case content:
 		return DraftMediator,
-			"content fields reformulated — interpretation transformed in derivation"
+			"content fields reformulated — interpretation transformed in derivation",
+			""
 	case stage:
 		return DraftMediator,
-			"extraction_stage advanced without content change — endorsement transformed standing, not content"
+			"extraction_stage advanced without content change — endorsement transformed standing, not content",
+			DraftSubKindEndorsement
 	default:
 		return DraftIntermediary,
-			"no content fields changed — draft relayed without recorded transformation"
+			"no content fields changed — draft relayed without recorded transformation",
+			""
 	}
 }
 
