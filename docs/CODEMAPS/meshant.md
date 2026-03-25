@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-25 (#174: CutMeta and Envelope moved to graph/envelope.go — positioned-response types extracted from serve package for reuse by non-HTTP layers; `CutMetaFromGraph` helper function; backward-compatible imports in serve package)
+**Last Updated:** 2026-03-26 (#176: MCP server for LLM integration — JSON-RPC 2.0 over stdio, observer-position discipline, reflexive trace recording, meshant_articulate tool)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -18,8 +18,9 @@
 | `review` | Ambiguity detection, terminal rendering, and interactive accept/edit/skip/quit session for TraceDraft records (Thread A). Exports `DeriveAccepted`, `DeriveEdited`, `RunEditFlow` for reuse by `llm` (F.3). |
 | `llm` | LLM-mediated extraction, assist, critique, and split pipelines: `LLMClient` interface, `AnthropicClient`, `RunExtraction`, `RunAssistSession`, `ParseSpans`, `RunCritique`, `RunSplit`, `PromoteSession`, `SessionRecord`, and supporting types. Shared helpers (`readSourceDoc`, `isRefusal`) in `shared.go`. Enforces F.1 conventions (D1–D7): mediator framing, model-ID provenance, framework UncertaintyNote append, IntentionallyBlank validation (F.2, F.3, F.4, #137). `PromoteSession` closes the Principle 8 reflexivity gap: converts a SessionRecord to a canonical Trace (#138). Imports `review` (one-directional: `llm → review`) for derivation helpers and rendering in the assist session. |
 | `serve` | HTTP server for interactive trace graph querying. `Server` struct, `NewServer(ts store.TraceStore)` constructor. Five endpoints: `/articulate` (GET, returns Cut as Envelope), `/diff` (GET, diffs two cuts), `/shadow` (GET, names shadowed elements), `/traces` (GET, returns raw traces), `/element/{name}` (GET, traces mentioning named element — observer required). All endpoints require `observer` query param (returns 400 with ANT reasoning if absent). `Envelope` and `CutMeta` types (moved to graph package in #174 for reuse by non-HTTP layers) wrap response data + positioned cut. `filterByElement` filters traces by Source/Target membership. Response helpers: `writeJSON`, `writeError`, query parameter parsers. Static file server via `go:embed web` serves the SPA at `/`. Graceful shutdown. 93.4% coverage. #145, #146, Phase 4. Web assets: `web/index.html` (SPA shell: observer gate, cut header, graph + sidebar), `web/style.css`, `web/app.js` (init, API fetch, wiring), `web/render.js` (Cytoscape graph, shadow panel, detail panel), `web/export.js` (JSON + DOT download), `web/lib/cytoscape.min.js` (vendored Cytoscape.js 3.30.4). |
+| `mcp` | Model Context Protocol server for LLM integration. `Server` struct backed by `store.TraceStore`. JSON-RPC 2.0 over stdio; single-threaded dispatch with 4 MiB buffer for large graphs. Tool registration via `ToolHandler` interface; batch 1 (#176) registers `meshant_articulate`. Observer discipline on all tools (ANT position required per D1 mcp-v1.md). Analyst identity injected at startup and stamped on all CutMeta responses. Reflexivity (Principle 8): every cut-producing tool writes invocation traces tagged "mcp-invocation" back to the store. Decision record: `docs/decisions/mcp-v1.md`. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique`, `split`, `promote-session`, `convert`, `store`, `serve` subcommands. `articulate`, `diff`, `shadow`, `gaps`, `follow`, `bottleneck` accept `--db bolt://...` to load traces from a Neo4j DB instead of a JSON file (mutually exclusive with the file arg). `store` writes JSON traces to the DB. `serve` starts a localhost HTTP server (#145); accepts `--db` and `--port` flags. `articulate` also supports `--narrative`; `gaps` supports `--suggest`. `review` and `assist` are interactive (read from stdin). `extract` calls an LLM for TraceDraft extraction (F.2, #139); supports `--adapter` (#140). `split` splits a source document into spans (#137). `promote-session` promotes a SessionRecord to a Trace (#138). `convert` converts non-text sources to plain text (#140). |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique`, `split`, `promote-session`, `convert`, `store`, `serve`, `mcp` subcommands. `articulate`, `diff`, `shadow`, `gaps`, `follow`, `bottleneck` accept `--db bolt://...` to load traces from a Neo4j DB instead of a JSON file (mutually exclusive with the file arg). `store` writes JSON traces to the DB. `serve` starts a localhost HTTP server (#145); accepts `--db` and `--port` flags. `mcp` starts a Model Context Protocol server on stdio (#176); requires `--analyst` flag. `articulate` also supports `--narrative`; `gaps` supports `--suggest`. `review` and `assist` are interactive (read from stdin). `extract` calls an LLM for TraceDraft extraction (F.2, #139); supports `--adapter` (#140). `split` splits a source document into spans (#137). `promote-session` promotes a SessionRecord to a Trace (#138). `convert` converts non-text sources to plain text (#140). |
 
 ## Package: schema
 
@@ -238,6 +239,62 @@
 - **Decision record (serve)**: `docs/decisions/serve-v1.md` — observer requirement, Envelope structure, graceful shutdown, Phase 4 (#145).
 - **Decision record (web-ui)**: `docs/decisions/web-ui-v1.md` — Cytoscape.js choice, `go:embed`, no build step, observer gate as structural HTML, `/element/{name}` in-memory design, client-side DOT duplication, provenance deferred, Phase 4 (#146).
 - **Static file server**: `go:embed web` in `server.go` embeds the entire `web/` directory. `fs.Sub(webFS, "web")` strips the prefix; `http.FileServerFS` serves at `GET /`. API routes are registered first and take precedence over the catch-all `/` handler.
+
+---
+
+## Package: mcp
+
+### Files
+
+| File | Contains |
+|------|----------|
+| `server.go` | `Server` struct, `NewServer(ts store.TraceStore, analyst string) *Server` constructor, `Run(ctx, in, out) error` method. JSON-RPC 2.0 message types (`rpcRequest`, `rpcResponse`, `rpcError`). Tool registry via `registerTool` and tool handler dispatch via `dispatch`. Handlers for `initialize`, `tools/list`, `tools/call` MCP methods. Single-threaded stdio loop with 4 MiB scan buffer for large graph payloads. Immutable analyst identity stamped on every CutMeta response. (#176) |
+| `tools.go` | MCP tool handler functions and schemas. Batch 1 (#176): `registerArticulate`, `handleArticulate` — build positioned mesh graph. Tool input types: `articulateArgs`. Helper functions: `recordInvocation` (reflexive trace recording, Principle 8), `parseTimeWindow` (RFC3339 string → TimeWindow), `newUUID4` (random UUID generation). Tool registration batches: B1 (#176 — articulate), B1 remaining (#177 — shadow, follow, bottleneck, summarize, validate), B2 (#178 — diff, gaps). Every tool writes invocation traces tagged "mcp-invocation" to the store. |
+| (CLI) `cmd/meshant/cmd_mcp.go` | `cmdMcp(w io.Writer, args []string) error` subcommand handler. `--analyst` required (D2 mcp-v1.md — hard refusal if absent). `--db` flag for Neo4j backend; mutually exclusive with `<traces.json>` positional argument. Mirrors `serve` and `store` command design: uniform `TraceStore` interface regardless of backend. Signal context (SIGINT/SIGTERM) for graceful shutdown. Startup banner to stderr (stdout reserved for MCP framing). |
+
+### Types
+
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `Server` | `ts store.TraceStore`, `analyst string`, `tools map[string]ToolHandler`, `schemas []toolSchema` | MCP server backed by a TraceStore. Analyst identity is immutable and stamped on every response (D2, mcp-v1.md). No state beyond store and tool registry; stateless per-message dispatch. |
+| `rpcRequest` | `JSONRPC string`, `ID *json.RawMessage`, `Method string`, `Params json.RawMessage` | Inbound JSON-RPC 2.0 message. `ID` is nullable (nil for notifications); params are raw JSON to allow tool-specific decoding. |
+| `rpcResponse` | `JSONRPC string`, `ID *json.RawMessage`, `Result interface{}`, `Error *rpcError` | Outbound JSON-RPC 2.0 message. Result and Error are mutually exclusive. ID echoes the request ID (null for parse errors). |
+| `rpcError` | `Code int`, `Message string` | JSON-RPC error code (-32700 parse, -32601 method-not-found, -32602 invalid-params) and human message. |
+| `ToolHandler` | Function type: `func(ctx context.Context, params json.RawMessage) (interface{}, error)` | Signature for MCP tool handlers. Receives raw JSON params and context; returns result or error. Non-nil errors are returned as tool-level errors (content isError=true), not protocol errors. |
+| `toolSchema` | `Name string`, `Description string`, `InputSchema inputSchema` | MCP tool descriptor returned by tools/list. Minimal JSON Schema for input validation. One schema per registered tool. |
+| `inputSchema` | `Type string`, `Properties map[string]property`, `Required []string` | JSON Schema object descriptor for tool inputs. Lists required parameters. |
+| `property` | `Type string`, `Description string` | JSON Schema property descriptor for a single input parameter. |
+| `toolsCallParams` | `Name string`, `Arguments json.RawMessage` | Params shape for a tools/call request (MCP protocol). `Arguments` is raw JSON — each tool decodes according to its schema. |
+| `toolContent` | `Type string`, `Text string` | Single item in a tool result content array (MCP protocol). Returned as `{type: "text", text: ...}` on success. |
+| `articulateArgs` | `Observer string`, `From string` (omitempty), `To string` (omitempty), `Tags []string` (omitempty) | Input shape for `meshant_articulate` tool (Batch 1, #176). Observer required (ANT position discipline, D1 mcp-v1.md). From/To are RFC3339 strings; Tags are OR-filtered. |
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `NewServer` | `func NewServer(ts store.TraceStore, analyst string) *Server` | Constructor; wraps a TraceStore and analyst identity. Registers batch-1 tools (currently: meshant_articulate). Returns server ready to pass to Run. |
+| `Server.Run` | `(s *Server) Run(ctx context.Context, in io.Reader, out io.Writer) error` | Reads newline-delimited JSON-RPC 2.0 messages from in, dispatches to handlers, writes responses to out. Returns when in reaches EOF or context is cancelled. Single-threaded, synchronous per-message. Scanner buffer expanded to 4 MiB to handle large graph payloads. |
+| `Server.registerTool` | `(s *Server) registerTool(schema toolSchema, handler ToolHandler)` | Adds a named handler and schema to the server. Called during construction; not safe for concurrent use after Run begins. |
+| `Server.dispatch` | `(s *Server) dispatch(ctx context.Context, req rpcRequest) rpcResponse` | Routes a request to the appropriate handler (initialize, initialized, tools/list, tools/call) or returns method-not-found error. |
+| `Server.handleInitialize` | `(s *Server) handleInitialize(req rpcRequest) rpcResponse` | Responds to MCP initialize handshake with protocolVersion, serverInfo, and empty capabilities. |
+| `Server.handleToolsList` | `(s *Server) handleToolsList(req rpcRequest) rpcResponse` | Returns tools array (all registered schemas) in result.tools. |
+| `Server.handleToolsCall` | `(s *Server) handleToolsCall(ctx context.Context, req rpcRequest) rpcResponse` | Dispatches tools/call to registered handler. Decodes `toolsCallParams` from request, calls handler, encodes result as content array. On error, returns tool-level error (isError=true, not protocol error). |
+| `Server.registerArticulate` | `(s *Server) registerArticulate()` | Registers meshant_articulate tool (Batch 1, #176). Sets up schema with observer/from/to/tags parameters and calls handleArticulate as handler. |
+| `Server.handleArticulate` | `(s *Server) handleArticulate(ctx context.Context, params json.RawMessage) (interface{}, error)` | Batch 1 (#176) tool handler. Decodes articulateArgs (observer required). Queries full substrate (no pre-filtering). Calls graph.Articulate with ArticulationOptions. Builds graph.Envelope with CutMeta.Analyst = s.analyst. Records reflexive invocation trace (Principle 8, D5 mcp-v1.md). Returns envelope or error. |
+| `recordInvocation` | `func (s *Server) recordInvocation(ctx context.Context, toolName string, observer string, result interface{}) error` | Reflexivity helper (Principle 8): writes a trace recording the MCP tool invocation to the store. Trace tagged "mcp-invocation"; Source = analyst (reader), Target = tool result (graph ref if applicable); Mediation = tool name. Returns error if write fails. |
+| `parseTimeWindow` | `func parseTimeWindow(from, to string) (graph.TimeWindow, error)` | Parse RFC3339 strings into a graph.TimeWindow. Returns unbounded (zero) bounds when strings are empty. Validates Start ≤ End. |
+| `newUUID4` | `func newUUID4() (string, error)` | Generate a random RFC4122 UUID v4. Used for trace IDs in reflexive invocation traces. |
+
+### Key Design Notes
+
+- **Observer discipline (D1, mcp-v1.md)**: Every tool requires an `observer` parameter. The `--analyst` flag is required at server startup (D2) — an LLM client that does not declare an analyst position is hiding the cut. Analyst and Observer are kept distinct: Analyst is the declared reader (on CutMeta); Observer is the ANT position (in graph articulation).
+- **Reflexivity (Principle 8, D5 mcp-v1.md)**: Every cut-producing tool writes a trace back to the store. The MCP server is a mediator — its actions must be visible in the mesh, not hidden behind a service facade. Invocation traces are tagged "mcp-invocation" and are filterable and nameable, not suppressed.
+- **Single-threaded stdio transport (D7 mcp-v1.md)**: The server reads messages synchronously from stdin and writes responses to stdout. No concurrency — JSON-RPC dispatch is single-threaded by design. SSE (server-sent events) is deferred to a future batch; stdio simplicity is valued for the initial MCP integration.
+- **Large graph buffer**: Scanner buffer is 4 MiB (default 64 KiB) to accommodate dense substrate graphs. A single `tools/call` response from a large dataset can easily exceed the default limit, causing `bufio.ErrTooLong`; the expanded buffer prevents mid-session exits.
+- **Tool registration batches**: Batch 1 (#176) registers `meshant_articulate`. Batch 1 remaining (#177) will add shadow, follow, bottleneck, summarize, validate. Batch 2 (#178) will add diff and gaps. Each tool follows the same pattern: parameter validation → query full substrate → call graph function → build Envelope with CutMeta.Analyst set → record invocation trace.
+- **JSON-RPC 2.0 protocol**: No external SDK — the protocol surface is small enough to implement inline (server.go ~75 lines for core dispatch). Supports notifications (null id) as no-op; returns -32700 for parse errors, -32601 for unknown methods, -32602 for invalid params (protocol errors), plus tool-level errors.
+- **Graceful shutdown**: Run returns when stdin reaches EOF (client closes) or context is cancelled (SIGINT/SIGTERM). The cmdMcp handler sets up signal context; server exits cleanly without dropping in-flight messages.
+- **Decision record (mcp)**: `docs/decisions/mcp-v1.md` — observer discipline (D1), analyst requirement (D2), tool parameter validation (D3), graph substrate boundaries (D4), invocation trace design (D5), tool batching (D6), stdio vs SSE (D7), ANT tensions (T171.1–T171.5).
 
 ---
 
