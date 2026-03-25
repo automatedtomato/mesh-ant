@@ -41,107 +41,69 @@ All complete and merged to `develop` / `main`. Detailed plans in `tasks/done/`.
 
 ---
 
-## Completed Threads (v2.0.0)
+## Completed Threads (v2.0.0) — COMPLETE (2026-03-22)
 
-All complete and merged to `develop`. v2.0.0 tagged on `main` (2026-03-22).
-Full rough plan: `tasks/done/plan_v2_roadmap.md`.
-
-**Thread B** — Interpretive outputs: `meshant bottleneck`, `meshant narrative`, `--suggest` on `meshant gaps`. Decision record + codemap.
-
-**Thread A** — Interactive review CLI: `meshant review`; accept/edit/skip loop; ambiguity detection; provenance chain rendering. Parent #86, complete 2026-03-19.
-
-**Thread C** — Multi-analyst ingestion comparison: `meshant extraction-gap`, `meshant chain-diff`; multi-analyst example dataset; `multi-analyst-v1.md`. Parent #103, complete 2026-03-19.
-
-**Thread F** — LLM-internal boundary: `meshant extract`, `meshant assist`, `meshant critique`; `SessionRecord`; `LLMClient` interface; real-world example; `llm-boundary-v2.md`. Parent #115, complete 2026-03-22. **v2.0.0 released.**
-
+v2.0.0 tagged on `main`. Full plan: `tasks/done/plan_v2_roadmap.md`.
 Detailed plans: `tasks/done/plan_thread_{a,b,f}.md`.
 
----
-
-## Deferred Items — COMPLETE (2026-03-25)
-
-All deferred items from v2.0.0 threads resolved. Per-thread pipeline complete 2026-03-25.
-
-- [x] **Slice equality helper naming** — renamed to `stringSlicesEqualOrdered`/`stringSlicesEqualUnordered`; fixed in per-thread refactor-clean 2026-03-24
-- [ ] **buildChain closure extraction** — candidate if a second consumer appears (still deferred)
-- [x] **`PromptHash` in `ExtractionConditions`** — `HashPromptTemplate` + `PromptHash` field on `ExtractionConditions` and `CritiqueConditions`; merged PR #170 2026-03-24
-- [x] **`ExtractionConditions` bifurcation** — `CritiqueConditions` type added; `SessionRecord.CritiqueConditions *CritiqueConditions`; backward compat preserved; merged PR #168 2026-03-24
-
-Resolved GitHub issues:
-- [x] [#95](https://github.com/automatedtomato/mesh-ant/issues/95) — `ClassifyDraftChainOptions` + `ClassifiedDraftChain` envelope; C1 enforced; merged PR #170 2026-03-24
-- [x] [#96](https://github.com/automatedtomato/mesh-ant/issues/96) — `DraftSubKindEndorsement` constant + `SubKind` field on `DraftStepClassification`; merged PR #169 2026-03-24
-- [x] [#150](https://github.com/automatedtomato/mesh-ant/issues/150) — merged PR #170 2026-03-24
-- [x] [#151](https://github.com/automatedtomato/mesh-ant/issues/151) — merged PR #168 2026-03-24
-
-Per-thread pipeline (2026-03-25):
-- Refactor-clean: MUST-FIX resolved (JSON tags on `DraftStepClassification`); 3 NICE-TO-HAVE deferred
-- ANT-theorist: ALIGNED WITH TENSIONS — T1 (SubKind not criterion-governed, deepened), T2 (`CritiqueConditions.SourceDocRef` provenance-chain reading), T3 (drift→change language fixed)
-- CODEMAPS updated; tests all green
+| Thread | Summary |
+|--------|---------|
+| A | Interactive review CLI: `meshant review`; accept/edit/skip loop; ambiguity detection; provenance chain rendering |
+| B | Interpretive outputs: `meshant bottleneck`, `meshant narrative`, `--suggest` on `meshant gaps` |
+| C | Multi-analyst ingestion comparison: `meshant extraction-gap`, `meshant chain-diff`; multi-analyst example dataset |
+| F | LLM-internal boundary: `meshant extract`, `meshant assist`, `meshant critique`; `SessionRecord`; `LLMClient` interface |
 
 ---
 
-## Post-v2.0.0 — ANT-like Knowledge Graph
+## Post-v2.0.0 — ANT-like Knowledge Graph (v3.0.0) — COMPLETE (2026-03-24)
 
-**Full plan:** `tasks/plan_post_v2.md`
-**Status:** Issues open (2026-03-22)
+v3.0.0 tagged on `main`. Full plan: `tasks/done/plan_post_v2.md`.
+Per-thread pipeline complete: refactor-clean + ant-theorist ALIGNED across all phases.
 
-Direction confirmed in design discussion (2026-03-22). The next major form is an ANT-like Knowledge Graph — persistent, queryable, interactive. "Actors act" simulation comes much later, after the graph substrate exists.
+| Phase | Summary |
+|-------|---------|
+| 1 (#132) | #137 `meshant split`, #138 session→traces, #139 multi-doc ingestion, #140 non-text adapters |
+| 2 (#133) | #141 KG scoping document (`kg-scoping-v1.md`) |
+| 3 (#134) | #142 `TraceStore` interface + `JSONFileStore`, #143 Neo4j adapter, #144 `meshant store` + `--db` flag |
+| 4 (#135) | #145 `meshant serve` (4 HTTP endpoints), #146 Web UI + provenance panel (Cytoscape.js) |
+| 5 (#136) | #147 D.1 software incident (32 traces), #148 D.2 multi-agent pipeline (28 traces), #149 D.3 policy/procurement (27 traces) |
 
-### Phase 1 — Deferred items and ingestion gaps (parent: #132) — COMPLETE
-
-Per-thread pipeline complete: refactor-cleaner (stringSlice consolidation, filterBlanks →
-shared.go, stripPreamble extracted); ant-theorist (ALIGNED WITH TENSIONS); docs updated
-(session-promote-v1.md decision record added, non-text-adapters tensions updated).
-
-- [x] **#137 — `meshant split`** — LLM-assisted span splitting; removes the biggest `assist` friction
-- [x] **#138 — Session records → Traces** — a session is an observation act; closes the ANT reflexivity gap; decision record `session-promote-v1.md`
-- [x] **#139 — Multi-document ingestion** — `meshant extract` across several source documents in one session
-- [x] **#140 — Non-text source adapters** — PDF, HTML, structured logs → text → existing LLM pipeline
-
-### Phase 2 — Form 3 scoping document (parent: #133)
-
-- [x] **#141 — KG scoping document** — storage adapter contract, query model, Web UI shape, Layer 1/2/3 boundaries
-
-### Phase 3 — Layer 1: Trace substrate (parent: #134)
-
-- [x] **#142 — DB adapter interface** — `TraceStore` interface in `meshant/store`; `JSONFileStore` implements it; `QueryOpts` with Observer/TimeWindow/Tags/Limit; 86.4% coverage; PR #157
-- [x] **#143 — Neo4j adapter** — `Neo4jStore` + `Neo4jConfig`; `neo4j_store.go` + `neo4j_cypher.go`; build tag `neo4j`; MERGE/FOREACH Cypher; RFC3339Nano timestamps; integration tests behind same tag; 4 ANT tensions documented; decision record `neo4j-adapter-v1.md`
-- [x] **#144 — `meshant store` + `--db` flag** — `meshant store` reads JSON → writes to DB via TraceStore; `--db` flag on `articulate`, `diff`, `shadow`, `gaps`, `follow`, `bottleneck`; `loadTraces` shared helper; `db_factory.go`/`db_factory_neo4j.go` build-tag factory; no pre-filtering (full substrate preserved for ANT correctness); decision record `store-cli-v1.md`
-
-### Phase 4 — Layer 3: Interactive graph output (parent: #135)
-
-- [x] **#145 — `meshant serve`** — localhost HTTP server; `meshant/serve` package; 4 endpoints (`/articulate`, `/diff`, `/shadow`, `/traces`); `Envelope` with `CutMeta`; observer required on all endpoints (400 with ANT-reasoning error); graceful shutdown; 82.3% coverage; 4 ANT tensions documented; decision record `serve-v1.md`
-- [x] **#146 — Web UI + provenance panel** — Cytoscape.js 3.30.4 (vendored); observer gate (structural HTML); shadow panel (amber); detail panel (trace cards + provenance); `/element/{name}` endpoint; `go:embed web`; static file server; 93.4% coverage; decision record `web-ui-v1.md`
-
-### Per-thread pipeline — Post-v2.0.0 batch (all phases) — COMPLETE (2026-03-24)
-
-Refactor-clean: 6 MUST-FIX items resolved (stampProvenance extracted to shared.go,
-validateIntentionallyBlank moved to shared.go, splitErrNotes/joinErrNotes moved to
-shared.go, goto stamp eliminated in critique.go, slicesEqual/stringSlicesEqual renamed
-to reflect order vs unordered semantics, LimitReader cast fixed, readSessionFile +1 guard).
-7 NICE-TO-HAVE items logged; NH-3 (readSessionFile oversize) promoted and fixed.
-
-ANT-theorist: ALIGNED WITH TENSIONS — 5 tensions, all documented, none violations.
-Web UI is among the strongest embodiments of MeshAnt principles in the codebase.
-
-Deferred items (#95, #96, #150, #151) remain open for a future phase.
-
-### Phase 5 — Thread D datasets (parent: #136) — COMPLETE
-
-- [x] **#147 — D.1 Software incident** — `data/examples/software_incident.json`; 32 traces; observers: `on-call-engineer`, `product-manager`, `customer-support-lead`, `dataset-analyst`; retry-buffer as key mediator; ANT aligned; merged PR #162
-- [x] **#148 — D.2 Multi-agent pipeline** — `data/examples/multi_agent_pipeline.json`; 28 traces; observers: `pipeline-auditor`, `ml-engineer`, `dataset-analyst`; 8 pipeline agents as non-human actants; inscription conflict demonstrated; merged PR #163
-- [x] **#149 — D.3 Policy/procurement** — `data/examples/policy_procurement.json`; 27 traces; observers: `procurement-officer`, `budget-approver`, `vendor-alpha`, `compliance-auditor`, `dataset-curator`; 17 institutional actants; 11 circular source==mediation violations fixed; ANT aligned with tensions (T1-T4); merged PR #164
+Deferred items resolved (v3.1.0, 2026-03-25): #95 `ClassifyDraftChainOptions`, #96 `DraftSubKindEndorsement`, #150 `PromptHash`, #151 `CritiqueConditions`. One open deferred: `buildChain` closure extraction (candidate if second consumer appears).
 
 ---
 
 ## Post-v3 — MCP → Interactive CLI → Actors Act
 
-**Full plan:** `tasks/plan_post_v3.md`
-**Status:** Rough plan only — not yet decomposed into issues (2026-03-25)
+**Detailed plans:** `tasks/plan_v4_mcp.md`, `tasks/plan_v4_explore.md`, `tasks/plan_v5_actors.md`
+**Rough plan (archived):** `tasks/done/plan_post_v3.md`
+**Status:** Issues open (2026-03-25)
 
 | Version | Direction |
 |---------|-----------|
 | v4.0.0 | `meshant mcp` — analytical commands as MCP tools; observer-position enforced at schema level |
 | v4.x | `meshant explore` — interactive analysis session; LLM suggests, analyst cuts |
-| v4.x | Web UI time series controls — time window picker/slider; backend already supports `?from`/`?to` but UI has no controls |
+| v4.x | Web UI time series controls — time window picker/slider; backend already supports `?from`/`?to` |
 | v5.0.0 | Actors act — emerged actors generate new traces, constrained by relational history |
+
+### v4.0.0 — MCP server (parent: #171)
+
+- [x] **#174 — CutMeta/Envelope extraction** — move `CutMeta`/`Envelope`/`cutMetaFromGraph` from `serve/response.go` → `graph/envelope.go`; add `Analyst` field; shared prereq for MCP + explore
+- [ ] **#175 — mcp-v1.md decision record** (ANT gate) — two-level observer model, tool set rationale, invocation traces, SSE deferred
+- [ ] **#176 — MCP server skeleton + meshant_articulate + meshant mcp CLI** — `mcp.NewServer(ts, observer)`; stdio; fidelity test
+- [ ] **#177 — MCP tools batch 1** — shadow, follow, bottleneck, summarize, validate
+- [ ] **#178 — MCP tools batch 2** — diff, gaps (dual-observer)
+- [ ] **#179 — MCP invocation trace recording** (ANT gate) — mandatory reflexive traces; tag `"mcp-invocation"`
+
+### v4.x — Interactive CLI + Web UI time series (parent: #172)
+
+- [ ] **#180 — Web UI time series controls** — time window picker/slider; independent of MCP/explore
+- [ ] **#181 — explore-v1.md decision record** (ANT gate) — mutable session observer, AnalysisSession design, SuggestionMeta, AnalysisTrace
+- [ ] **#182 — AnalysisSession types + meshant explore REPL skeleton** — `explore.NewSession`; `AnalysisTurn`; cut/quit/help commands
+- [ ] **#183 — explore commands batch 1** — articulate, shadow, window/tag filters
+- [ ] **#184 — explore commands batch 2** — diff, gaps, follow, bottleneck
+- [ ] **#185 — suggest command with SuggestionMeta** (ANT gate) — LLM suggestions with named provenance
+- [ ] **#186 — AnalysisTrace + TagValueExplore + promote-explore** (ANT gate) — Principle 8 reflexivity for explore sessions
+
+### v5.0.0 — Actors Act (parent: #173)
+
+Not yet decomposed into child issues. Revisit after v4.x complete and four open design questions have provisional answers. See `tasks/plan_v5_actors.md`.
