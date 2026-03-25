@@ -761,4 +761,55 @@ func TestRunAssistSession_EditDraftSessionRef(t *testing.T) {
 	}
 }
 
+// --- PromptHash tests ---
 
+// TestRunAssistSession_PromptHash_Set verifies that RunAssistSession populates
+// Conditions.PromptHash with a 16-character hex string when a prompt template
+// path is provided.
+func TestRunAssistSession_PromptHash_Set(t *testing.T) {
+	prompt := writePromptTemplate(t)
+	opts := llm.AssistOptions{
+		ModelID:            "claude-sonnet-4-6",
+		PromptTemplatePath: prompt,
+		SourceDocRef:       "test-doc",
+	}
+	client := &assistMockClient{responses: []string{minimalDraftJSON}}
+	// Single span; immediately accept.
+	input := strings.NewReader("a\n")
+	var out strings.Builder
+
+	_, rec, err := llm.RunAssistSession(context.Background(), client, []string{"test span"}, opts, input, &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	h := rec.Conditions.PromptHash
+	if len(h) != 16 {
+		t.Errorf("Conditions.PromptHash: want 16-char hex, got %q (len=%d)", h, len(h))
+	}
+	for _, c := range h {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			t.Errorf("non-hex character %q in PromptHash %q", c, h)
+		}
+	}
+}
+
+// TestRunAssistSession_PromptHash_EmptyPath verifies that when no prompt template
+// path is provided, Conditions.PromptHash is empty (not an error).
+func TestRunAssistSession_PromptHash_EmptyPath(t *testing.T) {
+	opts := llm.AssistOptions{
+		ModelID:      "claude-sonnet-4-6",
+		SourceDocRef: "test-doc",
+		// PromptTemplatePath intentionally empty.
+	}
+	client := &assistMockClient{responses: []string{minimalDraftJSON}}
+	input := strings.NewReader("a\n")
+	var out strings.Builder
+
+	_, rec, err := llm.RunAssistSession(context.Background(), client, []string{"test span"}, opts, input, &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Conditions.PromptHash != "" {
+		t.Errorf("Conditions.PromptHash: want empty for no-template path, got %q", rec.Conditions.PromptHash)
+	}
+}

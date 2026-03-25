@@ -378,6 +378,104 @@ func TestCmdCritique_SessionOutputConfirmation(t *testing.T) {
 	}
 }
 
+// --- Group: cmdCritique — CritiqueConditions bifurcation (#151) ---
+
+// TestCmdCritique_SessionFile_HasCritiqueConditions verifies that after a
+// successful cmdCritique run with --session-output, the written session JSON
+// file contains a "critique_conditions" key (not just "conditions").
+func TestCmdCritique_SessionFile_HasCritiqueConditions(t *testing.T) {
+	orig := minimalDraft("cc-cmd-001", "The deployment failed.")
+	inputPath := writeDraftsFile(t, []schema.TraceDraft{orig})
+	promptPath := writeCritiquePromptTemplate(t)
+	outDir := t.TempDir()
+	outPath := filepath.Join(outDir, "out.json")
+	sessPath := filepath.Join(outDir, "session.json")
+
+	response := `{"source_span":"The deployment failed.","what_changed":"a deployment failure was recorded"}`
+	client := &critiqueMockClient{responses: []string{response}}
+	var w bytes.Buffer
+	err := cmdCritique(&w, client, []string{
+		"--input", inputPath,
+		"--prompt-template", promptPath,
+		"--model", "test-model",
+		"--output", outPath,
+		"--session-output", sessPath,
+	})
+	if err != nil {
+		t.Fatalf("cmdCritique: unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(sessPath)
+	if err != nil {
+		t.Fatalf("read session file: %v", err)
+	}
+
+	// The session JSON must contain a "critique_conditions" key (new format).
+	if !strings.Contains(string(data), `"critique_conditions"`) {
+		t.Errorf("session JSON: want key %q, got: %s", "critique_conditions", string(data))
+	}
+
+	// Decode and verify the CritiqueConditions field is populated.
+	var rec llm.SessionRecord
+	if err := json.Unmarshal(data, &rec); err != nil {
+		t.Fatalf("parse session JSON: %v", err)
+	}
+	if rec.CritiqueConditions == nil {
+		t.Fatal("SessionRecord.CritiqueConditions: want non-nil for critique session, got nil")
+	}
+	if rec.CritiqueConditions.ModelID != "test-model" {
+		t.Errorf("CritiqueConditions.ModelID: want %q, got %q", "test-model", rec.CritiqueConditions.ModelID)
+	}
+}
+
+// TestCmdCritique_SessionFile_ConditionsFieldZero verifies that after a
+// successful cmdCritique run, the written session JSON file has "conditions"
+// with zero/empty values — Conditions must not be populated for critique sessions.
+func TestCmdCritique_SessionFile_ConditionsFieldZero(t *testing.T) {
+	orig := minimalDraft("cc-cmd-002", "The rollback completed.")
+	inputPath := writeDraftsFile(t, []schema.TraceDraft{orig})
+	promptPath := writeCritiquePromptTemplate(t)
+	outDir := t.TempDir()
+	outPath := filepath.Join(outDir, "out.json")
+	sessPath := filepath.Join(outDir, "session.json")
+
+	response := `{"source_span":"The rollback completed.","what_changed":"a rollback was recorded"}`
+	client := &critiqueMockClient{responses: []string{response}}
+	var w bytes.Buffer
+	err := cmdCritique(&w, client, []string{
+		"--input", inputPath,
+		"--prompt-template", promptPath,
+		"--model", "test-model",
+		"--output", outPath,
+		"--session-output", sessPath,
+	})
+	if err != nil {
+		t.Fatalf("cmdCritique: unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(sessPath)
+	if err != nil {
+		t.Fatalf("read session file: %v", err)
+	}
+
+	var rec llm.SessionRecord
+	if err := json.Unmarshal(data, &rec); err != nil {
+		t.Fatalf("parse session JSON: %v", err)
+	}
+
+	// rec.Conditions must be the zero value — critique sessions use CritiqueConditions.
+	// Slices cannot be compared with ==, so check the string fields individually.
+	if rec.Conditions.ModelID != "" {
+		t.Errorf("Conditions.ModelID: want empty for critique session, got %q", rec.Conditions.ModelID)
+	}
+	if rec.Conditions.SystemInstructions != "" {
+		t.Errorf("Conditions.SystemInstructions: want empty for critique session, got %q", rec.Conditions.SystemInstructions)
+	}
+	if len(rec.Conditions.SourceDocRefs) != 0 {
+		t.Errorf("Conditions.SourceDocRefs: want empty for critique session, got %v", rec.Conditions.SourceDocRefs)
+	}
+}
+
 // TestCmdCritique_IDFilter verifies that --id filters to a single draft.
 func TestCmdCritique_IDFilter(t *testing.T) {
 	d1 := minimalDraft("filter-A", "Span A.")

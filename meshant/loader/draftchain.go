@@ -17,6 +17,7 @@
 package loader
 
 import (
+	"github.com/automatedtomato/mesh-ant/meshant/graph"
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
 
@@ -44,16 +45,28 @@ const (
 	DraftTranslation DraftStepKind = "translation"
 )
 
+// DraftSubKindEndorsement is the SubKind value for a DraftMediator step where
+// the stage advanced but no content field changed — the derivation act was an
+// endorsement: it transformed the draft's epistemic standing without
+// reformulating its content.
+const DraftSubKindEndorsement = "endorsement"
+
 // DraftStepClassification records the classification of one derivation step (chain[i-1]→chain[i]).
 type DraftStepClassification struct {
 	// StepIndex is the destination draft's index in the chain (1 = first step).
-	StepIndex int
+	StepIndex int `json:"step_index"`
 
 	// Kind is the classification: intermediary, mediator, or translation.
-	Kind DraftStepKind
+	Kind DraftStepKind `json:"kind"`
 
 	// Reason is a human-readable justification. Always non-empty.
-	Reason string
+	Reason string `json:"reason"`
+
+	// SubKind qualifies the Kind when a more specific classification is
+	// warranted. Currently only set for DraftMediator steps:
+	// "endorsement" when the step is stage-only (no content change).
+	// Empty for all other kinds and for content-change mediator steps.
+	SubKind string `json:"sub_kind,omitempty"`
 }
 
 // FollowDraftChain traverses DerivedFrom links starting from from, returning drafts
@@ -108,47 +121,91 @@ func FollowDraftChain(drafts []schema.TraceDraft, from string) []schema.TraceDra
 	return chain
 }
 
+// ClassifyDraftChainOptions parameterises classification for ClassifyDraftChain.
+// Zero value preserves v1 behaviour — all existing callers are unaffected (design rule C1).
+type ClassifyDraftChainOptions struct {
+	// Criterion is the interpretive declaration under which this classification
+	// is being conducted. Stored as envelope metadata only — does NOT alter step
+	// heuristics (design rule C1).
+	Criterion graph.EquivalenceCriterion
+}
+
+// ClassifiedDraftChain pairs a derivation chain's step classifications with
+// the interpretive conditions declared for the reading. Criterion is envelope
+// metadata only (design rule C1) — it does not affect how steps are classified.
+type ClassifiedDraftChain struct {
+	// Classifications has one entry per derivation step (len(chain)-1).
+	// Nil if the chain is shorter than 2.
+	Classifications []DraftStepClassification
+
+	// Criterion records the interpretive conditions under which this chain was
+	// classified. Slice fields are defensively copied so callers cannot mutate
+	// the envelope after the fact.
+	Criterion graph.EquivalenceCriterion
+}
+
 // ClassifyDraftChain classifies each derivation step in chain (len(chain)-1 entries).
-// Returns nil for chains shorter than 2. v1 heuristics: content+stage → translation;
-// content only → mediator; stage only → mediator (endorsement); neither → intermediary.
-// Content fields: what_changed, source, target, mediation, observer, tags.
-func ClassifyDraftChain(chain []schema.TraceDraft) []DraftStepClassification {
+// Classifications is nil for chains shorter than 2. v1 heuristics: content+stage →
+// translation; content only → mediator; stage only → mediator (endorsement);
+// neither → intermediary. Content fields: what_changed, source, target, mediation,
+// observer, tags.
+//
+// opts.Criterion is carried on the returned envelope as metadata only — it does not
+// alter step heuristics (design rule C1). Zero-value opts preserves v1 behaviour.
+func ClassifyDraftChain(chain []schema.TraceDraft, opts ClassifyDraftChainOptions) ClassifiedDraftChain {
+	// Defensively copy slice fields from opts.Criterion so that later mutations
+	// of the caller's slices cannot propagate into the returned envelope.
+	cdc := ClassifiedDraftChain{
+		Criterion: graph.EquivalenceCriterion{
+			Name:        opts.Criterion.Name,
+			Declaration: opts.Criterion.Declaration,
+			Preserve:    append([]string(nil), opts.Criterion.Preserve...),
+			Ignore:      append([]string(nil), opts.Criterion.Ignore...),
+		},
+	}
 	if len(chain) < 2 {
-		return nil
+		return cdc // Classifications stays nil
 	}
 
-	result := make([]DraftStepClassification, len(chain)-1)
+	cdc.Classifications = make([]DraftStepClassification, len(chain)-1)
 	for i := 1; i < len(chain); i++ {
 		prev := chain[i-1]
 		curr := chain[i]
-		kind, reason := classifyDraftStep(prev, curr)
-		result[i-1] = DraftStepClassification{
+		kind, reason, subKind := classifyDraftStep(prev, curr)
+		cdc.Classifications[i-1] = DraftStepClassification{
 			StepIndex: i,
 			Kind:      kind,
 			Reason:    reason,
+			SubKind:   subKind,
 		}
 	}
-	return result
+	return cdc
 }
 
 // classifyDraftStep applies the v1 heuristic to a single derivation step.
-func classifyDraftStep(prev, curr schema.TraceDraft) (DraftStepKind, string) {
+// Returns (kind, reason, subKind). subKind is non-empty only for stage-only
+// DraftMediator steps, where it is set to DraftSubKindEndorsement.
+func classifyDraftStep(prev, curr schema.TraceDraft) (DraftStepKind, string, string) {
 	content := draftContentChanged(prev, curr)
 	stage := draftStageChanged(prev, curr)
 
 	switch {
 	case content && stage:
 		return DraftTranslation,
-			"content fields reformulated and extraction_stage advanced — interpretive frame shifted"
+			"content fields reformulated and extraction_stage advanced — interpretive frame shifted",
+			""
 	case content:
 		return DraftMediator,
-			"content fields reformulated — interpretation transformed in derivation"
+			"content fields reformulated — interpretation transformed in derivation",
+			""
 	case stage:
 		return DraftMediator,
-			"extraction_stage advanced without content change — endorsement transformed standing, not content"
+			"extraction_stage advanced without content change — endorsement transformed standing, not content",
+			DraftSubKindEndorsement
 	default:
 		return DraftIntermediary,
-			"no content fields changed — draft relayed without recorded transformation"
+			"no content fields changed — draft relayed without recorded transformation",
+			""
 	}
 }
 
@@ -158,10 +215,10 @@ func draftContentChanged(prev, curr schema.TraceDraft) bool {
 	if prev.WhatChanged != curr.WhatChanged {
 		return true
 	}
-	if !stringSlicesEqual(prev.Source, curr.Source) {
+	if !stringSlicesEqualOrdered(prev.Source, curr.Source) {
 		return true
 	}
-	if !stringSlicesEqual(prev.Target, curr.Target) {
+	if !stringSlicesEqualOrdered(prev.Target, curr.Target) {
 		return true
 	}
 	if prev.Mediation != curr.Mediation {
@@ -170,7 +227,7 @@ func draftContentChanged(prev, curr schema.TraceDraft) bool {
 	if prev.Observer != curr.Observer {
 		return true
 	}
-	if !stringSlicesEqual(prev.Tags, curr.Tags) {
+	if !stringSlicesEqualOrdered(prev.Tags, curr.Tags) {
 		return true
 	}
 	return false
@@ -182,8 +239,10 @@ func draftStageChanged(prev, curr schema.TraceDraft) bool {
 	return curr.ExtractionStage != "" && curr.ExtractionStage != prev.ExtractionStage
 }
 
-// stringSlicesEqual reports element-wise equality; nil and empty are equal.
-func stringSlicesEqual(a, b []string) bool {
+// stringSlicesEqualOrdered reports element-wise (order-sensitive) equality;
+// nil and empty are equal. Use stringSlicesEqualUnordered (extractiongap.go)
+// when element order does not matter.
+func stringSlicesEqualOrdered(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}

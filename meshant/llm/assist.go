@@ -62,10 +62,24 @@ func RunAssistSession(
 
 	now := time.Now().UTC()
 
-	// Empty path is valid — produces an empty system message.
+	// Empty path is valid — produces an empty system message and an empty hash.
 	var systemInstructions string
+	var promptHash string
 	if opts.PromptTemplatePath != "" {
 		systemInstructions, err = LoadPromptTemplate(opts.PromptTemplatePath)
+		if err != nil {
+			rec := SessionRecord{
+				ID:        sessionID,
+				Command:   "assist",
+				Timestamp: now,
+				ErrorNote: err.Error(),
+			}
+			return nil, rec, err
+		}
+		// Hash the template for reproducibility tracking. Error is only possible
+		// if the file is unreadable or oversized — same conditions as LoadPromptTemplate,
+		// so a failure here is a genuine configuration error.
+		promptHash, err = HashPromptTemplate(opts.PromptTemplatePath)
 		if err != nil {
 			rec := SessionRecord{
 				ID:        sessionID,
@@ -83,6 +97,7 @@ func RunAssistSession(
 		Conditions: ExtractionConditions{
 			ModelID:            opts.ModelID,
 			PromptTemplate:     opts.PromptTemplatePath,
+			PromptHash:         promptHash,
 			CriterionRef:       opts.CriterionRef,
 			SystemInstructions: systemInstructions,
 			SourceDocRefs:      []string{opts.SourceDocRef},
@@ -211,19 +226,6 @@ spanLoop:
 	return results, rec, nil
 }
 
-// splitErrNotes splits a semicolon-separated ErrorNote into individual notes.
-func splitErrNotes(s string) []string {
-	if s == "" {
-		return nil
-	}
-	return strings.Split(s, "; ")
-}
-
-// joinErrNotes joins error notes with "; " for storage in ErrorNote.
-func joinErrNotes(notes []string) string {
-	return strings.Join(notes, "; ")
-}
-
 // parseSingleDraft parses one TraceDraft from an LLM response and stamps it
 // with F.1 provenance (D2/D3/D4/F.0). Accepts JSON array, JSON object, or
 // either with leading preamble text.
@@ -268,27 +270,9 @@ func parseSingleDraft(
 	if err := validateIntentionallyBlank(draft.IntentionallyBlank); err != nil { // D7
 		return schema.TraceDraft{}, fmt.Errorf("parseSingleDraft: %w", err)
 	}
-
-	id, err := loader.NewUUID()
-	if err != nil {
-		return schema.TraceDraft{}, fmt.Errorf("parseSingleDraft: generate UUID: %w", err)
+	if err := stampProvenance(&draft, now, modelID, sessionID, sourceDocRef, "weak-draft"); err != nil {
+		return schema.TraceDraft{}, fmt.Errorf("parseSingleDraft: %w", err)
 	}
-	draft.ID = id
-	draft.Timestamp = now
-
-	// Framework-assigned provenance (D2, D4, F.0).
-	draft.ExtractedBy = modelID
-	draft.ExtractionStage = "weak-draft"
-	draft.SessionRef = sessionID
-	draft.SourceDocRef = sourceDocRef
-
-	// Append framework uncertainty note (D3); preserve any LLM-set note.
-	if draft.UncertaintyNote != "" {
-		draft.UncertaintyNote = draft.UncertaintyNote + " " + frameworkUncertaintyNote
-	} else {
-		draft.UncertaintyNote = frameworkUncertaintyNote
-	}
-
 	if err := draft.Validate(); err != nil {
 		return schema.TraceDraft{}, fmt.Errorf("parseSingleDraft: validation: %w", err)
 	}

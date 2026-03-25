@@ -45,19 +45,34 @@ func PromoteSession(rec SessionRecord, observer string) (schema.Trace, error) {
 
 	whatChanged := sessionWhatChanged(rec)
 
+	// Dispatch on command type to resolve Source and Target from the appropriate
+	// conditions struct. Post-#151: critique sessions carry CritiqueConditions
+	// (singular SourceDocRef, no AdapterName). All other commands (extract/assist/
+	// split) and legacy critique sessions use Conditions (multi-doc, backward compat).
 	var source []string
-	if rec.Conditions.ModelID != "" {
-		source = []string{rec.Conditions.ModelID}
-	}
-
-	// Build the Target slice from SourceDocRefs (plural, #139) when available,
-	// falling back to the legacy SourceDocRef field for backward compatibility
-	// with session files written before the multi-doc migration.
 	var target []string
-	if len(rec.Conditions.SourceDocRefs) > 0 {
-		target = nonBlankRefs(rec.Conditions.SourceDocRefs)
-	} else if rec.Conditions.SourceDocRef != "" {
-		target = []string{rec.Conditions.SourceDocRef}
+
+	if rec.Command == "critique" && rec.CritiqueConditions != nil {
+		// New-format critique session: read from CritiqueConditions.
+		if rec.CritiqueConditions.ModelID != "" {
+			source = []string{rec.CritiqueConditions.ModelID}
+		}
+		if rec.CritiqueConditions.SourceDocRef != "" {
+			target = []string{rec.CritiqueConditions.SourceDocRef}
+		}
+	} else {
+		// Extract/assist/split sessions, OR legacy critique (backward compat):
+		// read from Conditions using the multi-doc SourceDocRefs / legacy SourceDocRef path.
+		if rec.Conditions.ModelID != "" {
+			source = []string{rec.Conditions.ModelID}
+		}
+		// Build Target from SourceDocRefs (plural, #139) when available,
+		// falling back to the legacy SourceDocRef field.
+		if len(rec.Conditions.SourceDocRefs) > 0 {
+			target = nonBlankRefs(rec.Conditions.SourceDocRefs)
+		} else if rec.Conditions.SourceDocRef != "" {
+			target = []string{rec.Conditions.SourceDocRef}
+		}
 	}
 
 	t := schema.Trace{
@@ -88,28 +103,41 @@ func PromoteSession(rec SessionRecord, observer string) (schema.Trace, error) {
 // was made rather than simply stating that something happened.
 // Falls back gracefully when Command, SourceDocRefs/SourceDocRef, or ModelID are empty.
 // Multi-doc sessions list all doc refs separated by commas.
+// Post-#151: critique sessions with CritiqueConditions read model and source doc from there.
 func sessionWhatChanged(rec SessionRecord) string {
 	cmd := rec.Command
 	if cmd == "" {
 		cmd = "unknown"
 	}
 
-	model := rec.Conditions.ModelID
-
 	base := "LLM " + cmd + " session"
 
-	// Use SourceDocRefs (plural) when available; fall back to legacy SourceDocRef.
-	if len(rec.Conditions.SourceDocRefs) > 0 {
-		if refs := nonBlankRefs(rec.Conditions.SourceDocRefs); len(refs) > 0 {
-			base += " on " + strings.Join(refs, ", ")
+	if rec.Command == "critique" && rec.CritiqueConditions != nil {
+		// New-format critique session: surface model and source doc from CritiqueConditions.
+		if rec.CritiqueConditions.SourceDocRef != "" {
+			base += " on " + rec.CritiqueConditions.SourceDocRef
 		}
-	} else if rec.Conditions.SourceDocRef != "" {
-		base += " on " + rec.Conditions.SourceDocRef
+		if rec.CritiqueConditions.ModelID != "" {
+			base += " (" + rec.CritiqueConditions.ModelID + ")"
+		}
+	} else {
+		// Extract/assist/split, or legacy critique: read from Conditions.
+		model := rec.Conditions.ModelID
+
+		// Use SourceDocRefs (plural) when available; fall back to legacy SourceDocRef.
+		if len(rec.Conditions.SourceDocRefs) > 0 {
+			if refs := nonBlankRefs(rec.Conditions.SourceDocRefs); len(refs) > 0 {
+				base += " on " + strings.Join(refs, ", ")
+			}
+		} else if rec.Conditions.SourceDocRef != "" {
+			base += " on " + rec.Conditions.SourceDocRef
+		}
+
+		if model != "" {
+			base += " (" + model + ")"
+		}
 	}
 
-	if model != "" {
-		base += " (" + model + ")"
-	}
 	return base
 }
 

@@ -45,12 +45,24 @@ func RunCritique(ctx context.Context, client LLMClient, drafts []schema.TraceDra
 		return nil, rec, err
 	}
 
-	rec.Conditions = ExtractionConditions{
+	// Hash the prompt template for reproducibility tracking.
+	promptHash, err := HashPromptTemplate(opts.PromptTemplatePath)
+	if err != nil {
+		rec.ErrorNote = err.Error()
+		return nil, rec, err
+	}
+
+	// Critique sessions use CritiqueConditions (not Conditions) to record apparatus
+	// configuration. The distinction is analytically significant: critique input is
+	// a TraceDraft array, not a source document; SourceDocRef is singular; no adapter.
+	// rec.Conditions is intentionally left zero for critique sessions.
+	rec.CritiqueConditions = &CritiqueConditions{
 		ModelID:            opts.ModelID,
 		PromptTemplate:     opts.PromptTemplatePath,
+		PromptHash:         promptHash,
 		CriterionRef:       opts.CriterionRef,
 		SystemInstructions: systemInstructions,
-		SourceDocRefs:      []string{opts.SourceDocRef},
+		SourceDocRef:       opts.SourceDocRef,
 		Timestamp:          now,
 	}
 
@@ -105,7 +117,7 @@ func RunCritique(ctx context.Context, client LLMClient, drafts []schema.TraceDra
 	}
 
 	if len(errNotes) > 0 {
-		rec.ErrorNote = strings.Join(errNotes, "; ")
+		rec.ErrorNote = joinErrNotes(errNotes)
 	}
 
 	rec.DraftCount = len(results)
@@ -141,68 +153,48 @@ func buildCritiquePrompt(orig schema.TraceDraft) string {
 // parseCritiqueDraft parses one TraceDraft from LLM output and stamps provenance
 // (D2/D3/D4/D6). DerivedFrom is zeroed (injection guard); IntentionallyBlank is
 // validated (D7). ExtractionStage is left empty — RunCritique sets it after the call.
-// Parallel to parseSingleDraft; deferred refactor in docs/decisions/llm-boundary-v2.md.
+// Uses the same boolean-sentinel pattern as parseSingleDraft (no goto).
 func parseCritiqueDraft(raw, modelID, sessionID, sourceDocRef string, now time.Time) (schema.TraceDraft, error) {
 	s := strings.TrimSpace(raw)
 
 	var draft schema.TraceDraft
-	var parseErr error
+	parsed := false
 
 	if strings.HasPrefix(s, "[") {
 		dec := json.NewDecoder(strings.NewReader(s))
 		var arr []schema.TraceDraft
 		if err := dec.Decode(&arr); err == nil && len(arr) > 0 {
 			draft = arr[0]
-			goto stamp
+			parsed = true
 		}
 	}
 
-	if idx := strings.Index(s, "{"); idx >= 0 {
+	if !parsed {
+		idx := strings.Index(s, "{")
+		if idx < 0 {
+			return schema.TraceDraft{}, &ErrMalformedOutput{
+				RawResponse: raw,
+				ParseErr:    fmt.Errorf("no JSON object or array found"),
+			}
+		}
 		dec := json.NewDecoder(strings.NewReader(s[idx:]))
 		if err := dec.Decode(&draft); err != nil {
-			parseErr = err
-		} else {
-			goto stamp
+			return schema.TraceDraft{}, &ErrMalformedOutput{RawResponse: raw, ParseErr: err}
 		}
 	}
 
-	if parseErr != nil {
-		return schema.TraceDraft{}, &ErrMalformedOutput{RawResponse: raw, ParseErr: parseErr}
-	}
-	return schema.TraceDraft{}, &ErrMalformedOutput{
-		RawResponse: raw,
-		ParseErr:    fmt.Errorf("no JSON object or array found"),
-	}
-
-stamp:
 	draft.DerivedFrom = "" // injection guard; RunCritique sets this after the call
 
 	if err := validateIntentionallyBlank(draft.IntentionallyBlank); err != nil { // D7
 		return schema.TraceDraft{}, err
 	}
 
-	id, err := loader.NewUUID()
-	if err != nil {
-		return schema.TraceDraft{}, fmt.Errorf("parseCritiqueDraft: generate UUID: %w", err)
-	}
-	draft.ID = id
-	draft.Timestamp = now
-
-	// Framework-assigned provenance (D2, D6). ExtractionStage left empty —
-	// RunCritique owns that value and sets it after the call (avoids two-step override).
-	// SourceDocRef is always overwritten unconditionally: an LLM-supplied value
-	// could carry a fabricated or cross-document ref, which is an injection risk
-	// in multi-doc sessions where differing refs are meaningful (see #139).
-	draft.ExtractedBy = modelID
-	draft.ExtractionStage = ""
-	draft.SessionRef = sessionID
-	draft.SourceDocRef = sourceDocRef
-
-	// Append framework uncertainty note (D3); preserve any LLM-set note.
-	if draft.UncertaintyNote != "" {
-		draft.UncertaintyNote = draft.UncertaintyNote + " " + frameworkUncertaintyNote
-	} else {
-		draft.UncertaintyNote = frameworkUncertaintyNote
+	// ExtractionStage passed as "" — RunCritique owns that value and sets it after
+	// the call (avoids two-step override). SourceDocRef is always overwritten:
+	// an LLM-supplied value could carry a fabricated or cross-document ref, which
+	// is an injection risk in multi-doc sessions (see #139).
+	if err := stampProvenance(&draft, now, modelID, sessionID, sourceDocRef, ""); err != nil {
+		return schema.TraceDraft{}, fmt.Errorf("parseCritiqueDraft: %w", err)
 	}
 
 	return draft, nil

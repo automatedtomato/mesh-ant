@@ -3,6 +3,7 @@ package loader_test
 import (
 	"testing"
 
+	"github.com/automatedtomato/mesh-ant/meshant/graph"
 	"github.com/automatedtomato/mesh-ant/meshant/loader"
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 )
@@ -114,7 +115,7 @@ func TestClassifyDraftChain_Intermediary(t *testing.T) {
 		DerivedFrom:     parent.ID,
 	}
 
-	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child}, loader.ClassifyDraftChainOptions{}).Classifications
 	if len(classifications) != 1 {
 		t.Fatalf("classification count: got %d; want 1", len(classifications))
 	}
@@ -139,7 +140,7 @@ func TestClassifyDraftChain_Mediator(t *testing.T) {
 		DerivedFrom:     parent.ID,
 	}
 
-	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child}, loader.ClassifyDraftChainOptions{}).Classifications
 	if len(classifications) != 1 {
 		t.Fatalf("classification count: got %d; want 1", len(classifications))
 	}
@@ -164,7 +165,7 @@ func TestClassifyDraftChain_Translation(t *testing.T) {
 		DerivedFrom:     parent.ID,
 	}
 
-	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child}, loader.ClassifyDraftChainOptions{}).Classifications
 	if len(classifications) != 1 {
 		t.Fatalf("classification count: got %d; want 1", len(classifications))
 	}
@@ -175,7 +176,7 @@ func TestClassifyDraftChain_Translation(t *testing.T) {
 
 func TestClassifyDraftChain_NilForSingleDraft(t *testing.T) {
 	d := schema.TraceDraft{ID: "a0000000-0000-4000-8000-000000000001", SourceSpan: "span"}
-	result := loader.ClassifyDraftChain([]schema.TraceDraft{d})
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{d}, loader.ClassifyDraftChainOptions{}).Classifications
 	if result != nil {
 		t.Errorf("single draft: want nil, got %v", result)
 	}
@@ -198,7 +199,7 @@ func TestClassifyDraftChain_MultiStep(t *testing.T) {
 		DerivedFrom: b.ID,
 	}
 
-	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{a, b, c})
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{a, b, c}, loader.ClassifyDraftChainOptions{}).Classifications
 	if len(classifications) != 2 {
 		t.Fatalf("multi-step: got %d classifications; want 2", len(classifications))
 	}
@@ -212,7 +213,7 @@ func TestClassifyDraftChain_MultiStep(t *testing.T) {
 
 func TestClassifyDraftChain_StepIndexIsCorrect(t *testing.T) {
 	drafts := makeDraftChain(3)
-	classifications := loader.ClassifyDraftChain(drafts)
+	classifications := loader.ClassifyDraftChain(drafts, loader.ClassifyDraftChainOptions{}).Classifications
 	for i, c := range classifications {
 		want := i + 1
 		if c.StepIndex != want {
@@ -223,7 +224,7 @@ func TestClassifyDraftChain_StepIndexIsCorrect(t *testing.T) {
 
 func TestClassifyDraftChain_ReasonNonEmpty(t *testing.T) {
 	drafts := makeDraftChain(2)
-	classifications := loader.ClassifyDraftChain(drafts)
+	classifications := loader.ClassifyDraftChain(drafts, loader.ClassifyDraftChainOptions{}).Classifications
 	if len(classifications) == 0 {
 		t.Fatal("no classifications returned")
 	}
@@ -252,7 +253,7 @@ func TestClassifyDraftChain_MediatorStageOnly(t *testing.T) {
 		DerivedFrom:     parent.ID,
 	}
 
-	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child}, loader.ClassifyDraftChainOptions{}).Classifications
 	if len(classifications) != 1 {
 		t.Fatalf("classification count: got %d; want 1", len(classifications))
 	}
@@ -292,7 +293,7 @@ func TestClassifyDraftChain_MediatorStageOnly_NonZeroContentUnchanged(t *testing
 		DerivedFrom:     parent.ID,
 	}
 
-	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child}, loader.ClassifyDraftChainOptions{}).Classifications
 	if len(classifications) != 1 {
 		t.Fatalf("classification count: got %d; want 1", len(classifications))
 	}
@@ -319,7 +320,7 @@ func TestClassifyDraftChain_EmptyCurrStageNotCountedAsChange(t *testing.T) {
 		DerivedFrom:     parent.ID,
 	}
 
-	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child}, loader.ClassifyDraftChainOptions{}).Classifications
 	if len(classifications) != 1 {
 		t.Fatalf("classification count: got %d; want 1", len(classifications))
 	}
@@ -346,7 +347,7 @@ func TestClassifyDraftChain_SameNonEmptyStageBothSides(t *testing.T) {
 		DerivedFrom:     parent.ID,
 	}
 
-	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child})
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child}, loader.ClassifyDraftChainOptions{}).Classifications
 	if len(classifications) != 1 {
 		t.Fatalf("classification count: got %d; want 1", len(classifications))
 	}
@@ -373,7 +374,7 @@ func TestClassifyDraftChain_MultiStepWithEndorsement(t *testing.T) {
 		DerivedFrom: b.ID,
 	}
 
-	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{a, b, c})
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{a, b, c}, loader.ClassifyDraftChainOptions{}).Classifications
 	if len(classifications) != 2 {
 		t.Fatalf("multi-step: got %d classifications; want 2", len(classifications))
 	}
@@ -382,6 +383,426 @@ func TestClassifyDraftChain_MultiStepWithEndorsement(t *testing.T) {
 	}
 	if classifications[1].Kind != loader.DraftMediator {
 		t.Errorf("step 1 (stage-only endorsement): got %q; want %q", classifications[1].Kind, loader.DraftMediator)
+	}
+}
+
+// --- SubKind field tests (RED phase for #96) ---
+
+// TestClassifyDraftChain_EndorsementSubKind_StageOnly verifies that a stage-only
+// derivation step (no content change) is classified as DraftMediator with
+// SubKind == DraftSubKindEndorsement ("endorsement"). The stage advance
+// transforms the draft's epistemic standing without reformulating content.
+func TestClassifyDraftChain_EndorsementSubKind_StageOnly(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "weak-draft",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing", // content unchanged
+		ExtractionStage: "reviewed",         // stage advanced — endorsement
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child}, loader.ClassifyDraftChainOptions{}).Classifications
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftMediator)
+	}
+	if classifications[0].SubKind != loader.DraftSubKindEndorsement {
+		t.Errorf("sub_kind: got %q; want %q", classifications[0].SubKind, loader.DraftSubKindEndorsement)
+	}
+}
+
+// TestClassifyDraftChain_ContentMediatorHasEmptySubKind verifies that a content-change
+// mediator step (no stage change) carries an empty SubKind. SubKind is only set
+// for the stage-only endorsement path.
+func TestClassifyDraftChain_ContentMediatorHasEmptySubKind(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "weak-draft",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "reformulated framing", // content changed
+		ExtractionStage: "weak-draft",           // stage unchanged
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child}, loader.ClassifyDraftChainOptions{}).Classifications
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftMediator)
+	}
+	if classifications[0].SubKind != "" {
+		t.Errorf("sub_kind: got %q; want empty string", classifications[0].SubKind)
+	}
+}
+
+// TestClassifyDraftChain_TranslationHasEmptySubKind verifies that a translation step
+// (content change + stage advance) has Kind == DraftTranslation and SubKind == "".
+// SubKind is not used for the translation path.
+func TestClassifyDraftChain_TranslationHasEmptySubKind(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "weak-draft",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "reformulated framing", // content changed
+		ExtractionStage: "reviewed",             // stage advanced
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child}, loader.ClassifyDraftChainOptions{}).Classifications
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftTranslation {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftTranslation)
+	}
+	if classifications[0].SubKind != "" {
+		t.Errorf("sub_kind: got %q; want empty string", classifications[0].SubKind)
+	}
+}
+
+// TestClassifyDraftChain_IntermediaryHasEmptySubKind verifies that an intermediary
+// step (no content change, no stage change) carries an empty SubKind.
+func TestClassifyDraftChain_IntermediaryHasEmptySubKind(t *testing.T) {
+	parent := schema.TraceDraft{
+		ID:              "a0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "weak-draft",
+	}
+	child := schema.TraceDraft{
+		ID:              "b0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing", // unchanged
+		ExtractionStage: "weak-draft",       // unchanged
+		UncertaintyNote: "provenance note",  // provenance-only change
+		DerivedFrom:     parent.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{parent, child}, loader.ClassifyDraftChainOptions{}).Classifications
+	if len(classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(classifications))
+	}
+	if classifications[0].Kind != loader.DraftIntermediary {
+		t.Errorf("kind: got %q; want %q", classifications[0].Kind, loader.DraftIntermediary)
+	}
+	if classifications[0].SubKind != "" {
+		t.Errorf("sub_kind: got %q; want empty string", classifications[0].SubKind)
+	}
+}
+
+// TestClassifyDraftChain_MultiStepSubKinds verifies per-step SubKind values across a
+// three-draft chain that includes both mediator types:
+//
+//	A → B: content-change mediator (SubKind empty)
+//	B → C: stage-only endorsement mediator (SubKind == "endorsement")
+func TestClassifyDraftChain_MultiStepSubKinds(t *testing.T) {
+	a := schema.TraceDraft{
+		ID: "a0000000-0000-4000-8000-000000000001", SourceSpan: "span",
+		WhatChanged: "original", ExtractionStage: "weak-draft",
+	}
+	b := schema.TraceDraft{
+		ID: "b0000000-0000-4000-8000-000000000002", SourceSpan: "span",
+		WhatChanged: "reformulated", ExtractionStage: "weak-draft", // content changed, stage same
+		DerivedFrom: a.ID,
+	}
+	c := schema.TraceDraft{
+		ID: "c0000000-0000-4000-8000-000000000003", SourceSpan: "span",
+		WhatChanged: "reformulated", ExtractionStage: "reviewed", // stage advanced, content same
+		DerivedFrom: b.ID,
+	}
+
+	classifications := loader.ClassifyDraftChain([]schema.TraceDraft{a, b, c}, loader.ClassifyDraftChainOptions{}).Classifications
+	if len(classifications) != 2 {
+		t.Fatalf("multi-step: got %d classifications; want 2", len(classifications))
+	}
+
+	// Step A→B: content mediator — SubKind must be empty.
+	if classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("step 0 kind: got %q; want %q", classifications[0].Kind, loader.DraftMediator)
+	}
+	if classifications[0].SubKind != "" {
+		t.Errorf("step 0 sub_kind: got %q; want empty string", classifications[0].SubKind)
+	}
+
+	// Step B→C: endorsement mediator — SubKind must be DraftSubKindEndorsement.
+	if classifications[1].Kind != loader.DraftMediator {
+		t.Errorf("step 1 kind: got %q; want %q", classifications[1].Kind, loader.DraftMediator)
+	}
+	if classifications[1].SubKind != loader.DraftSubKindEndorsement {
+		t.Errorf("step 1 sub_kind: got %q; want %q", classifications[1].SubKind, loader.DraftSubKindEndorsement)
+	}
+}
+
+// --- ClassifyDraftChainOptions / ClassifiedDraftChain envelope tests (RED phase for #95) ---
+
+// makeContentChain returns a two-draft chain where child reformulates WhatChanged
+// but keeps the same ExtractionStage. Used by envelope tests to confirm that
+// criterion carriage does not disturb content-based classification.
+func makeContentChain() []schema.TraceDraft {
+	parent := schema.TraceDraft{
+		ID:              "e0000000-0000-4000-8000-000000000001",
+		SourceSpan:      "span",
+		WhatChanged:     "original framing",
+		ExtractionStage: "weak-draft",
+	}
+	child := schema.TraceDraft{
+		ID:              "e0000000-0000-4000-8000-000000000002",
+		SourceSpan:      "span",
+		WhatChanged:     "reformulated framing", // content changed
+		ExtractionStage: "weak-draft",           // stage unchanged
+		DerivedFrom:     parent.ID,
+	}
+	return []schema.TraceDraft{parent, child}
+}
+
+// TestClassifyDraftChain_ZeroOptsPreservesClassifications verifies that using
+// zero-value ClassifyDraftChainOptions returns Classifications with the same
+// Kind and Reason as the old single-argument behaviour (design rule C1:
+// criterion does NOT alter step heuristics).
+func TestClassifyDraftChain_ZeroOptsPreservesClassifications(t *testing.T) {
+	chain := makeContentChain()
+	result := loader.ClassifyDraftChain(chain, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 {
+		t.Fatalf("classification count: got %d; want 1", len(result.Classifications))
+	}
+	if result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("kind: got %q; want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+	if result.Classifications[0].Reason == "" {
+		t.Error("Reason must be non-empty")
+	}
+}
+
+// TestClassifyDraftChain_CriterionCarriedOnEnvelope verifies that a non-zero
+// ClassifyDraftChainOptions.Criterion is stored verbatim on result.Criterion.
+// All four fields (Name, Declaration, Preserve, Ignore) must appear on the envelope.
+func TestClassifyDraftChain_CriterionCarriedOnEnvelope(t *testing.T) {
+	crit := graph.EquivalenceCriterion{
+		Name:        "operational-meaning",
+		Declaration: "traces share meaning when they record the same delegation act",
+		Preserve:    []string{"mediation", "observer"},
+		Ignore:      []string{"timestamp"},
+	}
+	chain := makeContentChain()
+	result := loader.ClassifyDraftChain(chain, loader.ClassifyDraftChainOptions{Criterion: crit})
+
+	if result.Criterion.Name != crit.Name {
+		t.Errorf("Criterion.Name: got %q; want %q", result.Criterion.Name, crit.Name)
+	}
+	if result.Criterion.Declaration != crit.Declaration {
+		t.Errorf("Criterion.Declaration: got %q; want %q", result.Criterion.Declaration, crit.Declaration)
+	}
+	if len(result.Criterion.Preserve) != len(crit.Preserve) {
+		t.Errorf("Criterion.Preserve length: got %d; want %d", len(result.Criterion.Preserve), len(crit.Preserve))
+	}
+	if len(result.Criterion.Ignore) != len(crit.Ignore) {
+		t.Errorf("Criterion.Ignore length: got %d; want %d", len(result.Criterion.Ignore), len(crit.Ignore))
+	}
+}
+
+// TestClassifyDraftChain_ZeroOpts_CriterionIsZero verifies that when
+// ClassifyDraftChainOptions is zero-valued, result.Criterion is also zero-valued.
+// Callers that do not declare a criterion receive an empty envelope field —
+// no surprise metadata is injected.
+func TestClassifyDraftChain_ZeroOpts_CriterionIsZero(t *testing.T) {
+	chain := makeContentChain()
+	result := loader.ClassifyDraftChain(chain, loader.ClassifyDraftChainOptions{})
+	if !result.Criterion.IsZero() {
+		t.Errorf("expected zero-value Criterion; got Name=%q Declaration=%q",
+			result.Criterion.Name, result.Criterion.Declaration)
+	}
+}
+
+// TestClassifyDraftChain_CriterionDoesNotAlterStepKind verifies design rule C1:
+// the same chain classified under two different criteria returns identical
+// Classifications (Kind, Reason, SubKind, StepIndex). Criterion is envelope
+// metadata only and must not influence heuristic output.
+func TestClassifyDraftChain_CriterionDoesNotAlterStepKind(t *testing.T) {
+	chain := makeContentChain()
+
+	critA := graph.EquivalenceCriterion{
+		Name:        "operational-meaning",
+		Declaration: "same delegation act",
+		Preserve:    []string{"mediation"},
+	}
+	critB := graph.EquivalenceCriterion{
+		Name:        "textual-proximity",
+		Declaration: "same surface-level text",
+		Ignore:      []string{"observer"},
+	}
+
+	resultA := loader.ClassifyDraftChain(chain, loader.ClassifyDraftChainOptions{Criterion: critA})
+	resultB := loader.ClassifyDraftChain(chain, loader.ClassifyDraftChainOptions{Criterion: critB})
+
+	if len(resultA.Classifications) != len(resultB.Classifications) {
+		t.Fatalf("classification count differs: A=%d B=%d", len(resultA.Classifications), len(resultB.Classifications))
+	}
+	for i := range resultA.Classifications {
+		a := resultA.Classifications[i]
+		b := resultB.Classifications[i]
+		if a.Kind != b.Kind {
+			t.Errorf("step %d Kind: A=%q B=%q — criterion must not alter step heuristics (C1)", i, a.Kind, b.Kind)
+		}
+		if a.Reason != b.Reason {
+			t.Errorf("step %d Reason: A=%q B=%q — criterion must not alter step heuristics (C1)", i, a.Reason, b.Reason)
+		}
+		if a.SubKind != b.SubKind {
+			t.Errorf("step %d SubKind: A=%q B=%q — criterion must not alter step heuristics (C1)", i, a.SubKind, b.SubKind)
+		}
+	}
+}
+
+// TestClassifyDraftChain_TwoCriteriaSameClassification verifies that two calls
+// with different criteria produce identical Classifications but different
+// Criterion fields on the envelope. This is the positive complement to
+// TestClassifyDraftChain_CriterionDoesNotAlterStepKind.
+func TestClassifyDraftChain_TwoCriteriaSameClassification(t *testing.T) {
+	chain := makeContentChain()
+
+	critAlpha := graph.EquivalenceCriterion{
+		Name:        "alpha-criterion",
+		Declaration: "declaration alpha",
+	}
+	critBeta := graph.EquivalenceCriterion{
+		Name:        "beta-criterion",
+		Declaration: "declaration beta",
+	}
+
+	resultAlpha := loader.ClassifyDraftChain(chain, loader.ClassifyDraftChainOptions{Criterion: critAlpha})
+	resultBeta := loader.ClassifyDraftChain(chain, loader.ClassifyDraftChainOptions{Criterion: critBeta})
+
+	// Classifications must be identical.
+	if len(resultAlpha.Classifications) != len(resultBeta.Classifications) {
+		t.Fatalf("classification count: alpha=%d beta=%d", len(resultAlpha.Classifications), len(resultBeta.Classifications))
+	}
+	for i := range resultAlpha.Classifications {
+		a := resultAlpha.Classifications[i]
+		b := resultBeta.Classifications[i]
+		if a.Kind != b.Kind || a.Reason != b.Reason || a.SubKind != b.SubKind {
+			t.Errorf("step %d: classifications differ despite only criterion changing", i)
+		}
+	}
+
+	// Criterion envelopes must differ.
+	if resultAlpha.Criterion.Name == resultBeta.Criterion.Name {
+		t.Errorf("Criterion.Name should differ: alpha=%q beta=%q", resultAlpha.Criterion.Name, resultBeta.Criterion.Name)
+	}
+	if resultAlpha.Criterion.Declaration == resultBeta.Criterion.Declaration {
+		t.Errorf("Criterion.Declaration should differ")
+	}
+}
+
+// TestClassifyDraftChain_CriterionSlicesDefensivelyCopied verifies that mutating
+// opts.Criterion.Preserve or opts.Criterion.Ignore slices after the call does
+// NOT affect result.Criterion. The implementation must copy slices defensively.
+func TestClassifyDraftChain_CriterionSlicesDefensivelyCopied(t *testing.T) {
+	preserve := []string{"mediation", "observer"}
+	ignore := []string{"timestamp"}
+	crit := graph.EquivalenceCriterion{
+		Name:     "mutable-criterion",
+		Preserve: preserve,
+		Ignore:   ignore,
+	}
+	chain := makeContentChain()
+	result := loader.ClassifyDraftChain(chain, loader.ClassifyDraftChainOptions{Criterion: crit})
+
+	// Mutate the original slices after the call.
+	preserve[0] = "MUTATED"
+	ignore[0] = "MUTATED"
+
+	// result.Criterion slices must be unaffected.
+	if len(result.Criterion.Preserve) > 0 && result.Criterion.Preserve[0] == "MUTATED" {
+		t.Error("result.Criterion.Preserve was not defensively copied — mutation propagated")
+	}
+	if len(result.Criterion.Ignore) > 0 && result.Criterion.Ignore[0] == "MUTATED" {
+		t.Error("result.Criterion.Ignore was not defensively copied — mutation propagated")
+	}
+}
+
+// TestClassifyDraftChain_NilForSingleDraft_WithOpts verifies that a single-draft
+// chain with a non-zero criterion returns Classifications == nil and a populated
+// Criterion envelope. The criterion must be carried even when no classification
+// steps are possible.
+func TestClassifyDraftChain_NilForSingleDraft_WithOpts(t *testing.T) {
+	crit := graph.EquivalenceCriterion{
+		Name:        "provenance-alignment",
+		Declaration: "single-draft baseline",
+	}
+	d := schema.TraceDraft{
+		ID:         "a0000000-0000-4000-8000-000000000001",
+		SourceSpan: "span",
+	}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{d}, loader.ClassifyDraftChainOptions{Criterion: crit})
+
+	if result.Classifications != nil {
+		t.Errorf("single draft: Classifications must be nil; got %v", result.Classifications)
+	}
+	if result.Criterion.Name != crit.Name {
+		t.Errorf("Criterion.Name: got %q; want %q", result.Criterion.Name, crit.Name)
+	}
+	if result.Criterion.Declaration != crit.Declaration {
+		t.Errorf("Criterion.Declaration: got %q; want %q", result.Criterion.Declaration, crit.Declaration)
+	}
+}
+
+// TestClassifyDraftChain_Classifications_MatchOldSliceReturn verifies that
+// result.Classifications returns the same elements as the old slice return
+// for a known multi-step chain: A→B (intermediary), B→C (translation).
+func TestClassifyDraftChain_Classifications_MatchOldSliceReturn(t *testing.T) {
+	a := schema.TraceDraft{
+		ID: "a0000000-0000-4000-8000-000000000001", SourceSpan: "span",
+		WhatChanged: "original", ExtractionStage: "weak-draft",
+	}
+	b := schema.TraceDraft{
+		ID: "b0000000-0000-4000-8000-000000000002", SourceSpan: "span",
+		WhatChanged: "original", ExtractionStage: "weak-draft",
+		UncertaintyNote: "note added", DerivedFrom: a.ID,
+	}
+	c := schema.TraceDraft{
+		ID: "c0000000-0000-4000-8000-000000000003", SourceSpan: "span",
+		WhatChanged: "reformulated", ExtractionStage: "reviewed", // content + stage
+		DerivedFrom: b.ID,
+	}
+	chain := []schema.TraceDraft{a, b, c}
+
+	result := loader.ClassifyDraftChain(chain, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 2 {
+		t.Fatalf("expected 2 classifications; got %d", len(result.Classifications))
+	}
+
+	// A→B: no content or stage change — intermediary.
+	if result.Classifications[0].Kind != loader.DraftIntermediary {
+		t.Errorf("step 0 kind: got %q; want %q", result.Classifications[0].Kind, loader.DraftIntermediary)
+	}
+	if result.Classifications[0].StepIndex != 1 {
+		t.Errorf("step 0 StepIndex: got %d; want 1", result.Classifications[0].StepIndex)
+	}
+
+	// B→C: content changed + stage advanced — translation.
+	if result.Classifications[1].Kind != loader.DraftTranslation {
+		t.Errorf("step 1 kind: got %q; want %q", result.Classifications[1].Kind, loader.DraftTranslation)
+	}
+	if result.Classifications[1].StepIndex != 2 {
+		t.Errorf("step 1 StepIndex: got %d; want 2", result.Classifications[1].StepIndex)
 	}
 }
 
@@ -419,5 +840,64 @@ func TestFollowDraftChain_Fork(t *testing.T) {
 	// The followed branch must be one of the two children (childA by first-match).
 	if chain[1].ID != childA.ID && chain[1].ID != childB.ID {
 		t.Errorf("chain[1] = %q; want one of childA or childB", chain[1].ID)
+	}
+}
+
+// --- draftContentChanged field-axis tests ---
+// These tests ensure each individual content field is checked by
+// draftContentChanged. A mutation removing any one comparison would be caught.
+
+func TestClassifyDraftChain_ContentChange_SourceDiffers(t *testing.T) {
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Source: []string{"a"}}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Source: []string{"b"}}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Source change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+}
+
+func TestClassifyDraftChain_ContentChange_TargetDiffers(t *testing.T) {
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Target: []string{"x"}}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Target: []string{"y"}}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Target change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+}
+
+func TestClassifyDraftChain_ContentChange_MediationDiffers(t *testing.T) {
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Mediation: "M1"}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Mediation: "M2"}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Mediation change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+}
+
+func TestClassifyDraftChain_ContentChange_ObserverDiffers(t *testing.T) {
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Observer: "op1"}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Observer: "op2"}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Observer change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+}
+
+func TestClassifyDraftChain_ContentChange_TagsDiffers(t *testing.T) {
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Tags: []string{"t1"}}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Tags: []string{"t2"}}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Tags change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
+	}
+}
+
+func TestClassifyDraftChain_ContentChange_SourceLenDiffers(t *testing.T) {
+	// Exercises the len-mismatch branch in stringSlicesEqualOrdered.
+	prev := schema.TraceDraft{ID: "p1", DerivedFrom: "", ExtractionStage: "weak-draft", Source: []string{"a", "b"}}
+	curr := schema.TraceDraft{ID: "c1", DerivedFrom: "p1", ExtractionStage: "weak-draft", Source: []string{"a"}}
+	result := loader.ClassifyDraftChain([]schema.TraceDraft{prev, curr}, loader.ClassifyDraftChainOptions{})
+	if len(result.Classifications) != 1 || result.Classifications[0].Kind != loader.DraftMediator {
+		t.Errorf("Source len change: got Kind %q, want %q", result.Classifications[0].Kind, loader.DraftMediator)
 	}
 }

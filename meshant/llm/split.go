@@ -54,9 +54,17 @@ func RunSplit(ctx context.Context, client LLMClient, opts SplitOptions) ([]strin
 		return nil, rec, err
 	}
 
+	// Hash the prompt template for reproducibility tracking.
+	promptHash, err := HashPromptTemplate(opts.PromptTemplatePath)
+	if err != nil {
+		rec.ErrorNote = err.Error()
+		return nil, rec, err
+	}
+
 	rec.Conditions = ExtractionConditions{
 		ModelID:            opts.ModelID,
 		PromptTemplate:     opts.PromptTemplatePath,
+		PromptHash:         promptHash,
 		SystemInstructions: systemInstructions,
 		SourceDocRefs:      []string{opts.SourceDocRef},
 		Timestamp:          now,

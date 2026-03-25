@@ -91,9 +91,12 @@ func readSessionFile(path string) (llm.SessionRecord, error) {
 	defer f.Close()
 
 	var buf bytes.Buffer
-	limited := io.LimitReader(f, maxSessionBytes)
+	limited := io.LimitReader(f, maxSessionBytes+1) // +1 to detect oversized files
 	if _, err := buf.ReadFrom(limited); err != nil {
 		return llm.SessionRecord{}, fmt.Errorf("read session file %q: %w", path, err)
+	}
+	if buf.Len() > int(maxSessionBytes) {
+		return llm.SessionRecord{}, fmt.Errorf("session file %q exceeds %d bytes", path, maxSessionBytes)
 	}
 
 	// SessionRecord is framework-written and will gain fields as the LLM pipeline

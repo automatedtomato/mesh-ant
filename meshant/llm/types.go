@@ -24,8 +24,12 @@ import (
 // compatibility with existing session files — both fields are read; new
 // session files write only SourceDocRefs.
 type ExtractionConditions struct {
-	ModelID            string    `json:"model_id"`
-	PromptTemplate     string    `json:"prompt_template"`
+	ModelID        string `json:"model_id"`
+	PromptTemplate string `json:"prompt_template"`
+	// PromptHash is the SHA-256 hash (first 16 hex chars) of the prompt template
+	// file contents at the time of extraction. Empty when PromptTemplate is empty.
+	// Detects content change when the same template path is reused across sessions.
+	PromptHash         string    `json:"prompt_hash,omitempty"`
 	CriterionRef       string    `json:"criterion_ref,omitempty"`
 	SystemInstructions string    `json:"system_instructions"`
 	// SourceDocRefs holds the reference strings for all source documents
@@ -41,6 +45,33 @@ type ExtractionConditions struct {
 	// act of format conversion so it is visible in the session provenance.
 	AdapterName string    `json:"adapter_name,omitempty"`
 	Timestamp   time.Time `json:"timestamp"`
+}
+
+// CritiqueConditions records the apparatus configuration for one LLM critique
+// session. It is stored in SessionRecord.CritiqueConditions and written to disk.
+//
+// Critique sessions differ from extract/assist sessions analytically:
+//
+//   - Input is a TraceDraft JSON array, not a source document.
+//   - SourceDocRef (singular, not a slice) carries the reference of the original
+//     source document that the critiqued drafts were extracted from.
+//   - No AdapterName field: no format conversion precedes critique.
+//
+// The API key is intentionally absent.
+type CritiqueConditions struct {
+	ModelID        string `json:"model_id"`
+	PromptTemplate string `json:"prompt_template"`
+	// PromptHash is the SHA-256 hash (first 16 hex chars) of the prompt template
+	// file contents at the time of critique. Empty when PromptTemplate is empty.
+	// Detects content change when the same template path is reused across sessions.
+	PromptHash         string    `json:"prompt_hash,omitempty"`
+	CriterionRef       string    `json:"criterion_ref,omitempty"`
+	SystemInstructions string    `json:"system_instructions"`
+	// SourceDocRef carries the reference of the original source document that
+	// the critiqued drafts were extracted from. Singular (not a slice) because
+	// critique sessions always operate on drafts from a single source document.
+	SourceDocRef string    `json:"source_doc_ref,omitempty"`
+	Timestamp    time.Time `json:"timestamp"`
 }
 
 // DraftDisposition records the reviewer's decision about a single draft within a session.
@@ -75,6 +106,11 @@ type SessionRecord struct {
 	ID      string               `json:"id"`
 	Command string               `json:"command"` // "extract", "assist", "critique", "split"
 	Conditions ExtractionConditions `json:"conditions"`
+	// CritiqueConditions records the apparatus configuration for critique sessions.
+	// Present only when Command == "critique"; nil for all other commands.
+	// Old session files written before this bifurcation (#151) will have Conditions
+	// populated and CritiqueConditions nil; PromoteSession handles both.
+	CritiqueConditions *CritiqueConditions `json:"critique_conditions,omitempty"`
 	// DraftIDs holds the UUIDs of TraceDraft records produced in this session.
 	// Nil (serialized as null) is intentional for "split" sessions — spans are
 	// not TraceDraft records. Use DraftCount to determine span count for split.
