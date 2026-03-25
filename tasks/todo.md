@@ -143,4 +143,5 @@ Deferred items (#95, #96, #150, #151) remain open for a future phase.
 |---------|-----------|
 | v4.0.0 | `meshant mcp` — analytical commands as MCP tools; observer-position enforced at schema level |
 | v4.x | `meshant explore` — interactive analysis session; LLM suggests, analyst cuts |
+| v4.x | Web UI time series controls — time window picker/slider; backend already supports `?from`/`?to` but UI has no controls |
 | v5.0.0 | Actors act — emerged actors generate new traces, constrained by relational history |
