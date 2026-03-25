@@ -1,8 +1,9 @@
 // Package serve implements the meshant HTTP server.
 //
 // Every endpoint enforces the ANT constraint that no graph is returned without
-// naming its observer position. The Envelope type makes the cut explicit in
-// every response; the server returns 400 when the required observer is absent.
+// naming its observer position. graph.CutMeta and graph.Envelope make the cut
+// explicit in every response; the server returns 400 when the required observer
+// is absent.
 //
 // The server holds a TraceStore and queries it per request (no caching). This
 // is consistent with the loadTraces design decision (D1 in store-cli-v1.md):
@@ -20,37 +21,6 @@ import (
 
 	"github.com/automatedtomato/mesh-ant/meshant/graph"
 )
-
-// CutMeta carries the observer-position metadata that accompanies every response.
-// Every graph is a positioned reading; this struct makes that position undeniable.
-type CutMeta struct {
-	// Observer is the position from which this cut was made.
-	Observer string `json:"observer"`
-
-	// From is the RFC3339 lower bound of the time window, or null when unbounded.
-	From *string `json:"from"`
-
-	// To is the RFC3339 upper bound of the time window, or null when unbounded.
-	To *string `json:"to"`
-
-	// Tags lists the tag filter used, or null when no tag filter was applied.
-	Tags []string `json:"tags"`
-
-	// TraceCount is the number of traces included in the cut.
-	TraceCount int `json:"trace_count"`
-
-	// ShadowCount is the number of shadow elements (for articulation-based cuts)
-	// or the approximate count of non-observer traces (for /traces).
-	// See ANT tension T2 in serve-v1.md for the /traces approximation.
-	ShadowCount int `json:"shadow_count"`
-}
-
-// Envelope wraps every response with cut metadata.
-// The server never returns data without naming its cut.
-type Envelope struct {
-	Cut  CutMeta     `json:"cut"`
-	Data interface{} `json:"data"`
-}
 
 // ErrorBody is the JSON shape for error responses.
 type ErrorBody struct {
@@ -70,35 +40,6 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 // writeError writes a JSON error response with the given status and message.
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, ErrorBody{Error: msg})
-}
-
-// cutMetaFromGraph builds a CutMeta from an articulated MeshGraph.
-// The observer is the first entry in g.Cut.ObserverPositions (empty on a full cut).
-// From/To are RFC3339 strings when the time window is non-zero, null otherwise.
-func cutMetaFromGraph(g graph.MeshGraph) CutMeta {
-	observer := ""
-	if len(g.Cut.ObserverPositions) > 0 {
-		observer = g.Cut.ObserverPositions[0]
-	}
-
-	var fromPtr, toPtr *string
-	if !g.Cut.TimeWindow.Start.IsZero() {
-		s := g.Cut.TimeWindow.Start.UTC().Format(time.RFC3339)
-		fromPtr = &s
-	}
-	if !g.Cut.TimeWindow.End.IsZero() {
-		s := g.Cut.TimeWindow.End.UTC().Format(time.RFC3339)
-		toPtr = &s
-	}
-
-	return CutMeta{
-		Observer:    observer,
-		From:        fromPtr,
-		To:          toPtr,
-		Tags:        g.Cut.Tags,
-		TraceCount:  g.Cut.TracesIncluded,
-		ShadowCount: len(g.Cut.ShadowElements),
-	}
 }
 
 // parseTimeParam parses a named RFC3339 query parameter.
