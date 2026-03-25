@@ -131,3 +131,16 @@ Deferred items (#95, #96, #150, #151) remain open for a future phase.
 - [x] **#147 — D.1 Software incident** — `data/examples/software_incident.json`; 32 traces; observers: `on-call-engineer`, `product-manager`, `customer-support-lead`, `dataset-analyst`; retry-buffer as key mediator; ANT aligned; merged PR #162
 - [x] **#148 — D.2 Multi-agent pipeline** — `data/examples/multi_agent_pipeline.json`; 28 traces; observers: `pipeline-auditor`, `ml-engineer`, `dataset-analyst`; 8 pipeline agents as non-human actants; inscription conflict demonstrated; merged PR #163
 - [x] **#149 — D.3 Policy/procurement** — `data/examples/policy_procurement.json`; 27 traces; observers: `procurement-officer`, `budget-approver`, `vendor-alpha`, `compliance-auditor`, `dataset-curator`; 17 institutional actants; 11 circular source==mediation violations fixed; ANT aligned with tensions (T1-T4); merged PR #164
+
+---
+
+## Post-v3 — MCP → Interactive CLI → Actors Act
+
+**Full plan:** `tasks/plan_post_v3.md`
+**Status:** Rough plan only — not yet decomposed into issues (2026-03-25)
+
+| Version | Direction |
+|---------|-----------|
+| v4.0.0 | `meshant mcp` — analytical commands as MCP tools; observer-position enforced at schema level |
+| v4.x | `meshant explore` — interactive analysis session; LLM suggests, analyst cuts |
+| v5.0.0 | Actors act — emerged actors generate new traces, constrained by relational history |
