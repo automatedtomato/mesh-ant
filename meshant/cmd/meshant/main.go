@@ -248,6 +248,8 @@ func run(w io.Writer, args []string) error {
 		return cmdStore(w, nil, args[1:])
 	case "serve":
 		return cmdServe(w, args[1:])
+	case "mcp":
+		return cmdMcp(w, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
 	}
@@ -282,6 +284,7 @@ Commands:
   convert          convert a non-text source to plain text (flags: --adapter, --source-doc, --output)
   store            load traces from JSON and write to database (flags: --db)
   serve            start a localhost HTTP server with analytical endpoints (flags: --db, --port)
+  mcp              start a Model Context Protocol server on stdio (flags: --analyst required, --db)
 
 Run 'meshant <command> --help' for command-specific flags.`
 }

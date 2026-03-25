@@ -88,11 +88,13 @@ Deferred items resolved (v3.1.0, 2026-03-25): #95 `ClassifyDraftChainOptions`, #
 ### v4.0.0 — MCP server (parent: #171)
 
 - [x] **#174 — CutMeta/Envelope extraction** — move `CutMeta`/`Envelope`/`cutMetaFromGraph` from `serve/response.go` → `graph/envelope.go`; add `Analyst` field; shared prereq for MCP + explore
-- [ ] **#175 — mcp-v1.md decision record** (ANT gate) — two-level observer model, tool set rationale, invocation traces, SSE deferred
-- [ ] **#176 — MCP server skeleton + meshant_articulate + meshant mcp CLI** — `mcp.NewServer(ts, observer)`; stdio; fidelity test
+- [x] **#175 — mcp-v1.md decision record** (ANT gate) — two-level observer model, tool set rationale, invocation traces, SSE deferred; `--observer`→`--analyst` rename; T171.1–T171.5
+- [x] **#176 — MCP server skeleton + meshant_articulate + meshant mcp CLI** — `mcp.NewServer(ts, analyst)`; stdio; fidelity test; `bufio.Scanner` 4MiB buffer; `recordInvocation` (includes #179)
+- [x] **#179 — MCP invocation trace recording** — folded into #176; `recordInvocation` writes tag `["mcp-invocation", toolName]`; soft-fail policy; Observer attribution documented
 - [ ] **#177 — MCP tools batch 1** — shadow, follow, bottleneck, summarize, validate
 - [ ] **#178 — MCP tools batch 2** — diff, gaps (dual-observer)
-- [ ] **#179 — MCP invocation trace recording** (ANT gate) — mandatory reflexive traces; tag `"mcp-invocation"`
+- [ ] **Deferred (architect N1)** — `newUUID4` duplicated between `graph/actor.go` and `mcp/tools.go`; extract to shared internal util if a third consumer appears
+- [ ] **Deferred (architect N2)** — `tags` property in `meshant_articulate` schema lacks `items: {type: "string"}`; drive-by fix in #177
 
 ### v4.x — Interactive CLI + Web UI time series (parent: #172)
 
