@@ -1,6 +1,6 @@
 # MeshAnt — Codemap
 
-**Last Updated:** 2026-03-24 (#146: Web UI + provenance panel — Cytoscape.js SPA; `/element/{name}` endpoint; `go:embed web`; static file server; `filterByElement`; 93.4% coverage; decision record `web-ui-v1.md`)
+**Last Updated:** 2026-03-26 (#176: MCP server for LLM integration — JSON-RPC 2.0 over stdio, observer-position discipline, reflexive trace recording, meshant_articulate tool)
 **Module:** `github.com/automatedtomato/mesh-ant/meshant`
 **Go Version:** 1.25
 **Root Directory:** `/meshant`
@@ -17,9 +17,10 @@
 | `persist` | Read and write graphs to JSON files. |
 | `review` | Ambiguity detection, terminal rendering, and interactive accept/edit/skip/quit session for TraceDraft records (Thread A). Exports `DeriveAccepted`, `DeriveEdited`, `RunEditFlow` for reuse by `llm` (F.3). |
 | `llm` | LLM-mediated extraction, assist, critique, and split pipelines: `LLMClient` interface, `AnthropicClient`, `RunExtraction`, `RunAssistSession`, `ParseSpans`, `RunCritique`, `RunSplit`, `PromoteSession`, `SessionRecord`, and supporting types. Shared helpers (`readSourceDoc`, `isRefusal`) in `shared.go`. Enforces F.1 conventions (D1–D7): mediator framing, model-ID provenance, framework UncertaintyNote append, IntentionallyBlank validation (F.2, F.3, F.4, #137). `PromoteSession` closes the Principle 8 reflexivity gap: converts a SessionRecord to a canonical Trace (#138). Imports `review` (one-directional: `llm → review`) for derivation helpers and rendering in the assist session. |
-| `serve` | HTTP server for interactive trace graph querying. `Server` struct, `NewServer(ts store.TraceStore)` constructor. Five endpoints: `/articulate` (GET, returns Cut as Envelope), `/diff` (GET, diffs two cuts), `/shadow` (GET, names shadowed elements), `/traces` (GET, returns raw traces), `/element/{name}` (GET, traces mentioning named element — observer required). All endpoints require `observer` query param (returns 400 with ANT reasoning if absent). `Envelope` type wraps response data + `CutMeta`. `filterByElement` filters traces by Source/Target membership. Response helpers: `writeJSON`, `writeError`, `cutMetaFromGraph`, query parameter parsers. Static file server via `go:embed web` serves the SPA at `/`. Graceful shutdown. 93.4% coverage. #145, #146, Phase 4. Web assets: `web/index.html` (SPA shell: observer gate, cut header, graph + sidebar), `web/style.css`, `web/app.js` (init, API fetch, wiring), `web/render.js` (Cytoscape graph, shadow panel, detail panel), `web/export.js` (JSON + DOT download), `web/lib/cytoscape.min.js` (vendored Cytoscape.js 3.30.4). |
+| `serve` | HTTP server for interactive trace graph querying. `Server` struct, `NewServer(ts store.TraceStore)` constructor. Five endpoints: `/articulate` (GET, returns Cut as Envelope), `/diff` (GET, diffs two cuts), `/shadow` (GET, names shadowed elements), `/traces` (GET, returns raw traces), `/element/{name}` (GET, traces mentioning named element — observer required). All endpoints require `observer` query param (returns 400 with ANT reasoning if absent). `Envelope` and `CutMeta` types (moved to graph package in #174 for reuse by non-HTTP layers) wrap response data + positioned cut. `filterByElement` filters traces by Source/Target membership. Response helpers: `writeJSON`, `writeError`, query parameter parsers. Static file server via `go:embed web` serves the SPA at `/`. Graceful shutdown. 93.4% coverage. #145, #146, Phase 4. Web assets: `web/index.html` (SPA shell: observer gate, cut header, graph + sidebar), `web/style.css`, `web/app.js` (init, API fetch, wiring), `web/render.js` (Cytoscape graph, shadow panel, detail panel), `web/export.js` (JSON + DOT download), `web/lib/cytoscape.min.js` (vendored Cytoscape.js 3.30.4). |
+| `mcp` | Model Context Protocol server for LLM integration. `Server` struct backed by `store.TraceStore`. JSON-RPC 2.0 over stdio; single-threaded dispatch with 4 MiB buffer for large graphs. Tool registration via `ToolHandler` interface; batch 1 (#176) registers `meshant_articulate`. Observer discipline on all tools (ANT position required per D1 mcp-v1.md). Analyst identity injected at startup and stamped on all CutMeta responses. Reflexivity (Principle 8): every cut-producing tool writes invocation traces tagged "mcp-invocation" back to the store. Decision record: `docs/decisions/mcp-v1.md`. |
 | `cmd/demo` | Minimal demonstration: two observer-position cuts on evacuation dataset. |
-| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique`, `split`, `promote-session`, `convert`, `store`, `serve` subcommands. `articulate`, `diff`, `shadow`, `gaps`, `follow`, `bottleneck` accept `--db bolt://...` to load traces from a Neo4j DB instead of a JSON file (mutually exclusive with the file arg). `store` writes JSON traces to the DB. `serve` starts a localhost HTTP server (#145); accepts `--db` and `--port` flags. `articulate` also supports `--narrative`; `gaps` supports `--suggest`. `review` and `assist` are interactive (read from stdin). `extract` calls an LLM for TraceDraft extraction (F.2, #139); supports `--adapter` (#140). `split` splits a source document into spans (#137). `promote-session` promotes a SessionRecord to a Trace (#138). `convert` converts non-text sources to plain text (#140). |
+| `cmd/meshant` | CLI entry point: `summarize`, `validate`, `articulate`, `diff`, `follow`, `draft`, `promote`, `rearticulate`, `lineage`, `shadow`, `gaps`, `bottleneck`, `review`, `extract`, `assist`, `critique`, `split`, `promote-session`, `convert`, `store`, `serve`, `mcp` subcommands. `articulate`, `diff`, `shadow`, `gaps`, `follow`, `bottleneck` accept `--db bolt://...` to load traces from a Neo4j DB instead of a JSON file (mutually exclusive with the file arg). `store` writes JSON traces to the DB. `serve` starts a localhost HTTP server (#145); accepts `--db` and `--port` flags. `mcp` starts a Model Context Protocol server on stdio (#176); requires `--analyst` flag. `articulate` also supports `--narrative`; `gaps` supports `--suggest`. `review` and `assist` are interactive (read from stdin). `extract` calls an LLM for TraceDraft extraction (F.2, #139); supports `--adapter` (#140). `split` splits a source document into spans (#137). `promote-session` promotes a SessionRecord to a Trace (#138). `convert` converts non-text sources to plain text (#140). |
 
 ## Package: schema
 
@@ -187,7 +188,7 @@
 
 | File | Contains |
 |------|----------|
-| `response.go` | `CutMeta`, `Envelope`, `ErrorBody`; `writeJSON`, `writeError`, `cutMetaFromGraph`, `parseQueryTime`, `parseLimit` helpers. |
+| `response.go` | `ErrorBody`; `writeJSON`, `writeError`, `parseTimeParam`, `parseQueryTime`, `parseLimit` helpers. (`CutMeta` and `Envelope` moved to `graph/envelope.go` in #174.) |
 | `server.go` | `Server` struct, `NewServer(ts store.TraceStore) *Server`, `ServeHTTP` method. HTTP multiplexer registration for five API endpoints + static file handler (`go:embed web`). |
 | `handlers.go` | `handleArticulate`, `handleDiff`, `handleShadow`, `handleTraces`, `handleElement` endpoint handlers; shared `filterTraces`, `filterByElement` helpers; request parameter parsing and validation. |
 | `handlers_test.go` | Black-box tests via `httptest.NewRecorder` and `httptest.NewRequest`; 93.4% coverage. Tests for all five endpoints, observer validation, time-window parsing, tag filtering, limit application, URL encoding, element filtering, static file serving, API route precedence. |
@@ -203,9 +204,9 @@
 | Type | Key Fields | Purpose |
 |------|-----------|---------|
 | `Server` | `store store.TraceStore` | HTTP server wrapping a `TraceStore`. Implements `http.Handler` via `ServeHTTP` method. No state beyond the store reference; stateless endpoint handlers. |
-| `Envelope` | `Data interface{}`, `CutMeta graph.CutMeta`, `Error *ErrorBody` | Response envelope for all HTTP responses. `Data` carries the endpoint's primary result (Cut, GraphDiff, ShadowSummary, or []Trace). `CutMeta` provides observer/window/tags metadata. `Error` is non-nil only on 4xx/5xx responses (mutually exclusive with Data). |
-| `ErrorBody` | `Code string`, `Message string`, `Reason string` | Error response body. `Code` is a machine-readable error classifier (e.g., "MissingObserver", "InvalidTimeWindow", "StorageError"). `Message` is human-friendly. `Reason` provides ANT-grounded context (e.g., "observer required on all endpoints—observer position is the first cut axis"). |
-| `CutMeta` (from graph package) | `Observer string`, `Window graph.TimeWindow`, `Tags []string` | Metadata about the cut applied to generate a response. Echoed back in Envelope so client knows what cut was performed. |
+| `ErrorBody` | `Error string` | Simple error response body. `Error` is a human-friendly message. |
+| `graph.Envelope` | `Cut graph.CutMeta`, `Data interface{}` | Response envelope for all HTTP responses (defined in `graph/envelope.go`). `Data` carries the endpoint's primary result (Cut, GraphDiff, ShadowSummary, or []Trace). `Cut` provides observer/time-window/tags metadata. Moved to graph package (#174) so non-HTTP analytical layers can build positioned responses. |
+| `graph.CutMeta` | `Observer string`, `Analyst string` (omitempty), `From *string`, `To *string`, `Tags []string` (omitempty), `TraceCount int`, `ShadowCount int` | Metadata about the cut applied to generate a response (defined in `graph/envelope.go`). Echoed back in Envelope so client knows what cut was performed. `Analyst` is optional (set by caller, not by `CutMetaFromGraph`). `From` and `To` are nullable RFC3339 strings (nil when unbounded). Moved to graph package (#174). |
 
 ### Functions
 
@@ -220,23 +221,109 @@
 | `filterTraces` | `func filterTraces(traces []schema.Trace, observer string, tw graph.TimeWindow, tags []string) []schema.Trace` | In-memory filtering: observer exact match, time-window bounds (inclusive), tag OR logic. Returns slice in original order. Used by `handleTraces` and `handleElement`. |
 | `filterByElement` | `func filterByElement(traces []schema.Trace, elementName string) []schema.Trace` | Returns traces where `elementName` appears in `tr.Source` or `tr.Target` (exact string equality). Used by `handleElement` after observer/time/tag filtering. |
 | `handleElement` | `(s *Server) handleElement(w http.ResponseWriter, r *http.Request)` | Serves `GET /element/{name}?observer=...`. Requires observer; optional from/to/tags. Loads full substrate, applies `filterTraces` then `filterByElement`. Returns `Envelope{Cut, Data: []schema.Trace}`. Returns `[]` (not null) for unknown elements. |
-| `writeJSON` | `func writeJSON(w http.ResponseWriter, status int, env Envelope) error` | Marshal Envelope to JSON, write status code + Content-Type header, write body. Returns marshal error. Used by all handlers for success responses. |
-| `writeError` | `func writeError(w http.ResponseWriter, status int, code, message, reason string) error` | Create ErrorBody, marshal Envelope with Error field, write response. Returns marshal error. Used by all handlers for error responses (observer missing, invalid time window, storage failure, etc.). |
-| `cutMetaFromGraph` | `func cutMetaFromGraph(g *graph.MeshGraph, ts []string, tw graph.TimeWindow) graph.CutMeta` | Extract CutMeta from a MeshGraph: observer (g.Cut.Observer), tags (ts), window (tw). Helper for populating Envelope.CutMeta. |
-| `parseQueryTime` | `func parseQueryTime(s string) (time.Time, error)` | Parse query parameter as RFC3339Nano timestamp. Returns error if empty string or invalid format. Used by time-window parser. |
-| `parseLimit` | `func parseLimit(s string) (int, error)` | Parse query parameter as unsigned integer. Returns 0 if empty (no limit). Returns error if negative or non-numeric. |
+| `writeJSON` | `func writeJSON(w http.ResponseWriter, status int, v interface{})` | Marshal v as indented JSON with given HTTP status code. Sets Content-Type: application/json. Used by all handlers for success and error responses. |
+| `writeError` | `func writeError(w http.ResponseWriter, status int, msg string)` | Create ErrorBody, marshal and write JSON error response. Used by all handlers for error responses (observer missing, invalid time window, storage failure, etc.). |
+| `parseTimeParam` | `func parseTimeParam(name, value string) (time.Time, error)` | Parse a named RFC3339 query parameter. Returns zero time and nil error when value is empty (parameter absent). |
+| `parseQueryTime` | `func parseQueryTime(fromStr, toStr string) (graph.TimeWindow, error)` | Parse ?from= and ?to= query parameters into a graph.TimeWindow. Either or both may be absent (half-open or unbounded window). Validates that Start ≤ End when both are set. |
+| `parseLimit` | `func parseLimit(limitStr string) (int, error)` | Parse the ?limit= query parameter. Returns 0 (no limit) when the parameter is absent. Returns an error for non-integer or negative values. |
 
 ### Key Design Notes
 
-- **Observer on all endpoints**: All four endpoints require `observer` query param (400 with ErrorBody reason explaining ANT principle if absent). This enforces Principle 3 (observer position is a cut). Store's QueryOpts.Observer is a retrieval hint (layer 1 pre-filter), not a cut assertion.
-- **Envelope invariant**: Success response has Data + CutMeta; Error response has Error field only. Never both. Clients check Error presence to detect failure.
-- **CutMeta echo**: Every successful response echoes back the cut parameters (observer, window, tags) so client knows what was queried. Prevents silent mismatches.
+- **Observer on all endpoints**: All five endpoints require `observer` query param (400 with ErrorBody message explaining ANT principle if absent). This enforces Principle 3 (observer position is a cut). Store's QueryOpts.Observer is a retrieval hint (layer 1 pre-filter), not a cut assertion.
+- **Envelope invariant**: Success response has `graph.Envelope` with `Data + Cut` metadata. Error response has `ErrorBody` only. Never both. Clients check Error presence to detect failure.
+- **CutMeta echo**: Every successful response echoes back the cut parameters (observer, time window, tags) so client knows what was queried. Prevents silent mismatches. `TraceCount` and `ShadowCount` included for audit.
+- **Types moved to graph package**: `CutMeta` and `Envelope` were moved from serve/response.go to graph/envelope.go (#174) so non-HTTP analytical layers can build positioned responses without importing the serve package. `CutMetaFromGraph` helper extracts metadata from an articulated MeshGraph.
 - **No context enforcement**: Handlers accept request timeout via http.Request.Context but do not enforce it (defer to store implementations). Store.Query and Store.Get accept context parameter for cancellation.
 - **Stateless handlers**: No global state, no session storage, no in-process caching. Each request is independent.
-- **Time-window custom JSON**: TimeWindow encodes/decodes via custom codec (see `graph.serial.go`). HTTP endpoints parse RFC3339Nano strings and reconstruct TimeWindow structs on POST body.
+- **Time-window custom JSON**: TimeWindow encodes/decodes via custom codec (see `graph.serial.go`). HTTP endpoints parse RFC3339 strings and reconstruct TimeWindow structs.
 - **Decision record (serve)**: `docs/decisions/serve-v1.md` — observer requirement, Envelope structure, graceful shutdown, Phase 4 (#145).
 - **Decision record (web-ui)**: `docs/decisions/web-ui-v1.md` — Cytoscape.js choice, `go:embed`, no build step, observer gate as structural HTML, `/element/{name}` in-memory design, client-side DOT duplication, provenance deferred, Phase 4 (#146).
 - **Static file server**: `go:embed web` in `server.go` embeds the entire `web/` directory. `fs.Sub(webFS, "web")` strips the prefix; `http.FileServerFS` serves at `GET /`. API routes are registered first and take precedence over the catch-all `/` handler.
+
+---
+
+## Package: mcp
+
+### Files
+
+| File | Contains |
+|------|----------|
+| `server.go` | `Server` struct, `NewServer(ts store.TraceStore, analyst string) *Server` constructor, `Run(ctx, in, out) error` method. JSON-RPC 2.0 message types (`rpcRequest`, `rpcResponse`, `rpcError`). Tool registry via `registerTool` and tool handler dispatch via `dispatch`. Handlers for `initialize`, `tools/list`, `tools/call` MCP methods. Single-threaded stdio loop with 4 MiB scan buffer for large graph payloads. Immutable analyst identity stamped on every CutMeta response. All 6 batch-1 tools registered in `NewServer`. (#176/#177) |
+| `tools.go` | MCP tool handler functions and schemas — batch 1 (#176/#177) + batch 2 (#178) complete. Batch 1 input types: `articulateArgs`, `shadowArgs`, `followArgs`, `bottleneckArgs`, `summarizeArgs`, `validateArgs`. Batch 2 input types: `diffArgs`, `gapsArgs`. Result types: `validateResult`, `validateError`, `GapsResult` (exported). Input validation constants: `maxObserverLen` (500), `maxTagLen` (200), `maxTagCount` (50), `maxFollowDepth` (1000). Helpers: `validateObserver`, `validateTags`, `filterByTagsOR`, `recordInvocation`, `parseTimeWindow`, `newUUID4`. |
+| (CLI) `cmd/meshant/cmd_mcp.go` | `cmdMcp(w io.Writer, args []string) error` subcommand handler. `--analyst` required (D2 mcp-v1.md — hard refusal if absent). `--db` flag for Neo4j backend; mutually exclusive with `<traces.json>` positional argument. Mirrors `serve` and `store` command design: uniform `TraceStore` interface regardless of backend. Signal context (SIGINT/SIGTERM) for graceful shutdown. Startup banner to stderr (stdout reserved for MCP framing). |
+
+### Types
+
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `Server` | `ts store.TraceStore`, `analyst string`, `tools map[string]ToolHandler`, `schemas []toolSchema` | MCP server backed by a TraceStore. Analyst identity is immutable and stamped on every response (D2, mcp-v1.md). No state beyond store and tool registry; stateless per-message dispatch. |
+| `rpcRequest` | `JSONRPC string`, `ID *json.RawMessage`, `Method string`, `Params json.RawMessage` | Inbound JSON-RPC 2.0 message. `ID` is nullable (nil for notifications); params are raw JSON to allow tool-specific decoding. |
+| `rpcResponse` | `JSONRPC string`, `ID *json.RawMessage`, `Result interface{}`, `Error *rpcError` | Outbound JSON-RPC 2.0 message. Result and Error are mutually exclusive. ID echoes the request ID (null for parse errors). |
+| `rpcError` | `Code int`, `Message string` | JSON-RPC error code (-32700 parse, -32601 method-not-found, -32602 invalid-params) and human message. |
+| `ToolHandler` | Function type: `func(ctx context.Context, params json.RawMessage) (interface{}, error)` | Signature for MCP tool handlers. Receives raw JSON params and context; returns result or error. Non-nil errors are returned as tool-level errors (content isError=true), not protocol errors. |
+| `toolSchema` | `Name string`, `Description string`, `InputSchema inputSchema` | MCP tool descriptor returned by tools/list. Minimal JSON Schema for input validation. One schema per registered tool. |
+| `inputSchema` | `Type string`, `Properties map[string]property`, `Required []string` | JSON Schema object descriptor for tool inputs. Lists required parameters. |
+| `property` | `Type string`, `Description string`, `Items *property` (omitempty) | JSON Schema property descriptor. `Items` is used for array properties (e.g., `Items: &property{Type: "string"}` for `[]string` tags fields). |
+| `toolsCallParams` | `Name string`, `Arguments json.RawMessage` | Params shape for a tools/call request (MCP protocol). `Arguments` is raw JSON — each tool decodes according to its schema. |
+| `toolContent` | `Type string`, `Text string` | Single item in a tool result content array (MCP protocol). Returned as `{type: "text", text: ...}` on success. |
+| `articulateArgs` | `Observer string`, `From string`, `To string`, `Tags []string` | Input for `meshant_articulate`. Observer required; From/To RFC3339 time window; Tags OR-filtered. |
+| `shadowArgs` | `Observer string`, `From string`, `To string`, `Tags []string` | Input for `meshant_shadow`. Same shape as articulateArgs. |
+| `followArgs` | `Observer string`, `Element string`, `Direction string`, `MaxDepth int`, `From string`, `To string`, `Tags []string` | Input for `meshant_follow`. Direction: "forward" (default) or "backward". MaxDepth: 0 = unlimited, 1–1000 allowed. Element is the starting actant name. |
+| `bottleneckArgs` | `Observer string`, `From string`, `To string`, `Tags []string` | Input for `meshant_bottleneck`. Same shape as articulateArgs. |
+| `summarizeArgs` | `Observer string`, `From string`, `To string`, `Tags []string` | Input for `meshant_summarize`. Same shape as articulateArgs. |
+| `validateArgs` | `Tags []string` | Input for `meshant_validate`. No observer (D5 exemption). Tags are OR-filtered in memory. |
+| `validateResult` | `TotalTraces int`, `ValidCount int`, `InvalidCount int`, `Errors []validateError` | Result of `meshant_validate`. Errors lists per-trace failures. |
+| `diffArgs` | `ObserverA string`, `FromA string`, `ToA string`, `TagsA []string`, `ObserverB string`, `FromB string`, `ToB string`, `TagsB []string` | Input for `meshant_diff`. Both observers required. Independent time windows and tag filters per side. |
+| `gapsArgs` | Same as diffArgs plus `Suggest bool` | Input for `meshant_gaps`. Suggest=true triggers `graph.SuggestRearticulations`. |
+| `GapsResult` | `Gap graph.ObserverGap`, `Suggestions []graph.RearticSuggestion` (omitempty) | Exported result of `meshant_gaps`. Suggestions absent when Suggest=false. Exported so callers can unmarshal into the canonical type without local mirror structs. |
+| `validateError` | `TraceID string`, `Error string` | A single trace validation failure from `meshant_validate`. |
+
+### Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `NewServer` | `func NewServer(ts store.TraceStore, analyst string) *Server` | Constructor; wraps a TraceStore and analyst identity. Registers all 6 batch-1 tools. Returns server ready to pass to Run. |
+| `Server.Run` | `(s *Server) Run(ctx context.Context, in io.Reader, out io.Writer) error` | Reads newline-delimited JSON-RPC 2.0 messages from in, dispatches to handlers, writes responses to out. Returns when in reaches EOF or context is cancelled. Single-threaded, synchronous per-message. Scanner buffer expanded to 4 MiB to handle large graph payloads. |
+| `Server.registerTool` | `(s *Server) registerTool(schema toolSchema, handler ToolHandler)` | Adds a named handler and schema to the server. Called during construction; not safe for concurrent use after Run begins. |
+| `Server.dispatch` | `(s *Server) dispatch(ctx context.Context, req rpcRequest) rpcResponse` | Routes a request to the appropriate handler (initialize, initialized, tools/list, tools/call) or returns method-not-found error. |
+| `Server.handleInitialize` | `(s *Server) handleInitialize(req rpcRequest) rpcResponse` | Responds to MCP initialize handshake with protocolVersion, serverInfo, and empty capabilities. |
+| `Server.handleToolsList` | `(s *Server) handleToolsList(req rpcRequest) rpcResponse` | Returns tools array (all registered schemas) in result.tools. |
+| `Server.handleToolsCall` | `(s *Server) handleToolsCall(ctx context.Context, req rpcRequest) rpcResponse` | Dispatches tools/call to registered handler. Decodes `toolsCallParams` from request, calls handler, encodes result as content array. On error, returns tool-level error (isError=true, not protocol error). |
+| `Server.registerArticulate` | `(s *Server) registerArticulate()` | Registers `meshant_articulate`. Schema: observer (required), from, to, tags. |
+| `Server.handleArticulate` | `(s *Server) handleArticulate(ctx, params) (interface{}, error)` | Queries full substrate, calls `graph.Articulate`, wraps in Envelope, records invocation trace. |
+| `Server.registerShadow` | `(s *Server) registerShadow()` | Registers `meshant_shadow`. Schema: observer (required), from, to, tags. |
+| `Server.handleShadow` | `(s *Server) handleShadow(ctx, params) (interface{}, error)` | Articulates substrate for observer, calls `graph.SummariseShadow`, wraps in Envelope, records invocation trace. |
+| `Server.registerFollow` | `(s *Server) registerFollow()` | Registers `meshant_follow`. Schema: observer, element (required), direction, max_depth, from, to, tags. |
+| `Server.handleFollow` | `(s *Server) handleFollow(ctx, params) (interface{}, error)` | Validates direction and max_depth bounds (0–1000). Articulates, calls `graph.FollowTranslation` + `graph.ClassifyChain`, wraps in Envelope, records invocation trace. |
+| `Server.registerBottleneck` | `(s *Server) registerBottleneck()` | Registers `meshant_bottleneck`. Schema: observer (required), from, to, tags. |
+| `Server.handleBottleneck` | `(s *Server) handleBottleneck(ctx, params) (interface{}, error)` | Articulates, calls `graph.IdentifyBottlenecks`, wraps in Envelope, records invocation trace. |
+| `Server.registerSummarize` | `(s *Server) registerSummarize()` | Registers `meshant_summarize`. Schema: observer (required), from, to, tags. |
+| `Server.handleSummarize` | `(s *Server) handleSummarize(ctx, params) (interface{}, error)` | Articulates, calls `graph.DraftNarrative`, wraps in Envelope, records invocation trace. |
+| `Server.registerValidate` | `(s *Server) registerValidate()` | Registers `meshant_validate`. Schema: tags only (no observer — D5 exemption). |
+| `Server.handleValidate` | `(s *Server) handleValidate(ctx, params) (interface{}, error)` | Queries full substrate, applies `filterByTagsOR`, calls `schema.Trace.Validate()` on each. Returns `validateResult`. No observer, no invocation trace (D5 exemption). |
+| `recordInvocation` | `(s *Server) recordInvocation(ctx, toolName, observer string)` | Reflexivity helper (Principle 8): writes an invocation trace tagged "mcp-invocation" to the store. Observer = tool's observer arg (T1 tension). Soft-fail: logs on error, never returns error to caller. |
+| `filterByTagsOR` | `func filterByTagsOR(traces []schema.Trace, filter []string) []schema.Trace` | In-memory OR tag filter: returns traces carrying at least one of the requested tags. Used by handleValidate because store QueryOpts.Tags uses AND semantics but the tool schema promises OR semantics. Note: aliases backing array — do not call twice on same source for concurrent use (see dual-observer handlers for safe alternative). |
+| `registerDiff` | `(s *Server) registerDiff()` | Register meshant_diff: schema + handleDiff. Called from NewServer. |
+| `handleDiff` | `(s *Server) handleDiff(ctx, params) (interface{}, error)` | Dual-observer diff: validates both observers, queries full substrate once, articulates gA + gB, calls graph.Diff(gA, gB). CutMeta.Observer = observer_a (T171.3/T178.3). Observer-prefixed error wrapping is the canonical pattern for dual-observer tools. |
+| `registerGaps` | `(s *Server) registerGaps()` | Register meshant_gaps: schema + handleGaps. Called from NewServer. |
+| `handleGaps` | `(s *Server) handleGaps(ctx, params) (interface{}, error)` | Dual-observer gap analysis: validates both observers, queries full substrate once, articulates gA + gB, calls graph.AnalyseGaps(gA, gB). Optionally calls SuggestRearticulations when suggest=true. Returns GapsResult. |
+| `validateObserver` | `func validateObserver(obs string) error` | Validates observer is non-empty and ≤500 chars. |
+| `validateTags` | `func validateTags(tags []string) error` | Validates tag count ≤50 and each tag ≤200 chars. |
+| `parseTimeWindow` | `func parseTimeWindow(from, to string) (graph.TimeWindow, error)` | Parse RFC3339 strings into a graph.TimeWindow. Returns unbounded bounds when empty. Validates Start ≤ End. |
+| `newUUID4` | `func newUUID4() string` | Generate a random RFC4122 UUID v4. Mirrors `graph.newUUID4` without export (deferred N1 — extract to internal/uuid if third consumer appears). |
+
+### Key Design Notes
+
+- **Observer discipline (D1, mcp-v1.md)**: Every tool requires an `observer` parameter. The `--analyst` flag is required at server startup (D2) — an LLM client that does not declare an analyst position is hiding the cut. Analyst and Observer are kept distinct: Analyst is the declared reader (on CutMeta); Observer is the ANT position (in graph articulation).
+- **Reflexivity (Principle 8, D5 mcp-v1.md)**: Every cut-producing tool writes a trace back to the store. The MCP server is a mediator — its actions must be visible in the mesh, not hidden behind a service facade. Invocation traces are tagged "mcp-invocation" and are filterable and nameable, not suppressed.
+- **Single-threaded stdio transport (D7 mcp-v1.md)**: The server reads messages synchronously from stdin and writes responses to stdout. No concurrency — JSON-RPC dispatch is single-threaded by design. SSE (server-sent events) is deferred to a future batch; stdio simplicity is valued for the initial MCP integration.
+- **Large graph buffer**: Scanner buffer is 4 MiB (default 64 KiB) to accommodate dense substrate graphs. A single `tools/call` response from a large dataset can easily exceed the default limit, causing `bufio.ErrTooLong`; the expanded buffer prevents mid-session exits.
+- **Tool registration batches**: Batch 1 (#176/#177) registers 6 tools: articulate, shadow, follow, bottleneck, summarize, validate. Batch 2 (#178) adds diff and gaps (dual-observer). Every cut-producing tool follows the same pattern: validate inputs → query full substrate → call graph function → build Envelope with CutMeta.Analyst set → record invocation trace. `meshant_validate` is exempt (D5): no observer, no invocation trace, in-memory OR tag filter via `filterByTagsOR`.
+- **Dual-observer tools (batch 2)**: `meshant_diff` and `meshant_gaps` each require `observer_a` and `observer_b`. Both articulate two independent cuts from the full substrate, then call `graph.Diff` or `graph.AnalyseGaps`. T171.3 tension: `CutMeta.Observer = observer_a`; `observer_b` lives in the result payload. Invocation trace recorded under `observer_a` (T178.3). `GapsResult{Gap, Suggestions}` is exported so callers can unmarshal into the canonical type.
+- **Input validation**: `validateObserver` and `validateTags` cap field lengths (500/200 chars) and tag counts (50) before use. `handleFollow` additionally caps `max_depth` (0–1000) to prevent memory amplification from crafted clients.
+- **JSON-RPC 2.0 protocol**: No external SDK — the protocol surface is small enough to implement inline (server.go ~75 lines for core dispatch). Supports notifications (null id) as no-op; returns -32700 for parse errors, -32601 for unknown methods, -32602 for invalid params (protocol errors), plus tool-level errors.
+- **Graceful shutdown**: Run returns when stdin reaches EOF (client closes) or context is cancelled (SIGINT/SIGTERM). The cmdMcp handler sets up signal context; server exits cleanly without dropping in-flight messages.
+- **Decision record (mcp)**: `docs/decisions/mcp-v1.md` — observer discipline (D1), analyst requirement (D2), tool parameter validation (D3), graph substrate boundaries (D4), invocation trace design (D5), tool batching (D6), stdio vs SSE (D7), ANT tensions (T171.1–T171.5).
 
 ---
 
@@ -246,6 +333,7 @@
 
 | File | Contains |
 |------|----------|
+| `envelope.go` | `CutMeta`, `Envelope` types; `CutMetaFromGraph` function. Positioned-response metadata and envelope structure. Moved from serve/response.go for reuse by non-HTTP layers (#174). |
 | `graph.go` | `MeshGraph`, `Node`, `Edge`, `Cut`, `ShadowElement`, `ShadowReason`, `TimeWindow`, `ArticulationOptions`. `Articulate`, `PrintArticulation` functions. Filter logic, edge/node/shadow builders. |
 | `diff.go` | `GraphDiff`, `ShadowShift`, `PersistedNode`, `ShadowShiftKind`. `Diff`, `PrintDiff` functions. Diff computation helpers. |
 | `actor.go` | Graph-as-actor identity: `IdentifyGraph`, `IdentifyDiff`, `GraphRef`, `DiffRef`, `newUUID4`. |
@@ -266,6 +354,8 @@
 
 | Type | Key Fields | Purpose |
 |------|-----------|---------|
+| `CutMeta` | `Observer string`, `Analyst string` (omitempty), `From *string`, `To *string`, `Tags []string` (omitempty), `TraceCount int`, `ShadowCount int` | Metadata about a positioned reading. Observer is the ANT position; Analyst is the human or agent that requested the cut (optional, set by caller). From/To are nullable RFC3339 strings (nil when unbounded time window). TraceCount is included traces; ShadowCount is shadow elements (articulation) or non-observer traces (raw-trace endpoints). |
+| `Envelope` | `Cut CutMeta`, `Data interface{}` | Response wrapper for positioned data. Every analytical output (HTTP or otherwise) pairs data with its cut metadata so the position is undeniable. |
 | `TimeWindow` | `Start` (time.Time), `End` (time.Time) | Inclusive temporal range; zero bounds mean unbounded. |
 | `ShadowReason` | (string constant: `ShadowReasonObserver`, `ShadowReasonTagFilter`, `ShadowReasonTimeWindow`) | Why an element is in the shadow (three reasons, sorted alphabetically). |
 | `ArticulationOptions` | `ObserverPositions` ([]string), `TimeWindow` (TimeWindow), `Tags` ([]string) | Parameters for Articulate: three cut axes. Empty = full cut on that axis. |
@@ -305,6 +395,7 @@
 | `TimeWindow.Validate` | `(tw TimeWindow) Validate() error` | Validate that Start ≤ End (if both non-zero). |
 | `TimeWindow.MarshalJSON` | `(tw TimeWindow) MarshalJSON() ([]byte, error)` | Encode zero bounds as JSON null, non-zero as RFC3339. |
 | `TimeWindow.UnmarshalJSON` | `(tw *TimeWindow) UnmarshalJSON(data []byte) error` | Decode JSON null as zero time.Time, strings as RFC3339. |
+| `CutMetaFromGraph` | `func CutMetaFromGraph(g MeshGraph) CutMeta` | Build CutMeta from an articulated MeshGraph. Observer is the first entry in g.Cut.ObserverPositions (empty when no observer filter). From and To are RFC3339 strings when corresponding TimeWindow bounds are non-zero; nil when unbounded. Analyst is always empty (callers set it). (#174) |
 | `Articulate` | `func Articulate(traces []schema.Trace, opts ArticulationOptions) MeshGraph` | Build MeshGraph from traces and cut parameters. Splits traces into included/excluded, computes nodes/edges/shadow. ID field is empty (not identified as actor). |
 | `PrintArticulation` | `func PrintArticulation(w io.Writer, g MeshGraph) error` | Write human-readable articulation to io.Writer. Includes observer positions, nodes, edges, shadow elements with reasons. |
 | `Diff` | `func Diff(g1, g2 MeshGraph) GraphDiff` | Compare two MeshGraph articulations. Computes nodes added/removed/persisted, edges added/removed, shadow shifts. ID field is empty. |

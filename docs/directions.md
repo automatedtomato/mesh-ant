@@ -127,10 +127,12 @@ relational history, not free to act arbitrarily. Otherwise the simulation drifts
 network it emerged from. Getting that constraint right is the core methodological challenge
 of this direction — not the engineering.
 
-**Status: v3.0.0 or later. Do not plan this in detail now.**
+**Status: v5.0.0 target — rough plan in `tasks/plan_post_v3.md`.**
 
-Depends on the ANT-like Knowledge Graph (Form 3) being established first — emerged
-actors need a persistent, queryable graph substrate to act within.
+Sequenced after MCP server (v4.0.0) and interactive CLI (v4.x). Depends on Form 3
+being stable (done), the MCP adapter making the analytical engine programmatically
+callable, and the interactive CLI building understanding of multi-turn articulation
+state. Four design questions must be answered before implementation begins — see plan.
 
 ---
 
@@ -199,6 +201,7 @@ These are not opposed to the Layer 1/3 work. Deepening and extending proceed tog
 
 ---
 
-*Last updated: 2026-03-22. This is a note, not a spec. Supersedes `docs/potential-forms.md` (removed).*
+*Last updated: 2026-03-25. This is a note, not a spec. Supersedes `docs/potential-forms.md` (removed).*
 *2026-03-15 additions: Knowledge-graph-aware layered form (Form 3); LLM boundary layering in Form 2.*
 *2026-03-22 update: v1.0.0 and v2.0.0 complete; Form 3 confirmed as next major target; query model and storage decisions recorded.*
+*2026-03-25 update: v3.0.0 and v3.1.0 complete. Post-v3 sequence confirmed: MCP (v4.0.0) → Interactive CLI (v4.x) → Actors Act (v5.0.0). Rough plan: `tasks/plan_post_v3.md`.*

@@ -45,9 +45,9 @@ func (s *Server) handleArticulate(w http.ResponseWriter, r *http.Request) {
 		Tags:              tags,
 	}
 	g := graph.Articulate(traces, opts)
-	meta := cutMetaFromGraph(g)
+	meta := graph.CutMetaFromGraph(g)
 
-	writeJSON(w, http.StatusOK, Envelope{Cut: meta, Data: g})
+	writeJSON(w, http.StatusOK, graph.Envelope{Cut: meta, Data: g})
 }
 
 // handleDiff handles GET /diff.
@@ -88,9 +88,9 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	d := graph.Diff(gA, gB)
 
 	// Envelope cut is observer-a's position (D4): the diff is read from A toward B.
-	meta := cutMetaFromGraph(gA)
+	meta := graph.CutMetaFromGraph(gA)
 
-	writeJSON(w, http.StatusOK, Envelope{Cut: meta, Data: d})
+	writeJSON(w, http.StatusOK, graph.Envelope{Cut: meta, Data: d})
 }
 
 // handleShadow handles GET /shadow.
@@ -128,7 +128,7 @@ func (s *Server) handleShadow(w http.ResponseWriter, r *http.Request) {
 		Tags:              tags,
 	}
 	g := graph.Articulate(traces, opts)
-	meta := cutMetaFromGraph(g)
+	meta := graph.CutMetaFromGraph(g)
 
 	// Return shadow elements as the data payload. Use an empty slice (not nil)
 	// so the JSON response is always an array, never null.
@@ -137,7 +137,7 @@ func (s *Server) handleShadow(w http.ResponseWriter, r *http.Request) {
 		shadowElems = []graph.ShadowElement{}
 	}
 
-	writeJSON(w, http.StatusOK, Envelope{Cut: meta, Data: shadowElems})
+	writeJSON(w, http.StatusOK, graph.Envelope{Cut: meta, Data: shadowElems})
 }
 
 // handleTraces handles GET /traces.
@@ -201,7 +201,7 @@ func (s *Server) handleTraces(w http.ResponseWriter, r *http.Request) {
 		toPtr = &ts
 	}
 
-	meta := CutMeta{
+	meta := graph.CutMeta{
 		Observer:    observer,
 		From:        fromPtr,
 		To:          toPtr,
@@ -215,7 +215,7 @@ func (s *Server) handleTraces(w http.ResponseWriter, r *http.Request) {
 		filtered = []schema.Trace{}
 	}
 
-	writeJSON(w, http.StatusOK, Envelope{Cut: meta, Data: filtered})
+	writeJSON(w, http.StatusOK, graph.Envelope{Cut: meta, Data: filtered})
 }
 
 // handleObservers handles GET /observers.
@@ -250,7 +250,7 @@ func (s *Server) handleObservers(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(observers)
 
-	writeJSON(w, http.StatusOK, Envelope{Data: observers})
+	writeJSON(w, http.StatusOK, graph.Envelope{Data: observers})
 }
 
 // filterByElement returns traces where elementName appears in tr.Source or tr.Target.
@@ -342,7 +342,7 @@ func (s *Server) handleElement(w http.ResponseWriter, r *http.Request) {
 		toPtr = &ts
 	}
 
-	meta := CutMeta{
+	meta := graph.CutMeta{
 		Observer:    observer,
 		From:        fromPtr,
 		To:          toPtr,
@@ -351,7 +351,7 @@ func (s *Server) handleElement(w http.ResponseWriter, r *http.Request) {
 		ShadowCount: shadowCount,
 	}
 
-	writeJSON(w, http.StatusOK, Envelope{Cut: meta, Data: result})
+	writeJSON(w, http.StatusOK, graph.Envelope{Cut: meta, Data: result})
 }
 
 // filterTraces returns traces matching the given observer, time window, and tags.
