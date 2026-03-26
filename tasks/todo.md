@@ -92,7 +92,7 @@ Deferred items resolved (v3.1.0, 2026-03-25): #95 `ClassifyDraftChainOptions`, #
 - [x] **#176 — MCP server skeleton + meshant_articulate + meshant mcp CLI** — `mcp.NewServer(ts, analyst)`; stdio; fidelity test; `bufio.Scanner` 4MiB buffer; `recordInvocation` (includes #179)
 - [x] **#179 — MCP invocation trace recording** — folded into #176; `recordInvocation` writes tag `["mcp-invocation", toolName]`; soft-fail policy; Observer attribution documented
 - [x] **#177 — MCP tools batch 1** — shadow, follow, bottleneck, summarize, validate; `filterByTagsOR` (OR tag semantics for validate); input validation guards (length, max_depth bounds); 39 tests, 80.1% coverage
-- [ ] **#178 — MCP tools batch 2** — diff, gaps (dual-observer)
+- [x] **#178 — MCP tools batch 2** — diff, gaps (dual-observer); `GapsResult` exported; T178.2–T178.4 documented; 87.1% coverage
 - [ ] **Deferred (architect N1)** — `newUUID4` duplicated between `graph/actor.go` and `mcp/tools.go`; extract to `meshant/internal/uuid` if a third consumer appears
 - [x] **Deferred (architect N2)** — `tags` property schema `items: {type: "string"}` — fixed in #177 for all batch-1 tools; `TestMCPServer_ToolsList_TagsHaveItems` asserts it
 

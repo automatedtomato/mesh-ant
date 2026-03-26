@@ -229,6 +229,36 @@ a scalability problem at the analyst-workstation level. It becomes a problem
 if MeshAnt is deployed as a shared service — that is an SSE/authentication
 problem, documented in D7.
 
+### Batch 2 tensions (#178)
+
+**T178.2: `InBoth` in `meshant_gaps` rests on string equality as provisional equivalence.**
+When two cuts from different observer positions both contain an element named
+"retry-buffer," `AnalyseGaps` places it in `InBoth`. String equality is the
+standing provisional equivalence criterion throughout the graph layer. It cannot
+distinguish "same element seen from two positions" from "two different things
+that happen to share a name." This is the same tension documented in
+`kg-scoping-v1.md` and is not worsened by the MCP layer. `InBoth` is honest
+about what it claims: the same string appeared in both positioned cuts.
+
+**T178.3: Invocation trace for dual-observer tools is recorded under `observer_a` only.**
+`recordInvocation` takes a single observer. For `meshant_diff` and `meshant_gaps`,
+that observer is `observer_a`. If someone later articulates from `observer_b`'s
+position alone, the MCP invocation that compared their view will be invisible
+from that position. The MCP server acted as a mediator affecting both positions
+but its trace is situated in only one. This is a direct consequence of T171.3.
+Resolution would require either dual-trace recording (one per observer) or a
+multi-observer trace type. Both are deferred. The limitation is named rather
+than hidden.
+
+**T178.4: Diff directionality (A is base, B is target) is a curatorial choice presented as convention.**
+`meshant_diff` always computes A→B. The direction affects which elements are
+"visible in B but not A" vs "visible in A but not B." An analyst reading B→A
+would produce a structurally different result. The convention is named in the
+tool description ("This is a directional comparison: A is the base, B is the
+target") but is not a first-class declared cut parameter. Adding a `direction`
+parameter (or making both A→B and B→A available) is deferred. For v4.0.0,
+the convention is sufficient: the analyst controls which observer they pass as A.
+
 ---
 
 ## Planned files

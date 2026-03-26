@@ -109,8 +109,8 @@ type property struct {
 // declared reader position for the entire server lifetime.
 //
 // Tools are registered in this constructor. Batch 1 (issues #176 + #177)
-// registers all six tools: articulate, shadow, follow, bottleneck, summarize,
-// validate. Batch 2 (#178) will add diff and gaps.
+// registers six tools: articulate, shadow, follow, bottleneck, summarize,
+// validate. Batch 2 (issue #178) adds diff and gaps (dual-observer).
 func NewServer(ts store.TraceStore, analyst string) *Server {
 	s := &Server{
 		ts:      ts,
@@ -124,6 +124,9 @@ func NewServer(ts store.TraceStore, analyst string) *Server {
 	s.registerBottleneck()
 	s.registerSummarize()
 	s.registerValidate()
+	// Register batch-2 tools (#178).
+	s.registerDiff()
+	s.registerGaps()
 	return s
 }
 

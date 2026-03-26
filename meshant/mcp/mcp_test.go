@@ -1576,6 +1576,545 @@ func TestMCPServer_ToolsList_TagsHaveItems(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Batch 2 tests — #178: diff, gaps (dual-observer)
+// =============================================================================
+
+// --- meshant_diff ---
+
+// TestMCPServer_Diff_Fidelity verifies that meshant_diff returns a result
+// structurally identical to calling graph.Diff directly.
+// Uses alice (A→B→C) as observer_a and bob (D→E) as observer_b; these produce
+// graphs with entirely disjoint node sets, giving a non-trivial diff.
+func TestMCPServer_Diff_Fidelity(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_diff", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "bob",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	env := extractEnvelope(t, responses[1])
+
+	// Fidelity: compare to direct Go API.
+	gA := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{"alice"},
+	})
+	gB := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{"bob"},
+	})
+	directDiff := graph.Diff(gA, gB)
+	directMeta := graph.CutMetaFromGraph(gA)
+	directMeta.Analyst = "test-analyst"
+	directEnv := graph.Envelope{Cut: directMeta, Data: directDiff}
+
+	if normalizeJSON(t, env) != normalizeJSON(t, directEnv) {
+		t.Errorf("MCP diff result diverges from direct Go API:\nMCP:    %s\nDirect: %s",
+			normalizeJSON(t, env), normalizeJSON(t, directEnv))
+	}
+}
+
+// TestMCPServer_Diff_MissingObserverA verifies that meshant_diff returns a
+// tool-level error when observer_a is absent.
+func TestMCPServer_Diff_MissingObserverA(t *testing.T) {
+	ts := testStore(t, multiObserverTraces())
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_diff", map[string]interface{}{
+		"observer_b": "bob",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+	result, _ := responses[1]["result"].(map[string]interface{})
+	content, _ := result["content"].([]interface{})
+	item, _ := content[0].(map[string]interface{})
+	if text, _ := item["text"].(string); !strings.Contains(text, "observer_a") {
+		t.Errorf("error message should identify observer_a as the missing field: %q", text)
+	}
+}
+
+// TestMCPServer_Diff_MissingObserverB verifies that meshant_diff returns a
+// tool-level error when observer_b is absent, and that the error names observer_b.
+func TestMCPServer_Diff_MissingObserverB(t *testing.T) {
+	ts := testStore(t, multiObserverTraces())
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_diff", map[string]interface{}{
+		"observer_a": "alice",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+	result, _ := responses[1]["result"].(map[string]interface{})
+	content, _ := result["content"].([]interface{})
+	item, _ := content[0].(map[string]interface{})
+	if text, _ := item["text"].(string); !strings.Contains(text, "observer_b") {
+		t.Errorf("error message should identify observer_b as the missing field: %q", text)
+	}
+}
+
+// TestMCPServer_Diff_RecordsInvocation verifies that meshant_diff writes a
+// reflexive invocation trace tagged "mcp-invocation" (Principle 8 / D5), and
+// that the trace is attributed to observer_a (T178.3 — T171.3 consequence).
+func TestMCPServer_Diff_RecordsInvocation(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_diff", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "bob",
+	}))
+	runMCP(t, srv, msgs)
+	assertInvocationTrace(t, ts, "meshant_diff")
+
+	// Verify Observer is observer_a — dual-observer tools record under the base
+	// position per T178.3 / T171.3 in mcp-v1.md.
+	all, err := ts.Query(context.Background(), store.QueryOpts{Tags: []string{"mcp-invocation"}})
+	if err != nil {
+		t.Fatalf("query invocation traces: %v", err)
+	}
+	for _, tr := range all {
+		for _, tag := range tr.Tags {
+			if tag == "meshant_diff" {
+				if tr.Observer != "alice" {
+					t.Errorf("invocation trace observer: want %q (observer_a), got %q", "alice", tr.Observer)
+				}
+				return
+			}
+		}
+	}
+}
+
+// --- meshant_gaps ---
+
+// TestMCPServer_Gaps_Fidelity verifies that meshant_gaps returns a result
+// structurally identical to calling graph.AnalyseGaps directly (suggest=false).
+func TestMCPServer_Gaps_Fidelity(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_gaps", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "bob",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	env := extractEnvelope(t, responses[1])
+
+	// Fidelity: compare to direct Go API.
+	gA := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{"alice"},
+	})
+	gB := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{"bob"},
+	})
+	directGap := graph.AnalyseGaps(gA, gB)
+	directMeta := graph.CutMetaFromGraph(gA)
+	directMeta.Analyst = "test-analyst"
+	// suggest=false → Suggestions is nil (omitted in JSON).
+	// Use mcp.GapsResult (the canonical exported type) to prevent silent field drift.
+	directEnv := graph.Envelope{Cut: directMeta, Data: mcp.GapsResult{Gap: directGap}}
+
+	if normalizeJSON(t, env) != normalizeJSON(t, directEnv) {
+		t.Errorf("MCP gaps result diverges from direct Go API:\nMCP:    %s\nDirect: %s",
+			normalizeJSON(t, env), normalizeJSON(t, directEnv))
+	}
+}
+
+// TestMCPServer_Gaps_MissingObserverA verifies that meshant_gaps returns a
+// tool-level error when observer_a is absent.
+func TestMCPServer_Gaps_MissingObserverA(t *testing.T) {
+	ts := testStore(t, multiObserverTraces())
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_gaps", map[string]interface{}{
+		"observer_b": "bob",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+	result, _ := responses[1]["result"].(map[string]interface{})
+	content, _ := result["content"].([]interface{})
+	item, _ := content[0].(map[string]interface{})
+	if text, _ := item["text"].(string); !strings.Contains(text, "observer_a") {
+		t.Errorf("error message should identify observer_a as the missing field: %q", text)
+	}
+}
+
+// TestMCPServer_Gaps_MissingObserverB verifies that meshant_gaps returns a
+// tool-level error when observer_b is absent, and that the error names observer_b.
+func TestMCPServer_Gaps_MissingObserverB(t *testing.T) {
+	ts := testStore(t, multiObserverTraces())
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_gaps", map[string]interface{}{
+		"observer_a": "alice",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+	result, _ := responses[1]["result"].(map[string]interface{})
+	content, _ := result["content"].([]interface{})
+	item, _ := content[0].(map[string]interface{})
+	if text, _ := item["text"].(string); !strings.Contains(text, "observer_b") {
+		t.Errorf("error message should identify observer_b as the missing field: %q", text)
+	}
+}
+
+// TestMCPServer_Gaps_RecordsInvocation verifies that meshant_gaps writes a
+// reflexive invocation trace tagged "mcp-invocation" (Principle 8 / D5), and
+// that the trace is attributed to observer_a (T178.3 — T171.3 consequence).
+func TestMCPServer_Gaps_RecordsInvocation(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_gaps", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "bob",
+	}))
+	runMCP(t, srv, msgs)
+	assertInvocationTrace(t, ts, "meshant_gaps")
+
+	// Verify Observer is observer_a — dual-observer tools record under the base
+	// position per T178.3 / T171.3 in mcp-v1.md.
+	all, err := ts.Query(context.Background(), store.QueryOpts{Tags: []string{"mcp-invocation"}})
+	if err != nil {
+		t.Fatalf("query invocation traces: %v", err)
+	}
+	for _, tr := range all {
+		for _, tag := range tr.Tags {
+			if tag == "meshant_gaps" {
+				if tr.Observer != "alice" {
+					t.Errorf("invocation trace observer: want %q (observer_a), got %q", "alice", tr.Observer)
+				}
+				return
+			}
+		}
+	}
+}
+
+// TestMCPServer_Gaps_WithSuggestions verifies that suggest=true causes
+// meshant_gaps to include rearticulation suggestions in the result.
+// alice (A→B→C) and bob (D→E) have disjoint node sets, so OnlyInA and OnlyInB
+// are both non-empty — SuggestRearticulations will produce suggestions.
+func TestMCPServer_Gaps_WithSuggestions(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_gaps", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "bob",
+		"suggest":    true,
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	env := extractEnvelope(t, responses[1])
+
+	// Decode the Data field as a map to check suggestions key.
+	resultJSON, err := json.Marshal(env.Data)
+	if err != nil {
+		t.Fatalf("marshal env.Data: %v", err)
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(resultJSON, &data); err != nil {
+		t.Fatalf("unmarshal data: %v", err)
+	}
+
+	// With disjoint node sets, suggestions must be present and non-empty.
+	suggestions, ok := data["suggestions"]
+	if !ok {
+		t.Fatal("want 'suggestions' key in gaps result when suggest=true")
+	}
+	slist, _ := suggestions.([]interface{})
+	if len(slist) == 0 {
+		t.Error("want at least one rearticulation suggestion for disjoint observer positions")
+	}
+}
+
+// TestMCPServer_ToolsList_ContainsAllBatch2 verifies that tools/list includes
+// both batch-2 tools after they are registered.
+func TestMCPServer_ToolsList_ContainsAllBatch2(t *testing.T) {
+	ts := testStore(t, nil)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/list",
+		"params":  map[string]interface{}{},
+	})
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	result, _ := responses[1]["result"].(map[string]interface{})
+	tools, _ := result["tools"].([]interface{})
+
+	want := []string{"meshant_diff", "meshant_gaps"}
+	found := map[string]bool{}
+	for _, tool := range tools {
+		m, _ := tool.(map[string]interface{})
+		if name, _ := m["name"].(string); name != "" {
+			found[name] = true
+		}
+	}
+	for _, name := range want {
+		if !found[name] {
+			t.Errorf("tools/list missing %q", name)
+		}
+	}
+}
+
+// --- batch-2 edge cases ---
+
+// TestMCPServer_Diff_SameObserver verifies that meshant_diff returns a clean
+// (non-error) result when observer_a == observer_b. The diff of identical cuts
+// is well-defined: Added, Removed, and Changed are all empty. This documents
+// that the handler does not guard against same-observer input — it is valid.
+func TestMCPServer_Diff_SameObserver(t *testing.T) {
+	ts := testStore(t, multiObserverTraces())
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_diff", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "alice",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	env := extractEnvelope(t, responses[1])
+
+	// Unmarshal the Data field into a map and check Added/Removed are absent or empty.
+	dataJSON, err := json.Marshal(env.Data)
+	if err != nil {
+		t.Fatalf("marshal env.Data: %v", err)
+	}
+	var diffData map[string]interface{}
+	if err := json.Unmarshal(dataJSON, &diffData); err != nil {
+		t.Fatalf("unmarshal diff data: %v", err)
+	}
+	// Same-observer diff: all change lists must be empty or absent.
+	for _, key := range []string{"added", "removed", "changed"} {
+		if v, ok := diffData[key]; ok {
+			if lst, _ := v.([]interface{}); len(lst) != 0 {
+				t.Errorf("same-observer diff: %q should be empty, got %d items", key, len(lst))
+			}
+		}
+	}
+}
+
+// TestMCPServer_Gaps_SameObserver verifies that meshant_gaps returns a clean
+// result when observer_a == observer_b. OnlyInA and OnlyInB must be empty.
+func TestMCPServer_Gaps_SameObserver(t *testing.T) {
+	ts := testStore(t, multiObserverTraces())
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_gaps", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "alice",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	env := extractEnvelope(t, responses[1])
+
+	dataJSON, err := json.Marshal(env.Data)
+	if err != nil {
+		t.Fatalf("marshal env.Data: %v", err)
+	}
+	var gapsData map[string]interface{}
+	if err := json.Unmarshal(dataJSON, &gapsData); err != nil {
+		t.Fatalf("unmarshal gaps data: %v", err)
+	}
+	gap, _ := gapsData["gap"].(map[string]interface{})
+	for _, key := range []string{"only_in_a", "only_in_b"} {
+		if v, ok := gap[key]; ok {
+			if lst, _ := v.([]interface{}); len(lst) != 0 {
+				t.Errorf("same-observer gaps: %q should be empty, got %d items", key, len(lst))
+			}
+		}
+	}
+}
+
+// TestMCPServer_Diff_InvertedBWindow verifies that meshant_diff returns a
+// tool-level error when the B-side time window is inverted (from_b > to_b),
+// and that the error message identifies the B-side.
+// This exercises the B-side parseTimeWindow wiring independently of the A side.
+func TestMCPServer_Diff_InvertedBWindow(t *testing.T) {
+	ts := testStore(t, multiObserverTraces())
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_diff", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "bob",
+		"from_b":     "2025-01-02T00:00:00Z",
+		"to_b":       "2025-01-01T00:00:00Z", // inverted
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+	result, _ := responses[1]["result"].(map[string]interface{})
+	content, _ := result["content"].([]interface{})
+	item, _ := content[0].(map[string]interface{})
+	if text, _ := item["text"].(string); !strings.Contains(text, "B-side") {
+		t.Errorf("error message should identify B-side window as the error source: %q", text)
+	}
+}
+
+// TestMCPServer_Diff_InvertedAWindow verifies that meshant_diff returns a
+// tool-level error when the A-side time window is inverted (from_a > to_a).
+// Symmetric to InvertedBWindow — exercises the A-side parseTimeWindow path.
+func TestMCPServer_Diff_InvertedAWindow(t *testing.T) {
+	ts := testStore(t, multiObserverTraces())
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_diff", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "bob",
+		"from_a":     "2025-01-02T00:00:00Z",
+		"to_a":       "2025-01-01T00:00:00Z", // inverted
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+	result, _ := responses[1]["result"].(map[string]interface{})
+	content, _ := result["content"].([]interface{})
+	item, _ := content[0].(map[string]interface{})
+	if text, _ := item["text"].(string); !strings.Contains(text, "A-side") {
+		t.Errorf("error message should identify A-side window as the error source: %q", text)
+	}
+}
+
+// TestMCPServer_Gaps_InvertedAWindow verifies that meshant_gaps returns a
+// tool-level error when the A-side time window is inverted.
+func TestMCPServer_Gaps_InvertedAWindow(t *testing.T) {
+	ts := testStore(t, multiObserverTraces())
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_gaps", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "bob",
+		"from_a":     "2025-01-02T00:00:00Z",
+		"to_a":       "2025-01-01T00:00:00Z", // inverted
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+	result, _ := responses[1]["result"].(map[string]interface{})
+	content, _ := result["content"].([]interface{})
+	item, _ := content[0].(map[string]interface{})
+	if text, _ := item["text"].(string); !strings.Contains(text, "A-side") {
+		t.Errorf("error message should identify A-side window as the error source: %q", text)
+	}
+}
+
+// TestMCPServer_Gaps_InvertedBWindow verifies that meshant_gaps returns a
+// tool-level error when the B-side time window is inverted.
+func TestMCPServer_Gaps_InvertedBWindow(t *testing.T) {
+	ts := testStore(t, multiObserverTraces())
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_gaps", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "bob",
+		"from_b":     "2025-01-02T00:00:00Z",
+		"to_b":       "2025-01-01T00:00:00Z", // inverted
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+	result, _ := responses[1]["result"].(map[string]interface{})
+	content, _ := result["content"].([]interface{})
+	item, _ := content[0].(map[string]interface{})
+	if text, _ := item["text"].(string); !strings.Contains(text, "B-side") {
+		t.Errorf("error message should identify B-side window as the error source: %q", text)
+	}
+}
+
+// TestMCPServer_Gaps_WithoutSuggestions verifies that when suggest is false or
+// absent, the "suggestions" key does not appear in the result JSON. This
+// documents the omitempty invariant as an explicit contract.
+func TestMCPServer_Gaps_WithoutSuggestions(t *testing.T) {
+	ts := testStore(t, multiObserverTraces())
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_gaps", map[string]interface{}{
+		"observer_a": "alice",
+		"observer_b": "bob",
+		// suggest omitted — defaults to false
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	env := extractEnvelope(t, responses[1])
+
+	dataJSON, err := json.Marshal(env.Data)
+	if err != nil {
+		t.Fatalf("marshal env.Data: %v", err)
+	}
+	var gapsData map[string]interface{}
+	if err := json.Unmarshal(dataJSON, &gapsData); err != nil {
+		t.Fatalf("unmarshal gaps data: %v", err)
+	}
+	if _, ok := gapsData["suggestions"]; ok {
+		t.Error("suggestions key must be absent when suggest=false; omitempty invariant violated")
+	}
+}
+
 // --- meshant_validate tag filter (B1) ---
 
 // TestMCPServer_Validate_TagsFilter verifies that meshant_validate filters
