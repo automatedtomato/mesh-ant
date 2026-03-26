@@ -2,7 +2,7 @@
 //
 // Batch 1 (issues #176 + #177): meshant_articulate, meshant_shadow,
 // meshant_follow, meshant_bottleneck, meshant_summarize, meshant_validate.
-// Batch 2 (#178): diff, gaps (dual-observer).
+// Batch 2 (issue #178): meshant_diff, meshant_gaps (dual-observer).
 //
 // Every cut-producing tool:
 //  1. Validates required parameters.
@@ -75,6 +75,13 @@ func validateTags(tags []string) error {
 // This matches the semantics described in the meshant_validate tool schema and
 // the graph.ArticulationOptions.Tags field — distinct from QueryOpts.Tags which
 // uses AND semantics.
+//
+// Aliasing note: the returned slice shares the backing array of the input
+// when elements are appended within the original capacity. Do not call
+// filterByTagsOR twice on the same source slice and hold both results
+// simultaneously — the second write may corrupt the first result's memory.
+// Dual-observer handlers (diff, gaps) avoid this by passing tags directly
+// to ArticulationOptions rather than calling filterByTagsOR per side.
 func filterByTagsOR(traces []schema.Trace, filter []string) []schema.Trace {
 	if len(filter) == 0 {
 		return traces
@@ -734,4 +741,344 @@ func (s *Server) handleValidate(ctx context.Context, rawParams json.RawMessage) 
 	}
 	// No recordInvocation — D5 exemption: validate is not a cut-producing operation.
 	return result, nil
+}
+
+// =============================================================================
+// Batch 2 — #178: diff, gaps (dual-observer)
+// =============================================================================
+
+// --- meshant_diff ---
+
+// diffArgs is the input shape for meshant_diff.
+// Both observer_a and observer_b are required: diff is inherently positional —
+// it compares what observer A sees against what observer B sees. The direction
+// of comparison is A→B (elements visible in B but not A, elements visible in
+// A but not B).
+//
+// T171.3 tension (mcp-v1.md): CutMeta.Observer is a single string. For diff,
+// we set Observer = observer_a and document observer_b in the result payload.
+// A clean solution would require a richer CutMeta — deferred.
+//
+// T178.3 tension: the reflexive invocation trace is recorded under observer_a
+// only. If someone later articulates from observer_b alone, the invocation
+// trace for this comparison will be invisible from that position.
+//
+// T178.4 tension: the diff direction (A is the base, B is the target) is a
+// curatorial choice fixed by convention. An analyst reading B-to-A would get
+// structurally different results (added/removed swap). Directionality is named
+// in the description but is not yet a first-class declared cut parameter.
+type diffArgs struct {
+	ObserverA string   `json:"observer_a"`
+	FromA     string   `json:"from_a,omitempty"`
+	ToA       string   `json:"to_a,omitempty"`
+	TagsA     []string `json:"tags_a,omitempty"`
+	ObserverB string   `json:"observer_b"`
+	FromB     string   `json:"from_b,omitempty"`
+	ToB       string   `json:"to_b,omitempty"`
+	TagsB     []string `json:"tags_b,omitempty"`
+}
+
+// registerDiff registers the meshant_diff tool on the server.
+func (s *Server) registerDiff() {
+	sc := toolSchema{
+		Name: "meshant_diff",
+		Description: "Compare two positioned cuts (observer_a vs observer_b) using graph.Diff. " +
+			"Returns elements visible in B but not A, elements visible in A but not B, " +
+			"and elements visible in both with differing properties. " +
+			"This is a directional comparison: A is the base, B is the target. " +
+			"T171.3 tension: CutMeta.Observer = observer_a; observer_b is in the result payload. " +
+			"Returns a graph.Envelope with CutMeta and a GraphDiff.",
+		InputSchema: inputSchema{
+			Type: "object",
+			Properties: map[string]property{
+				"observer_a": {
+					Type:        "string",
+					Description: "The base observer position (A side of the diff). Required.",
+				},
+				"from_a": {
+					Type:        "string",
+					Description: "RFC3339 lower bound of the A-side time window. Optional.",
+				},
+				"to_a": {
+					Type:        "string",
+					Description: "RFC3339 upper bound of the A-side time window. Optional.",
+				},
+				"tags_a": {
+					Type:        "array",
+					Description: "Tag filter for A side (OR semantics). Optional.",
+					Items:       &property{Type: "string"},
+				},
+				"observer_b": {
+					Type:        "string",
+					Description: "The target observer position (B side of the diff). Required.",
+				},
+				"from_b": {
+					Type:        "string",
+					Description: "RFC3339 lower bound of the B-side time window. Optional.",
+				},
+				"to_b": {
+					Type:        "string",
+					Description: "RFC3339 upper bound of the B-side time window. Optional.",
+				},
+				"tags_b": {
+					Type:        "array",
+					Description: "Tag filter for B side (OR semantics). Optional.",
+					Items:       &property{Type: "string"},
+				},
+			},
+			Required: []string{"observer_a", "observer_b"},
+		},
+	}
+	s.registerTool(sc, s.handleDiff)
+}
+
+// handleDiff is the tool handler for meshant_diff.
+//
+// Observer validation errors are wrapped with "meshant_diff: observer_a/b: …"
+// to identify which side failed. This is the preferred pattern for dual-observer
+// tools (more informative than the unwrapped style used in batch-1).
+//
+// Steps:
+//  1. Validate both observers and tag lists.
+//  2. Parse time windows for both sides.
+//  3. Query full substrate once.
+//  4. Articulate gA (observer_a) and gB (observer_b) separately.
+//  5. Call graph.Diff(gA, gB) → GraphDiff.
+//  6. Stamp CutMeta from gA; set Analyst; Observer = observer_a (T171.3).
+//  7. Record reflexive invocation trace under observer_a.
+func (s *Server) handleDiff(ctx context.Context, rawParams json.RawMessage) (interface{}, error) {
+	var args diffArgs
+	if err := json.Unmarshal(rawParams, &args); err != nil {
+		return nil, fmt.Errorf("meshant_diff: invalid params: %w", err)
+	}
+
+	// Step 1: validate both observers and tag lists.
+	if err := validateObserver(args.ObserverA); err != nil {
+		return nil, fmt.Errorf("meshant_diff: observer_a: %w", err)
+	}
+	if err := validateObserver(args.ObserverB); err != nil {
+		return nil, fmt.Errorf("meshant_diff: observer_b: %w", err)
+	}
+	if err := validateTags(args.TagsA); err != nil {
+		return nil, fmt.Errorf("meshant_diff: tags_a: %w", err)
+	}
+	if err := validateTags(args.TagsB); err != nil {
+		return nil, fmt.Errorf("meshant_diff: tags_b: %w", err)
+	}
+
+	// Parse time windows for both sides.
+	twA, err := parseTimeWindow(args.FromA, args.ToA)
+	if err != nil {
+		return nil, fmt.Errorf("meshant_diff: A-side window: %w", err)
+	}
+	twB, err := parseTimeWindow(args.FromB, args.ToB)
+	if err != nil {
+		return nil, fmt.Errorf("meshant_diff: B-side window: %w", err)
+	}
+
+	// Step 2: query full substrate once — both cuts read from the same substrate.
+	traces, err := s.ts.Query(ctx, store.QueryOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("meshant_diff: query store: %w", err)
+	}
+
+	// Step 3: articulate each cut independently.
+	gA := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{args.ObserverA},
+		TimeWindow:        twA,
+		Tags:              args.TagsA,
+	})
+	gB := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{args.ObserverB},
+		TimeWindow:        twB,
+		Tags:              args.TagsB,
+	})
+
+	// Step 4: diff the two cuts.
+	diff := graph.Diff(gA, gB)
+
+	// Step 5: build envelope.
+	// T171.3 tension: Observer = observer_a (base of comparison); observer_b
+	// is carried by the GraphDiff payload. A richer CutMeta would name both;
+	// that is a deferred structural change.
+	meta := graph.CutMetaFromGraph(gA)
+	meta.Analyst = s.analyst
+	env := graph.Envelope{Cut: meta, Data: diff}
+
+	// Step 6: reflexive invocation trace under observer_a.
+	s.recordInvocation(ctx, "meshant_diff", args.ObserverA)
+
+	return env, nil
+}
+
+// --- meshant_gaps ---
+
+// gapsArgs is the input shape for meshant_gaps.
+// Mirrors diffArgs with an additional suggest flag.
+//
+// T171.3 tension (mcp-v1.md): same as meshant_diff — Observer = observer_a.
+// T178.2 tension: InBoth rests on string equality of element names — a
+// provisional equivalence criterion (same standing tension as the graph layer).
+// T178.3 tension: reflexive trace recorded under observer_a only.
+type gapsArgs struct {
+	ObserverA string   `json:"observer_a"`
+	FromA     string   `json:"from_a,omitempty"`
+	ToA       string   `json:"to_a,omitempty"`
+	TagsA     []string `json:"tags_a,omitempty"`
+	ObserverB string   `json:"observer_b"`
+	FromB     string   `json:"from_b,omitempty"`
+	ToB       string   `json:"to_b,omitempty"`
+	TagsB     []string `json:"tags_b,omitempty"`
+	Suggest   bool     `json:"suggest,omitempty"`
+}
+
+// GapsResult is the result shape for meshant_gaps.
+// Gap is always present. Suggestions is populated only when args.Suggest is true;
+// omitempty hides it from JSON output when the caller does not request it.
+// Exported so tests and callers can unmarshal directly into the canonical type.
+type GapsResult struct {
+	Gap         graph.ObserverGap         `json:"gap"`
+	Suggestions []graph.RearticSuggestion `json:"suggestions,omitempty"`
+}
+
+// registerGaps registers the meshant_gaps tool on the server.
+func (s *Server) registerGaps() {
+	sc := toolSchema{
+		Name: "meshant_gaps",
+		Description: "Identify elements visible from one observer but not another (observer_a vs observer_b). " +
+			"Partitions elements from both positioned cuts into: OnlyInA, OnlyInB, InBoth. " +
+			"InBoth rests on string equality of element names — a provisional equivalence criterion. " +
+			"Optionally generates re-articulation suggestions (suggest=true) to help narrow the gap. " +
+			"T171.3 tension: CutMeta.Observer = observer_a; observer_b is in the result payload. " +
+			"Returns a graph.Envelope with CutMeta and a GapsResult{gap, suggestions?}.",
+		InputSchema: inputSchema{
+			Type: "object",
+			Properties: map[string]property{
+				"observer_a": {
+					Type:        "string",
+					Description: "The first observer position. Required.",
+				},
+				"from_a": {
+					Type:        "string",
+					Description: "RFC3339 lower bound of the A-side time window. Optional.",
+				},
+				"to_a": {
+					Type:        "string",
+					Description: "RFC3339 upper bound of the A-side time window. Optional.",
+				},
+				"tags_a": {
+					Type:        "array",
+					Description: "Tag filter for A side (OR semantics). Optional.",
+					Items:       &property{Type: "string"},
+				},
+				"observer_b": {
+					Type:        "string",
+					Description: "The second observer position. Required.",
+				},
+				"from_b": {
+					Type:        "string",
+					Description: "RFC3339 lower bound of the B-side time window. Optional.",
+				},
+				"to_b": {
+					Type:        "string",
+					Description: "RFC3339 upper bound of the B-side time window. Optional.",
+				},
+				"tags_b": {
+					Type:        "array",
+					Description: "Tag filter for B side (OR semantics). Optional.",
+					Items:       &property{Type: "string"},
+				},
+				"suggest": {
+					Type:        "boolean",
+					Description: "If true, generate re-articulation suggestions to help narrow the gap. Defaults to false.",
+				},
+			},
+			Required: []string{"observer_a", "observer_b"},
+		},
+	}
+	s.registerTool(sc, s.handleGaps)
+}
+
+// handleGaps is the tool handler for meshant_gaps.
+//
+// Observer validation errors are wrapped with "meshant_gaps: observer_a/b: …"
+// to identify which side failed. This is the preferred pattern for dual-observer
+// tools (more informative than the unwrapped style used in batch-1).
+//
+// Steps:
+//  1. Validate both observers and tag lists.
+//  2. Parse time windows for both sides.
+//  3. Query full substrate once.
+//  4. Articulate gA and gB separately.
+//  5. Call graph.AnalyseGaps(gA, gB) → ObserverGap.
+//  6. Optionally call graph.SuggestRearticulations(gap) when Suggest=true.
+//  7. Stamp CutMeta from gA; set Analyst; Observer = observer_a (T171.3).
+//  8. Record reflexive invocation trace under observer_a.
+func (s *Server) handleGaps(ctx context.Context, rawParams json.RawMessage) (interface{}, error) {
+	var args gapsArgs
+	if err := json.Unmarshal(rawParams, &args); err != nil {
+		return nil, fmt.Errorf("meshant_gaps: invalid params: %w", err)
+	}
+
+	// Step 1: validate both observers and tag lists.
+	if err := validateObserver(args.ObserverA); err != nil {
+		return nil, fmt.Errorf("meshant_gaps: observer_a: %w", err)
+	}
+	if err := validateObserver(args.ObserverB); err != nil {
+		return nil, fmt.Errorf("meshant_gaps: observer_b: %w", err)
+	}
+	if err := validateTags(args.TagsA); err != nil {
+		return nil, fmt.Errorf("meshant_gaps: tags_a: %w", err)
+	}
+	if err := validateTags(args.TagsB); err != nil {
+		return nil, fmt.Errorf("meshant_gaps: tags_b: %w", err)
+	}
+
+	// Parse time windows for both sides.
+	twA, err := parseTimeWindow(args.FromA, args.ToA)
+	if err != nil {
+		return nil, fmt.Errorf("meshant_gaps: A-side window: %w", err)
+	}
+	twB, err := parseTimeWindow(args.FromB, args.ToB)
+	if err != nil {
+		return nil, fmt.Errorf("meshant_gaps: B-side window: %w", err)
+	}
+
+	// Step 2: query full substrate once.
+	traces, err := s.ts.Query(ctx, store.QueryOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("meshant_gaps: query store: %w", err)
+	}
+
+	// Step 3: articulate each cut independently.
+	gA := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{args.ObserverA},
+		TimeWindow:        twA,
+		Tags:              args.TagsA,
+	})
+	gB := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{args.ObserverB},
+		TimeWindow:        twB,
+		Tags:              args.TagsB,
+	})
+
+	// Step 4: analyse gaps.
+	gap := graph.AnalyseGaps(gA, gB)
+
+	// Step 5: conditionally generate suggestions.
+	result := GapsResult{Gap: gap}
+	if args.Suggest {
+		result.Suggestions = graph.SuggestRearticulations(gap)
+	}
+
+	// Step 6: build envelope.
+	// T171.3 tension: Observer = observer_a; observer_b is in the result payload.
+	meta := graph.CutMetaFromGraph(gA)
+	meta.Analyst = s.analyst
+	env := graph.Envelope{Cut: meta, Data: result}
+
+	// Step 7: reflexive invocation trace under observer_a.
+	s.recordInvocation(ctx, "meshant_gaps", args.ObserverA)
+
+	return env, nil
 }
