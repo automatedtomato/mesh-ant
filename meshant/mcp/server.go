@@ -96,26 +96,34 @@ type inputSchema struct {
 }
 
 // property is a single JSON Schema property descriptor.
+// Items is used for array properties to describe the element type
+// (e.g., Items: &property{Type: "string"} for a []string field).
 type property struct {
-	Type        string `json:"type"`
-	Description string `json:"description"`
+	Type        string    `json:"type"`
+	Description string    `json:"description"`
+	Items       *property `json:"items,omitempty"`
 }
 
 // NewServer constructs an MCP server backed by ts with the given analyst
 // identity. The analyst value is set on every CutMeta response — it is the
 // declared reader position for the entire server lifetime.
 //
-// Tools are registered in this constructor. The tool set grows across issues
-// #177 (batch 1) and #178 (batch 2); this skeleton registers only
-// meshant_articulate.
+// Tools are registered in this constructor. Batch 1 (issues #176 + #177)
+// registers all six tools: articulate, shadow, follow, bottleneck, summarize,
+// validate. Batch 2 (#178) will add diff and gaps.
 func NewServer(ts store.TraceStore, analyst string) *Server {
 	s := &Server{
 		ts:      ts,
 		analyst: analyst,
 		tools:   make(map[string]ToolHandler),
 	}
-	// Register batch-1 tool: meshant_articulate.
+	// Register batch-1 tools (#176 + #177).
 	s.registerArticulate()
+	s.registerShadow()
+	s.registerFollow()
+	s.registerBottleneck()
+	s.registerSummarize()
+	s.registerValidate()
 	return s
 }
 

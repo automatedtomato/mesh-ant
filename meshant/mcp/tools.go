@@ -1,7 +1,7 @@
 // tools.go registers MCP tool handlers for the meshant analytical engine.
 //
-// Batch 1 (issue #176): meshant_articulate — build a positioned mesh graph.
-// Batch 1 remaining (#177): shadow, follow, bottleneck, summarize, validate.
+// Batch 1 (issues #176 + #177): meshant_articulate, meshant_shadow,
+// meshant_follow, meshant_bottleneck, meshant_summarize, meshant_validate.
 // Batch 2 (#178): diff, gaps (dual-observer).
 //
 // Every cut-producing tool:
@@ -28,6 +28,72 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/schema"
 	"github.com/automatedtomato/mesh-ant/meshant/store"
 )
+
+// Input validation limits — applied in every handler before use.
+// These protect against storage pollution and memory amplification from
+// a crafted MCP client sending pathological parameter values.
+const (
+	// maxObserverLen caps the observer and element name strings. No legitimate
+	// ANT actant name approaches this length.
+	maxObserverLen = 500
+	// maxTagLen caps individual tag strings.
+	maxTagLen = 200
+	// maxTagCount caps the number of tags per request.
+	maxTagCount = 50
+	// maxFollowDepth caps the MaxDepth parameter for meshant_follow.
+	// Zero means "unlimited" (the documented default); any positive value is
+	// bounded here. A realistic trace substrate has far fewer than 1000 steps.
+	maxFollowDepth = 1000
+)
+
+// validateObserver returns an error if the observer value is empty or too long.
+func validateObserver(obs string) error {
+	if obs == "" {
+		return fmt.Errorf("observer is required — every cut is a positioned reading")
+	}
+	if len(obs) > maxObserverLen {
+		return fmt.Errorf("observer exceeds maximum length %d", maxObserverLen)
+	}
+	return nil
+}
+
+// validateTags returns an error if any tag is too long or the slice is too large.
+func validateTags(tags []string) error {
+	if len(tags) > maxTagCount {
+		return fmt.Errorf("too many tags: %d exceeds maximum %d", len(tags), maxTagCount)
+	}
+	for _, tag := range tags {
+		if len(tag) > maxTagLen {
+			return fmt.Errorf("tag %q exceeds maximum length %d", tag, maxTagLen)
+		}
+	}
+	return nil
+}
+
+// filterByTagsOR returns traces that carry at least one of the requested tags
+// (OR semantics). If filter is empty, all traces are returned unchanged.
+// This matches the semantics described in the meshant_validate tool schema and
+// the graph.ArticulationOptions.Tags field — distinct from QueryOpts.Tags which
+// uses AND semantics.
+func filterByTagsOR(traces []schema.Trace, filter []string) []schema.Trace {
+	if len(filter) == 0 {
+		return traces
+	}
+	want := make(map[string]bool, len(filter))
+	for _, tag := range filter {
+		want[tag] = true
+	}
+	out := traces[:0:0] // reuse backing array type but start empty
+	for _, t := range traces {
+		for _, tag := range t.Tags {
+			if want[tag] {
+				out = append(out, t)
+				break
+			}
+		}
+	}
+	return out
+}
 
 // articulateArgs is the input shape for meshant_articulate.
 type articulateArgs struct {
@@ -74,6 +140,7 @@ func (s *Server) registerArticulate() {
 				"tags": {
 					Type:        "array",
 					Description: "Tag filter: include only traces carrying at least one of these tags (OR semantics). Optional.",
+					Items:       &property{Type: "string"},
 				},
 			},
 			Required: []string{"observer"},
@@ -98,9 +165,12 @@ func (s *Server) handleArticulate(ctx context.Context, rawParams json.RawMessage
 		return nil, fmt.Errorf("meshant_articulate: invalid params: %w", err)
 	}
 
-	// Step 1: observer is required — every graph is a positioned reading.
-	if args.Observer == "" {
-		return nil, fmt.Errorf("observer is required — every graph is a positioned reading")
+	// Step 1: observer is required and must be within bounds.
+	if err := validateObserver(args.Observer); err != nil {
+		return nil, err
+	}
+	if err := validateTags(args.Tags); err != nil {
+		return nil, fmt.Errorf("meshant_articulate: %w", err)
 	}
 
 	// Step 2: parse optional time window.
@@ -217,4 +287,451 @@ func (s *Server) recordInvocation(ctx context.Context, toolName, observer string
 	if err := s.ts.Store(ctx, []schema.Trace{t}); err != nil {
 		log.Printf("mcp: recordInvocation: store trace: %v (tool=%s, observer=%s)", err, toolName, observer)
 	}
+}
+
+// =============================================================================
+// Batch 1 — #177: shadow, follow, bottleneck, summarize, validate
+// =============================================================================
+
+// --- meshant_shadow ---
+
+// shadowArgs is the input shape for meshant_shadow.
+type shadowArgs struct {
+	Observer string   `json:"observer"`
+	From     string   `json:"from,omitempty"`
+	To       string   `json:"to,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
+}
+
+// registerShadow registers the meshant_shadow tool on the server.
+func (s *Server) registerShadow() {
+	sc := toolSchema{
+		Name: "meshant_shadow",
+		Description: "Return the shadow elements from a positioned articulation — " +
+			"elements visible from other observer positions but not from this one. " +
+			"Every cut names what it excludes; the shadow is that name. " +
+			"Returns a graph.Envelope with CutMeta and a ShadowSummary.",
+		InputSchema: inputSchema{
+			Type: "object",
+			Properties: map[string]property{
+				"observer": {
+					Type:        "string",
+					Description: "The ANT observer position. Required — shadow is always positioned.",
+				},
+				"from": {
+					Type:        "string",
+					Description: "RFC3339 lower bound of the time window (inclusive). Optional.",
+				},
+				"to": {
+					Type:        "string",
+					Description: "RFC3339 upper bound of the time window (inclusive). Optional.",
+				},
+				"tags": {
+					Type:        "array",
+					Description: "Tag filter: include only traces carrying at least one of these tags. Optional.",
+					Items:       &property{Type: "string"},
+				},
+			},
+			Required: []string{"observer"},
+		},
+	}
+	s.registerTool(sc, s.handleShadow)
+}
+
+// handleShadow is the tool handler for meshant_shadow.
+func (s *Server) handleShadow(ctx context.Context, rawParams json.RawMessage) (interface{}, error) {
+	var args shadowArgs
+	if err := json.Unmarshal(rawParams, &args); err != nil {
+		return nil, fmt.Errorf("meshant_shadow: invalid params: %w", err)
+	}
+	if err := validateObserver(args.Observer); err != nil {
+		return nil, err
+	}
+	if err := validateTags(args.Tags); err != nil {
+		return nil, fmt.Errorf("meshant_shadow: %w", err)
+	}
+	tw, err := parseTimeWindow(args.From, args.To)
+	if err != nil {
+		return nil, fmt.Errorf("meshant_shadow: %w", err)
+	}
+	traces, err := s.ts.Query(ctx, store.QueryOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("meshant_shadow: query store: %w", err)
+	}
+	g := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{args.Observer},
+		TimeWindow:        tw,
+		Tags:              args.Tags,
+	})
+	meta := graph.CutMetaFromGraph(g)
+	meta.Analyst = s.analyst
+	shadow := graph.SummariseShadow(g)
+	env := graph.Envelope{Cut: meta, Data: shadow}
+	s.recordInvocation(ctx, "meshant_shadow", args.Observer)
+	return env, nil
+}
+
+// --- meshant_follow ---
+
+// followArgs is the input shape for meshant_follow.
+type followArgs struct {
+	Observer  string   `json:"observer"`
+	Element   string   `json:"element"`
+	Direction string   `json:"direction,omitempty"`
+	MaxDepth  int      `json:"max_depth,omitempty"`
+	From      string   `json:"from,omitempty"`
+	To        string   `json:"to,omitempty"`
+	Tags      []string `json:"tags,omitempty"`
+}
+
+// registerFollow registers the meshant_follow tool on the server.
+func (s *Server) registerFollow() {
+	sc := toolSchema{
+		Name: "meshant_follow",
+		Description: "Follow a translation chain through the positioned graph from a named element. " +
+			"Each step is classified as intermediary-like, mediator-like, or translation. " +
+			"The chain is itself a cut — the analyst declares where to start and which direction to follow. " +
+			"Returns a graph.Envelope with CutMeta and a ClassifiedChain.",
+		InputSchema: inputSchema{
+			Type: "object",
+			Properties: map[string]property{
+				"observer": {
+					Type:        "string",
+					Description: "The ANT observer position. Required — every chain traversal is a positioned reading.",
+				},
+				"element": {
+					Type:        "string",
+					Description: "The starting actant name. Required.",
+				},
+				"direction": {
+					Type:        "string",
+					Description: `Traversal direction: "forward" (source→target) or "backward" (target→source). Defaults to "forward".`,
+				},
+				"max_depth": {
+					Type:        "integer",
+					Description: "Maximum traversal steps. 0 means unlimited. Optional.",
+				},
+				"from": {
+					Type:        "string",
+					Description: "RFC3339 lower bound of the time window (inclusive). Optional.",
+				},
+				"to": {
+					Type:        "string",
+					Description: "RFC3339 upper bound of the time window (inclusive). Optional.",
+				},
+				"tags": {
+					Type:        "array",
+					Description: "Tag filter: include only traces carrying at least one of these tags. Optional.",
+					Items:       &property{Type: "string"},
+				},
+			},
+			Required: []string{"observer", "element"},
+		},
+	}
+	s.registerTool(sc, s.handleFollow)
+}
+
+// handleFollow is the tool handler for meshant_follow.
+func (s *Server) handleFollow(ctx context.Context, rawParams json.RawMessage) (interface{}, error) {
+	var args followArgs
+	if err := json.Unmarshal(rawParams, &args); err != nil {
+		return nil, fmt.Errorf("meshant_follow: invalid params: %w", err)
+	}
+	if err := validateObserver(args.Observer); err != nil {
+		return nil, err
+	}
+	if args.Element == "" {
+		return nil, fmt.Errorf("element is required — a chain must start somewhere")
+	}
+	if len(args.Element) > maxObserverLen {
+		return nil, fmt.Errorf("meshant_follow: element exceeds maximum length %d", maxObserverLen)
+	}
+	if err := validateTags(args.Tags); err != nil {
+		return nil, fmt.Errorf("meshant_follow: %w", err)
+	}
+	if args.MaxDepth < 0 {
+		return nil, fmt.Errorf("meshant_follow: max_depth must be >= 0")
+	}
+	if args.MaxDepth > maxFollowDepth {
+		return nil, fmt.Errorf("meshant_follow: max_depth %d exceeds maximum %d", args.MaxDepth, maxFollowDepth)
+	}
+
+	// Validate and map direction. Default to forward.
+	var dir graph.Direction
+	switch args.Direction {
+	case "", "forward":
+		dir = graph.DirectionForward
+	case "backward":
+		dir = graph.DirectionBackward
+	default:
+		return nil, fmt.Errorf("meshant_follow: direction must be %q or %q, got %q",
+			"forward", "backward", args.Direction)
+	}
+
+	tw, err := parseTimeWindow(args.From, args.To)
+	if err != nil {
+		return nil, fmt.Errorf("meshant_follow: %w", err)
+	}
+	traces, err := s.ts.Query(ctx, store.QueryOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("meshant_follow: query store: %w", err)
+	}
+	g := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{args.Observer},
+		TimeWindow:        tw,
+		Tags:              args.Tags,
+	})
+	chain := graph.FollowTranslation(g, args.Element, graph.FollowOptions{
+		Direction: dir,
+		MaxDepth:  args.MaxDepth,
+	})
+	classified := graph.ClassifyChain(chain, graph.ClassifyOptions{})
+	meta := graph.CutMetaFromGraph(g)
+	meta.Analyst = s.analyst
+	env := graph.Envelope{Cut: meta, Data: classified}
+	s.recordInvocation(ctx, "meshant_follow", args.Observer)
+	return env, nil
+}
+
+// --- meshant_bottleneck ---
+
+// bottleneckArgs is the input shape for meshant_bottleneck.
+type bottleneckArgs struct {
+	Observer string   `json:"observer"`
+	From     string   `json:"from,omitempty"`
+	To       string   `json:"to,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
+}
+
+// registerBottleneck registers the meshant_bottleneck tool on the server.
+func (s *Server) registerBottleneck() {
+	sc := toolSchema{
+		Name: "meshant_bottleneck",
+		Description: "Identify bottleneck actants — elements with high appearance count, " +
+			"mediation count, or shadow count in the positioned graph. " +
+			"These are provisional readings from one cut; a different observer position " +
+			"would produce different notes. " +
+			"Returns a graph.Envelope with CutMeta and a []BottleneckNote.",
+		InputSchema: inputSchema{
+			Type: "object",
+			Properties: map[string]property{
+				"observer": {
+					Type:        "string",
+					Description: "The ANT observer position. Required.",
+				},
+				"from": {
+					Type:        "string",
+					Description: "RFC3339 lower bound of the time window (inclusive). Optional.",
+				},
+				"to": {
+					Type:        "string",
+					Description: "RFC3339 upper bound of the time window (inclusive). Optional.",
+				},
+				"tags": {
+					Type:        "array",
+					Description: "Tag filter: include only traces carrying at least one of these tags. Optional.",
+					Items:       &property{Type: "string"},
+				},
+			},
+			Required: []string{"observer"},
+		},
+	}
+	s.registerTool(sc, s.handleBottleneck)
+}
+
+// handleBottleneck is the tool handler for meshant_bottleneck.
+func (s *Server) handleBottleneck(ctx context.Context, rawParams json.RawMessage) (interface{}, error) {
+	var args bottleneckArgs
+	if err := json.Unmarshal(rawParams, &args); err != nil {
+		return nil, fmt.Errorf("meshant_bottleneck: invalid params: %w", err)
+	}
+	if err := validateObserver(args.Observer); err != nil {
+		return nil, err
+	}
+	if err := validateTags(args.Tags); err != nil {
+		return nil, fmt.Errorf("meshant_bottleneck: %w", err)
+	}
+	tw, err := parseTimeWindow(args.From, args.To)
+	if err != nil {
+		return nil, fmt.Errorf("meshant_bottleneck: %w", err)
+	}
+	traces, err := s.ts.Query(ctx, store.QueryOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("meshant_bottleneck: query store: %w", err)
+	}
+	g := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{args.Observer},
+		TimeWindow:        tw,
+		Tags:              args.Tags,
+	})
+	notes := graph.IdentifyBottlenecks(g, graph.BottleneckOptions{})
+	meta := graph.CutMetaFromGraph(g)
+	meta.Analyst = s.analyst
+	env := graph.Envelope{Cut: meta, Data: notes}
+	s.recordInvocation(ctx, "meshant_bottleneck", args.Observer)
+	return env, nil
+}
+
+// --- meshant_summarize ---
+
+// summarizeArgs is the input shape for meshant_summarize.
+type summarizeArgs struct {
+	Observer string   `json:"observer"`
+	From     string   `json:"from,omitempty"`
+	To       string   `json:"to,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
+}
+
+// registerSummarize registers the meshant_summarize tool on the server.
+func (s *Server) registerSummarize() {
+	sc := toolSchema{
+		Name: "meshant_summarize",
+		Description: "Return a provisional narrative summary of the positioned graph — " +
+			"actant count, trace count, shadow count, top elements by appearance, " +
+			"mediations observed. This is a positioned reading, not a complete account. " +
+			"Returns a graph.Envelope with CutMeta and a NarrativeDraft.",
+		InputSchema: inputSchema{
+			Type: "object",
+			Properties: map[string]property{
+				"observer": {
+					Type:        "string",
+					Description: "The ANT observer position. Required — summaries are always positioned.",
+				},
+				"from": {
+					Type:        "string",
+					Description: "RFC3339 lower bound of the time window (inclusive). Optional.",
+				},
+				"to": {
+					Type:        "string",
+					Description: "RFC3339 upper bound of the time window (inclusive). Optional.",
+				},
+				"tags": {
+					Type:        "array",
+					Description: "Tag filter: include only traces carrying at least one of these tags. Optional.",
+					Items:       &property{Type: "string"},
+				},
+			},
+			Required: []string{"observer"},
+		},
+	}
+	s.registerTool(sc, s.handleSummarize)
+}
+
+// handleSummarize is the tool handler for meshant_summarize.
+func (s *Server) handleSummarize(ctx context.Context, rawParams json.RawMessage) (interface{}, error) {
+	var args summarizeArgs
+	if err := json.Unmarshal(rawParams, &args); err != nil {
+		return nil, fmt.Errorf("meshant_summarize: invalid params: %w", err)
+	}
+	if err := validateObserver(args.Observer); err != nil {
+		return nil, err
+	}
+	if err := validateTags(args.Tags); err != nil {
+		return nil, fmt.Errorf("meshant_summarize: %w", err)
+	}
+	tw, err := parseTimeWindow(args.From, args.To)
+	if err != nil {
+		return nil, fmt.Errorf("meshant_summarize: %w", err)
+	}
+	traces, err := s.ts.Query(ctx, store.QueryOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("meshant_summarize: query store: %w", err)
+	}
+	g := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{args.Observer},
+		TimeWindow:        tw,
+		Tags:              args.Tags,
+	})
+	narrative := graph.DraftNarrative(g)
+	meta := graph.CutMetaFromGraph(g)
+	meta.Analyst = s.analyst
+	env := graph.Envelope{Cut: meta, Data: narrative}
+	s.recordInvocation(ctx, "meshant_summarize", args.Observer)
+	return env, nil
+}
+
+// --- meshant_validate ---
+
+// validateArgs is the input shape for meshant_validate.
+// No observer is required — validate is not a cut-producing operation (D5 exemption).
+type validateArgs struct {
+	Tags []string `json:"tags,omitempty"`
+}
+
+// validateResult is the result shape for meshant_validate.
+type validateResult struct {
+	TotalTraces  int             `json:"total_traces"`
+	ValidCount   int             `json:"valid_count"`
+	InvalidCount int             `json:"invalid_count"`
+	Errors       []validateError `json:"errors"`
+}
+
+// validateError records a single validation failure.
+type validateError struct {
+	TraceID string `json:"trace_id"`
+	Error   string `json:"error"`
+}
+
+// registerValidate registers the meshant_validate tool on the server.
+func (s *Server) registerValidate() {
+	sc := toolSchema{
+		Name: "meshant_validate",
+		Description: "Validate traces in the substrate against schema.Validate. " +
+			"Returns counts of valid and invalid traces and any validation errors found. " +
+			"This is not a cut-producing operation — no observer position is taken " +
+			"and no invocation trace is recorded (D5 exemption in mcp-v1.md).",
+		InputSchema: inputSchema{
+			Type: "object",
+			Properties: map[string]property{
+				"tags": {
+					Type:        "array",
+					Description: "Optionally restrict validation to traces carrying at least one of these tags. Optional.",
+					Items:       &property{Type: "string"},
+				},
+			},
+		},
+	}
+	s.registerTool(sc, s.handleValidate)
+}
+
+// handleValidate is the tool handler for meshant_validate.
+//
+// D5 exemption (mcp-v1.md): validate is not a cut-producing operation.
+// No observer is required and no invocation trace is written.
+//
+// Tag filtering uses OR semantics ("at least one of these tags"), consistent
+// with graph.Articulate and the tool schema description. The store's QueryOpts.Tags
+// uses AND semantics, so we query the full substrate and filter in-memory.
+func (s *Server) handleValidate(ctx context.Context, rawParams json.RawMessage) (interface{}, error) {
+	var args validateArgs
+	if err := json.Unmarshal(rawParams, &args); err != nil {
+		return nil, fmt.Errorf("meshant_validate: invalid params: %w", err)
+	}
+	if err := validateTags(args.Tags); err != nil {
+		return nil, fmt.Errorf("meshant_validate: %w", err)
+	}
+	// Query the full substrate — tag filtering happens in-memory below (OR semantics).
+	all, err := s.ts.Query(ctx, store.QueryOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("meshant_validate: query store: %w", err)
+	}
+	// Apply OR tag filter: keep traces that carry at least one of the requested tags.
+	traces := filterByTagsOR(all, args.Tags)
+	result := validateResult{
+		TotalTraces: len(traces),
+		Errors:      []validateError{},
+	}
+	for _, t := range traces {
+		if err := t.Validate(); err != nil {
+			result.InvalidCount++
+			result.Errors = append(result.Errors, validateError{
+				TraceID: t.ID,
+				Error:   err.Error(),
+			})
+		} else {
+			result.ValidCount++
+		}
+	}
+	// No recordInvocation — D5 exemption: validate is not a cut-producing operation.
+	return result, nil
 }
