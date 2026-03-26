@@ -76,9 +76,38 @@ meshant follow data/examples/software_incident.json \
 # Export as Graphviz DOT
 meshant articulate data/examples/software_incident.json \
   --observer on-call-engineer --format dot | dot -Tpng -o view.png
+
+# Expose all analytical tools to an LLM client via MCP
+meshant mcp --analyst alice data/examples/software_incident.json
 ```
 
-**→ [Full usage guide](./docs/usage.md)** — web UI, all CLI commands, LLM ingestion pipeline, HTTP API, trace schema.
+**→ [Full usage guide](./docs/usage.md)** — web UI, all CLI commands, LLM ingestion pipeline, HTTP API, MCP server, trace schema.
+
+## v4.0.0 — MCP Server
+
+`meshant mcp` exposes the analytical engine as MCP tools callable by any
+compliant LLM client (Claude Code, Cursor, Cline) without shell invocation.
+
+```bash
+meshant mcp --analyst alice data/examples/software_incident.json
+```
+
+Eight tools are available over stdio JSON-RPC 2.0:
+
+| Tool | What it does |
+|------|-------------|
+| `meshant_articulate` | Positioned mesh graph from a named observer |
+| `meshant_shadow` | Elements visible from other positions but not this one |
+| `meshant_follow` | Translation chain from a named starting element |
+| `meshant_bottleneck` | Elements with high appearance/mediation/shadow counts |
+| `meshant_summarize` | Narrative summary of a positioned graph |
+| `meshant_validate` | Schema validation across the trace substrate |
+| `meshant_diff` | Compare two observer cuts — what A sees that B does not |
+| `meshant_gaps` | Partition elements into OnlyInA, OnlyInB, InBoth |
+
+`--analyst` is required: the MCP server refuses to start without a named analyst
+position. Hiding the cut is not allowed. Every cut-producing tool call writes a
+reflexive invocation trace back to the substrate (Principle 8).
 
 ## v2.0.0 — LLM-Assisted Ingestion
 
