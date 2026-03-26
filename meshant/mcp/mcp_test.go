@@ -60,6 +60,36 @@ func writeFile(path string, data []byte) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
+// permissiveStore is a minimal in-memory TraceStore that accepts and returns
+// traces as-is, without schema validation on read. Used exclusively in
+// TestMCPServer_Validate_WithInvalid, which needs the store to hold an
+// intentionally invalid trace so meshant_validate can detect and report it.
+// A JSONFileStore would reject the trace at Query time, collapsing the
+// validate-reports-error path into a store-error path — the wrong behaviour.
+type permissiveStore struct {
+	traces []schema.Trace
+}
+
+func (p *permissiveStore) Store(_ context.Context, ts []schema.Trace) error {
+	p.traces = append(p.traces, ts...)
+	return nil
+}
+
+func (p *permissiveStore) Query(_ context.Context, _ store.QueryOpts) ([]schema.Trace, error) {
+	return p.traces, nil
+}
+
+func (p *permissiveStore) Get(_ context.Context, id string) (schema.Trace, bool, error) {
+	for _, t := range p.traces {
+		if t.ID == id {
+			return t, true, nil
+		}
+	}
+	return schema.Trace{}, false, nil
+}
+
+func (p *permissiveStore) Close() error { return nil }
+
 // runMCP drives the server with the given newline-delimited JSON-RPC messages
 // and returns all response lines. Messages are sent as a single block; the
 // server reads until EOF.
@@ -870,5 +900,887 @@ func TestMCPServer_Articulate_InvertedTimeWindow(t *testing.T) {
 	isErr, _ := result["isError"].(bool)
 	if !isErr {
 		t.Errorf("want isError=true for inverted time window (from > to), got: %v", result)
+	}
+}
+
+// =============================================================================
+// Batch 1 tests — #177: shadow, follow, bottleneck, summarize, validate
+// =============================================================================
+
+// multiObserverTraces returns a deterministic set of traces with two observers
+// (alice, bob) and clear source→target relations for shadow/follow/bottleneck.
+func multiObserverTraces() []schema.Trace {
+	return []schema.Trace{
+		{
+			ID:          "00000000-0000-4000-8000-000000000101",
+			Timestamp:   baseTime,
+			WhatChanged: "A deployed B",
+			Observer:    "alice",
+			Source:      []string{"A"},
+			Target:      []string{"B"},
+			Mediation:   "deployment",
+		},
+		{
+			ID:          "00000000-0000-4000-8000-000000000102",
+			Timestamp:   baseTime.Add(time.Hour),
+			WhatChanged: "B reported to C",
+			Observer:    "alice",
+			Source:      []string{"B"},
+			Target:      []string{"C"},
+			Mediation:   "report",
+		},
+		{
+			ID:          "00000000-0000-4000-8000-000000000103",
+			Timestamp:   baseTime.Add(2 * time.Hour),
+			WhatChanged: "D blocked E",
+			Observer:    "bob",
+			Source:      []string{"D"},
+			Target:      []string{"E"},
+			Mediation:   "block",
+		},
+	}
+}
+
+// toolCallMsg returns a tools/call message for the given tool and arguments.
+func toolCallMsg(id interface{}, toolName string, args map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name":      toolName,
+			"arguments": args,
+		},
+	}
+}
+
+// extractEnvelope extracts and unmarshals a graph.Envelope from an MCP response.
+func extractEnvelope(t *testing.T, resp map[string]interface{}) graph.Envelope {
+	t.Helper()
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("extractEnvelope: want result, got: %v", resp)
+	}
+	if isErr, _ := result["isError"].(bool); isErr {
+		content, _ := result["content"].([]interface{})
+		if len(content) > 0 {
+			item, _ := content[0].(map[string]interface{})
+			t.Fatalf("extractEnvelope: tool returned isError=true: %v", item["text"])
+		}
+		t.Fatalf("extractEnvelope: tool returned isError=true")
+	}
+	content, _ := result["content"].([]interface{})
+	if len(content) == 0 {
+		t.Fatalf("extractEnvelope: want content, got none")
+	}
+	item, _ := content[0].(map[string]interface{})
+	text, _ := item["text"].(string)
+	var env graph.Envelope
+	if err := json.Unmarshal([]byte(text), &env); err != nil {
+		t.Fatalf("extractEnvelope: unmarshal: %v\ntext: %s", err, text)
+	}
+	return env
+}
+
+// assertToolIsError asserts that an MCP tool response has isError=true.
+func assertToolIsError(t *testing.T, resp map[string]interface{}) {
+	t.Helper()
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("assertToolIsError: want result object, got: %v", resp)
+	}
+	isErr, _ := result["isError"].(bool)
+	if !isErr {
+		t.Errorf("assertToolIsError: want isError=true, got: %v", result)
+	}
+}
+
+// assertInvocationTrace asserts that the store contains at least one trace
+// tagged "mcp-invocation" with the given tool name tag.
+func assertInvocationTrace(t *testing.T, ts store.TraceStore, toolName string) {
+	t.Helper()
+	all, err := ts.Query(context.Background(), store.QueryOpts{Tags: []string{"mcp-invocation"}})
+	if err != nil {
+		t.Fatalf("query invocation traces: %v", err)
+	}
+	for _, tr := range all {
+		for _, tag := range tr.Tags {
+			if tag == toolName {
+				return
+			}
+		}
+	}
+	t.Errorf("no mcp-invocation trace found for tool %q; all invocation traces: %v", toolName, all)
+}
+
+// assertNoInvocationTrace asserts that no trace tagged "mcp-invocation" exists in the store.
+func assertNoInvocationTrace(t *testing.T, ts store.TraceStore) {
+	t.Helper()
+	all, err := ts.Query(context.Background(), store.QueryOpts{Tags: []string{"mcp-invocation"}})
+	if err != nil {
+		t.Fatalf("query invocation traces: %v", err)
+	}
+	if len(all) > 0 {
+		t.Errorf("want no mcp-invocation traces, got %d: %v", len(all), all)
+	}
+}
+
+// normalizeJSON marshals v, unmarshals to map, re-marshals. Used for fidelity comparisons.
+func normalizeJSON(t *testing.T, v interface{}) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("normalizeJSON: marshal: %v", err)
+	}
+	var m interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("normalizeJSON: unmarshal: %v", err)
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("normalizeJSON: re-marshal: %v", err)
+	}
+	return string(out)
+}
+
+// --- meshant_shadow ---
+
+// TestMCPServer_Shadow_Fidelity verifies that meshant_shadow produces the same
+// ShadowSummary as calling graph.Articulate + graph.SummariseShadow directly.
+func TestMCPServer_Shadow_Fidelity(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_shadow", map[string]interface{}{
+		"observer": "alice",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	mcpEnv := extractEnvelope(t, responses[1])
+
+	directG := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{"alice"},
+	})
+	directMeta := graph.CutMetaFromGraph(directG)
+	directMeta.Analyst = "test-analyst"
+	directShadow := graph.SummariseShadow(directG)
+	directEnv := graph.Envelope{Cut: directMeta, Data: directShadow}
+
+	if normalizeJSON(t, mcpEnv) != normalizeJSON(t, directEnv) {
+		t.Errorf("shadow fidelity mismatch:\nMCP:    %s\nDirect: %s",
+			normalizeJSON(t, mcpEnv), normalizeJSON(t, directEnv))
+	}
+}
+
+// TestMCPServer_Shadow_MissingObserver verifies that meshant_shadow returns
+// isError=true when observer is absent.
+func TestMCPServer_Shadow_MissingObserver(t *testing.T) {
+	ts := testStore(t, nil)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_shadow", map[string]interface{}{}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+}
+
+// TestMCPServer_Shadow_RecordsInvocation verifies that meshant_shadow writes
+// a reflexive invocation trace (D5 / Principle 8).
+func TestMCPServer_Shadow_RecordsInvocation(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_shadow", map[string]interface{}{
+		"observer": "alice",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertInvocationTrace(t, ts, "meshant_shadow")
+}
+
+// --- meshant_follow ---
+
+// TestMCPServer_Follow_Fidelity verifies that meshant_follow produces the same
+// ClassifiedChain as calling Articulate → FollowTranslation → ClassifyChain directly.
+func TestMCPServer_Follow_Fidelity(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_follow", map[string]interface{}{
+		"observer": "alice",
+		"element":  "A",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	mcpEnv := extractEnvelope(t, responses[1])
+
+	directG := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{"alice"},
+	})
+	directMeta := graph.CutMetaFromGraph(directG)
+	directMeta.Analyst = "test-analyst"
+	chain := graph.FollowTranslation(directG, "A", graph.FollowOptions{Direction: graph.DirectionForward})
+	classified := graph.ClassifyChain(chain, graph.ClassifyOptions{})
+	directEnv := graph.Envelope{Cut: directMeta, Data: classified}
+
+	if normalizeJSON(t, mcpEnv) != normalizeJSON(t, directEnv) {
+		t.Errorf("follow fidelity mismatch:\nMCP:    %s\nDirect: %s",
+			normalizeJSON(t, mcpEnv), normalizeJSON(t, directEnv))
+	}
+}
+
+// TestMCPServer_Follow_MissingObserver verifies meshant_follow returns isError
+// when observer is absent.
+func TestMCPServer_Follow_MissingObserver(t *testing.T) {
+	ts := testStore(t, nil)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_follow", map[string]interface{}{
+		"element": "A",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+}
+
+// TestMCPServer_Follow_MissingElement verifies meshant_follow returns isError
+// when element is absent.
+func TestMCPServer_Follow_MissingElement(t *testing.T) {
+	ts := testStore(t, nil)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_follow", map[string]interface{}{
+		"observer": "alice",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+}
+
+// TestMCPServer_Follow_InvalidDirection verifies meshant_follow returns isError
+// when direction is not "forward" or "backward".
+func TestMCPServer_Follow_InvalidDirection(t *testing.T) {
+	ts := testStore(t, nil)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_follow", map[string]interface{}{
+		"observer":  "alice",
+		"element":   "A",
+		"direction": "sideways",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+}
+
+// TestMCPServer_Follow_RecordsInvocation verifies meshant_follow writes an
+// invocation trace.
+func TestMCPServer_Follow_RecordsInvocation(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_follow", map[string]interface{}{
+		"observer": "alice",
+		"element":  "A",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertInvocationTrace(t, ts, "meshant_follow")
+}
+
+// --- meshant_bottleneck ---
+
+// TestMCPServer_Bottleneck_Fidelity verifies that meshant_bottleneck produces
+// the same []BottleneckNote as Articulate → IdentifyBottlenecks directly.
+func TestMCPServer_Bottleneck_Fidelity(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_bottleneck", map[string]interface{}{
+		"observer": "alice",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	mcpEnv := extractEnvelope(t, responses[1])
+
+	directG := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{"alice"},
+	})
+	directMeta := graph.CutMetaFromGraph(directG)
+	directMeta.Analyst = "test-analyst"
+	notes := graph.IdentifyBottlenecks(directG, graph.BottleneckOptions{})
+	directEnv := graph.Envelope{Cut: directMeta, Data: notes}
+
+	if normalizeJSON(t, mcpEnv) != normalizeJSON(t, directEnv) {
+		t.Errorf("bottleneck fidelity mismatch:\nMCP:    %s\nDirect: %s",
+			normalizeJSON(t, mcpEnv), normalizeJSON(t, directEnv))
+	}
+}
+
+// TestMCPServer_Bottleneck_MissingObserver verifies meshant_bottleneck returns
+// isError when observer is absent.
+func TestMCPServer_Bottleneck_MissingObserver(t *testing.T) {
+	ts := testStore(t, nil)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_bottleneck", map[string]interface{}{}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+}
+
+// TestMCPServer_Bottleneck_RecordsInvocation verifies meshant_bottleneck writes
+// an invocation trace.
+func TestMCPServer_Bottleneck_RecordsInvocation(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_bottleneck", map[string]interface{}{
+		"observer": "alice",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertInvocationTrace(t, ts, "meshant_bottleneck")
+}
+
+// --- meshant_summarize ---
+
+// TestMCPServer_Summarize_Fidelity verifies that meshant_summarize produces
+// the same NarrativeDraft as Articulate → DraftNarrative directly.
+func TestMCPServer_Summarize_Fidelity(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_summarize", map[string]interface{}{
+		"observer": "alice",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	mcpEnv := extractEnvelope(t, responses[1])
+
+	directG := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{"alice"},
+	})
+	directMeta := graph.CutMetaFromGraph(directG)
+	directMeta.Analyst = "test-analyst"
+	narrative := graph.DraftNarrative(directG)
+	directEnv := graph.Envelope{Cut: directMeta, Data: narrative}
+
+	if normalizeJSON(t, mcpEnv) != normalizeJSON(t, directEnv) {
+		t.Errorf("summarize fidelity mismatch:\nMCP:    %s\nDirect: %s",
+			normalizeJSON(t, mcpEnv), normalizeJSON(t, directEnv))
+	}
+}
+
+// TestMCPServer_Summarize_MissingObserver verifies meshant_summarize returns
+// isError when observer is absent.
+func TestMCPServer_Summarize_MissingObserver(t *testing.T) {
+	ts := testStore(t, nil)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_summarize", map[string]interface{}{}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+}
+
+// TestMCPServer_Summarize_RecordsInvocation verifies meshant_summarize writes
+// an invocation trace.
+func TestMCPServer_Summarize_RecordsInvocation(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_summarize", map[string]interface{}{
+		"observer": "alice",
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertInvocationTrace(t, ts, "meshant_summarize")
+}
+
+// --- meshant_validate ---
+
+// TestMCPServer_Validate_AllValid verifies that meshant_validate returns
+// valid_count == total_traces and no errors when all traces are valid.
+func TestMCPServer_Validate_AllValid(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_validate", map[string]interface{}{}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	result, ok := responses[1]["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("want result: %v", responses[1])
+	}
+	content, _ := result["content"].([]interface{})
+	if len(content) == 0 {
+		t.Fatalf("want content")
+	}
+	item, _ := content[0].(map[string]interface{})
+	text, _ := item["text"].(string)
+
+	var vr map[string]interface{}
+	if err := json.Unmarshal([]byte(text), &vr); err != nil {
+		t.Fatalf("unmarshal validate result: %v", err)
+	}
+
+	total, _ := vr["total_traces"].(float64)
+	valid, _ := vr["valid_count"].(float64)
+	invalid, _ := vr["invalid_count"].(float64)
+
+	if int(total) != len(traces) {
+		t.Errorf("total_traces: want %d, got %d", len(traces), int(total))
+	}
+	if int(valid) != len(traces) {
+		t.Errorf("valid_count: want %d, got %d", len(traces), int(valid))
+	}
+	if int(invalid) != 0 {
+		t.Errorf("invalid_count: want 0, got %d", int(invalid))
+	}
+}
+
+// TestMCPServer_Validate_WithInvalid verifies that meshant_validate returns
+// invalid_count > 0 and lists errors when invalid traces are present.
+func TestMCPServer_Validate_WithInvalid(t *testing.T) {
+	// One valid trace, one with missing WhatChanged (invalid).
+	// Uses permissiveStore so Query returns the invalid trace as-is without
+	// schema validation — JSONFileStore validates on read, which would turn this
+	// into a store error rather than a per-trace validation report.
+	traces := []schema.Trace{
+		{
+			ID:          "00000000-0000-4000-8000-000000000201",
+			Timestamp:   baseTime,
+			WhatChanged: "valid event",
+			Observer:    "alice",
+		},
+		{
+			// Missing WhatChanged — will fail Validate().
+			ID:        "00000000-0000-4000-8000-000000000202",
+			Timestamp: baseTime,
+			Observer:  "alice",
+		},
+	}
+	ts := &permissiveStore{traces: traces}
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_validate", map[string]interface{}{}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	result, ok := responses[1]["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("want result: %v", responses[1])
+	}
+	content, _ := result["content"].([]interface{})
+	if len(content) == 0 {
+		t.Fatalf("want content")
+	}
+	item, _ := content[0].(map[string]interface{})
+	text, _ := item["text"].(string)
+
+	var vr map[string]interface{}
+	if err := json.Unmarshal([]byte(text), &vr); err != nil {
+		t.Fatalf("unmarshal validate result: %v\ntext=%q", err, text)
+	}
+
+	invalid, _ := vr["invalid_count"].(float64)
+	if int(invalid) != 1 {
+		t.Errorf("invalid_count: want 1, got %d", int(invalid))
+	}
+
+	errors, _ := vr["errors"].([]interface{})
+	if len(errors) == 0 {
+		t.Fatal("want at least one error entry, got none")
+	} else {
+		// Verify the error entry names the bad trace by ID. A regression that
+		// zeroes TraceID (e.g. validating a copy that lost the ID) would go
+		// undetected without this assertion.
+		entry, _ := errors[0].(map[string]interface{})
+		traceID, _ := entry["trace_id"].(string)
+		if traceID != "00000000-0000-4000-8000-000000000202" {
+			t.Errorf("error entry trace_id: want %q, got %q",
+				"00000000-0000-4000-8000-000000000202", traceID)
+		}
+	}
+}
+
+// TestMCPServer_Validate_NoInvocationTrace verifies that meshant_validate does
+// NOT write an mcp-invocation trace (D5 exemption — validate is not a
+// cut-producing operation).
+func TestMCPServer_Validate_NoInvocationTrace(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_validate", map[string]interface{}{}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertNoInvocationTrace(t, ts)
+}
+
+// --- tools/list completeness ---
+
+// TestMCPServer_ToolsList_ContainsAllBatch1 verifies that all six tools
+// (meshant_articulate + batch 1) appear in tools/list.
+func TestMCPServer_ToolsList_ContainsAllBatch1(t *testing.T) {
+	ts := testStore(t, nil)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/list",
+		"params":  map[string]interface{}{},
+	})
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	result, ok := responses[1]["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("want result: %v", responses[1])
+	}
+	tools, _ := result["tools"].([]interface{})
+
+	want := []string{
+		"meshant_articulate",
+		"meshant_shadow",
+		"meshant_follow",
+		"meshant_bottleneck",
+		"meshant_summarize",
+		"meshant_validate",
+	}
+	found := map[string]bool{}
+	for _, toolRaw := range tools {
+		tool, _ := toolRaw.(map[string]interface{})
+		if name, _ := tool["name"].(string); name != "" {
+			found[name] = true
+		}
+	}
+	for _, name := range want {
+		if !found[name] {
+			t.Errorf("tools/list: %q not found; available: %v", name, tools)
+		}
+	}
+}
+
+// TestMCPServer_ToolsList_TagsHaveItems verifies that every tool with a "tags"
+// property in its inputSchema includes items: {type: "string"}.
+// This is the architect N2 fix from #176 applied retroactively to articulate
+// and forward to all batch 1 tools.
+func TestMCPServer_ToolsList_TagsHaveItems(t *testing.T) {
+	ts := testStore(t, nil)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/list",
+		"params":  map[string]interface{}{},
+	})
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	result, _ := responses[1]["result"].(map[string]interface{})
+	tools, _ := result["tools"].([]interface{})
+
+	for _, toolRaw := range tools {
+		tool, _ := toolRaw.(map[string]interface{})
+		name, _ := tool["name"].(string)
+		schema, _ := tool["inputSchema"].(map[string]interface{})
+		props, _ := schema["properties"].(map[string]interface{})
+		tagsProp, ok := props["tags"]
+		if !ok {
+			continue // no tags property — skip
+		}
+		tagsMap, _ := tagsProp.(map[string]interface{})
+		items, hasItems := tagsMap["items"]
+		if !hasItems {
+			t.Errorf("tool %q: tags property missing 'items' field", name)
+			continue
+		}
+		itemsMap, _ := items.(map[string]interface{})
+		if itemsMap["type"] != "string" {
+			t.Errorf("tool %q: tags.items.type: want 'string', got %v", name, itemsMap["type"])
+		}
+	}
+}
+
+// --- meshant_validate tag filter (B1) ---
+
+// TestMCPServer_Validate_TagsFilter verifies that meshant_validate filters
+// traces by tag using OR semantics — traces carrying at least one of the
+// requested tags are included; others are excluded. This exercises the
+// filterByTagsOR loop body, which is distinct from the early-return path
+// (empty filter) used by all other validate tests.
+func TestMCPServer_Validate_TagsFilter(t *testing.T) {
+	// Two valid traces with different tags.
+	traces := []schema.Trace{
+		{
+			ID:          "00000000-0000-4000-8000-000000000301",
+			Timestamp:   baseTime,
+			WhatChanged: "infrastructure event",
+			Observer:    "alice",
+			Tags:        []string{"infra"},
+		},
+		{
+			ID:          "00000000-0000-4000-8000-000000000302",
+			Timestamp:   baseTime,
+			WhatChanged: "application event",
+			Observer:    "alice",
+			Tags:        []string{"app"},
+		},
+	}
+	// permissiveStore is used so Query returns traces without re-validating them.
+	ts := &permissiveStore{traces: traces}
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	// Filter for "infra" only — should count 1 trace.
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_validate", map[string]interface{}{
+		"tags": []string{"infra"},
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+
+	result, ok := responses[1]["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("want result: %v", responses[1])
+	}
+	content, _ := result["content"].([]interface{})
+	if len(content) == 0 {
+		t.Fatalf("want content")
+	}
+	item, _ := content[0].(map[string]interface{})
+	text, _ := item["text"].(string)
+
+	var vr map[string]interface{}
+	if err := json.Unmarshal([]byte(text), &vr); err != nil {
+		t.Fatalf("unmarshal validate result: %v\ntext=%q", err, text)
+	}
+
+	total, _ := vr["total_traces"].(float64)
+	if int(total) != 1 {
+		t.Errorf("total_traces with tag=infra: want 1, got %d (non-matching trace must be excluded)", int(total))
+	}
+	valid, _ := vr["valid_count"].(float64)
+	if int(valid) != 1 {
+		t.Errorf("valid_count with tag=infra: want 1, got %d", int(valid))
+	}
+
+	// A non-matching tag should return no traces.
+	srv2 := mcp.NewServer(&permissiveStore{traces: traces}, "test-analyst")
+	msgs2 := append(initMessages(3), toolCallMsg(4, "meshant_validate", map[string]interface{}{
+		"tags": []string{"unknown-tag"},
+	}))
+	responses2 := runMCP(t, srv2, msgs2)
+	if len(responses2) != 2 {
+		t.Fatalf("want 2 responses for no-match test, got %d", len(responses2))
+	}
+	result2, _ := responses2[1]["result"].(map[string]interface{})
+	content2, _ := result2["content"].([]interface{})
+	item2, _ := content2[0].(map[string]interface{})
+	var vr2 map[string]interface{}
+	if err := json.Unmarshal([]byte(item2["text"].(string)), &vr2); err != nil {
+		t.Fatalf("unmarshal validate result 2: %v", err)
+	}
+	total2, _ := vr2["total_traces"].(float64)
+	if int(total2) != 0 {
+		t.Errorf("total_traces with unmatched tag: want 0, got %d", int(total2))
+	}
+}
+
+// --- meshant_follow max_depth bounds (B2) ---
+
+// TestMCPServer_Follow_NegativeMaxDepth verifies that meshant_follow rejects
+// a negative max_depth with a tool-level error.
+func TestMCPServer_Follow_NegativeMaxDepth(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_follow", map[string]interface{}{
+		"observer":  "alice",
+		"element":   "A",
+		"max_depth": -1,
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+	result, _ := responses[1]["result"].(map[string]interface{})
+	content, _ := result["content"].([]interface{})
+	item, _ := content[0].(map[string]interface{})
+	if text, _ := item["text"].(string); !strings.Contains(text, "max_depth") {
+		t.Errorf("error message should mention max_depth: %q", text)
+	}
+}
+
+// TestMCPServer_Follow_MaxDepthTooLarge verifies that meshant_follow rejects
+// a max_depth exceeding the server-side ceiling with a tool-level error.
+func TestMCPServer_Follow_MaxDepthTooLarge(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+	srv := mcp.NewServer(ts, "test-analyst")
+
+	msgs := append(initMessages(1), toolCallMsg(2, "meshant_follow", map[string]interface{}{
+		"observer":  "alice",
+		"element":   "A",
+		"max_depth": 1001,
+	}))
+	responses := runMCP(t, srv, msgs)
+	if len(responses) != 2 {
+		t.Fatalf("want 2 responses, got %d", len(responses))
+	}
+	assertToolIsError(t, responses[1])
+	result, _ := responses[1]["result"].(map[string]interface{})
+	content, _ := result["content"].([]interface{})
+	item, _ := content[0].(map[string]interface{})
+	if text, _ := item["text"].(string); !strings.Contains(text, "max_depth") {
+		t.Errorf("error message should mention max_depth: %q", text)
+	}
+}
+
+// --- input length limits (E1) ---
+
+// TestMCPServer_InputValidation_Limits verifies that overly long string inputs
+// are rejected with tool-level errors. These guards protect against storage
+// pollution and memory amplification from crafted MCP clients.
+func TestMCPServer_InputValidation_Limits(t *testing.T) {
+	traces := multiObserverTraces()
+	ts := testStore(t, traces)
+	defer ts.Close()
+
+	longObserver := strings.Repeat("x", 501)
+	longElement := strings.Repeat("y", 501)
+	longTag := strings.Repeat("z", 201)
+	manyTags := make([]string, 51)
+	for i := range manyTags {
+		manyTags[i] = "t"
+	}
+
+	cases := []struct {
+		name    string
+		tool    string
+		args    map[string]interface{}
+		errFrag string
+	}{
+		{
+			name:    "observer too long",
+			tool:    "meshant_articulate",
+			args:    map[string]interface{}{"observer": longObserver},
+			errFrag: "exceeds maximum length",
+		},
+		{
+			name:    "tag too long",
+			tool:    "meshant_articulate",
+			args:    map[string]interface{}{"observer": "alice", "tags": []interface{}{longTag}},
+			errFrag: "exceeds maximum length",
+		},
+		{
+			name:    "too many tags",
+			tool:    "meshant_articulate",
+			args:    map[string]interface{}{"observer": "alice", "tags": func() []interface{} { s := make([]interface{}, 51); for i := range s { s[i] = "t" }; return s }()},
+			errFrag: "exceeds maximum",
+		},
+		{
+			name:    "follow element too long",
+			tool:    "meshant_follow",
+			args:    map[string]interface{}{"observer": "alice", "element": longElement},
+			errFrag: "exceeds maximum length",
+		},
+	}
+
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := mcp.NewServer(ts, "test-analyst")
+			id := i*2 + 1
+			msgs := append(initMessages(id), toolCallMsg(id+1, tc.tool, tc.args))
+			responses := runMCP(t, srv, msgs)
+			if len(responses) != 2 {
+				t.Fatalf("want 2 responses, got %d", len(responses))
+			}
+			assertToolIsError(t, responses[1])
+			result, _ := responses[1]["result"].(map[string]interface{})
+			content, _ := result["content"].([]interface{})
+			item, _ := content[0].(map[string]interface{})
+			if text, _ := item["text"].(string); !strings.Contains(text, tc.errFrag) {
+				t.Errorf("error message should contain %q: %q", tc.errFrag, text)
+			}
+		})
 	}
 }
