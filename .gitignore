@@ -7,3 +7,6 @@ meshant/meshant-cli
 # Generated graph exports
 *.dot
 *.mmd
+
+# Temporary session handover files
+tmp/

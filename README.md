@@ -44,6 +44,11 @@ go build -o meshant ./cmd/meshant
 The observer gate is the first thing you see. Available observer positions are shown as
 clickable chips — no guessing required. Select one and load the graph.
 
+Once an observer is committed, a **time window picker** appears below the cut header.
+Set From / To bounds to constrain the cut to a time slice; the graph, shadow panel, and
+element detail all update together. "Reset to unbounded" returns to the full substrate.
+The active window is shown in the cut metadata bar and included in JSON/DOT exports.
+
 Three reference datasets ship with MeshAnt:
 
 | Dataset | Domain | Traces | Command |
@@ -108,6 +113,13 @@ Eight tools are available over stdio JSON-RPC 2.0:
 `--analyst` is required: the MCP server refuses to start without a named analyst
 position. Hiding the cut is not allowed. Every cut-producing tool call writes a
 reflexive invocation trace back to the substrate (Principle 8).
+
+## v4.x — Web UI Time Window Controls
+
+The web UI now exposes the backend's time-window cut axis. After committing an observer
+position, use the **From / To** inputs to narrow the cut to a specific time range.
+The time window is part of the cut — it is reflected in the cut metadata bar alongside
+the observer position and is included in all exports.
 
 ## v2.0.0 — LLM-Assisted Ingestion
 

@@ -11,6 +11,28 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "Running go vet...",
+            "command": "INPUT=$(cat); FILE=$(echo \"$INPUT\" | python3 -c \"import json,sys; d=json.loads(sys.stdin.read()); print(d.get('tool_input',{}).get('file_path',''))\" 2>/dev/null); if [[ \"$FILE\" == *.go ]]; then RESULT=$(cd /home/automatedtomato/github.com/automatedtomato/mesh-ant/meshant && go vet ./... 2>&1); if [ -n \"$RESULT\" ]; then python3 -c \"import json,sys; r,f=sys.argv[1],sys.argv[2]; print(json.dumps({'hookSpecificOutput':{'hookEventName':'PostToolUse','additionalContext':'go vet found issues after editing '+f+':\\n\\n'+r}}))\" \"$RESULT\" \"$FILE\"; else python3 -c \"import json; print(json.dumps({'hookSpecificOutput':{'hookEventName':'PostToolUse','additionalContext':'go vet: clean'}}))\"; fi; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "Checking for PR merge...",
+            "command": "INPUT=$(cat); CMD=$(echo \"$INPUT\" | python3 -c \"import json,sys; d=json.loads(sys.stdin.read()); print(d.get('tool_input',{}).get('command',''))\" 2>/dev/null); if echo \"$CMD\" | grep -q \"gh pr merge\"; then OUTPUT=$(echo \"$INPUT\" | python3 -c \"import json,sys; d=json.loads(sys.stdin.read()); print(d.get('tool_response',{}).get('output',''))\" 2>/dev/null); MEMDIR=\"/home/automatedtomato/.claude/projects/-home-automatedtomato-github-com-automatedtomato-mesh-ant/memory\"; python3 -c \"import json,sys; cmd,out,memdir=sys.argv[1],sys.argv[2],sys.argv[3]; msg='A pull request was just merged.\\nCommand: '+cmd+'\\nOutput: '+out.strip()+'\\n\\nPlease update the project memory files in '+memdir+'/ to reflect this merge. Update phase/milestone progress, mark completed issues, and update MEMORY.md as appropriate.'; print(json.dumps({'hookSpecificOutput':{'hookEventName':'PostToolUse','additionalContext':msg}}))\" \"$CMD\" \"$OUTPUT\" \"$MEMDIR\"; fi"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
