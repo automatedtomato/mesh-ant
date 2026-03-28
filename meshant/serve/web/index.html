@@ -44,6 +44,23 @@
     </div>
   </div>
 
+  <!-- Time window picker: visible after observer is committed.
+       Sits between the cut header and main layout so it reads as part of the cut
+       definition — the time window is a parameter of the positioned reading, not
+       a navigation control. Disabled/hidden before observer commit (observer gate
+       pattern). -->
+  <div id="time-window-picker" hidden>
+    <span class="time-window-label">Time window</span>
+    <label for="time-from" class="time-window-field-label">From</label>
+    <input id="time-from" type="datetime-local" title="From (UTC assumed)">
+    <label for="time-to" class="time-window-field-label">To</label>
+    <input id="time-to" type="datetime-local" title="To (UTC assumed)">
+    <button id="btn-apply-window" type="button">Apply</button>
+    <!-- "Reset to unbounded" — not "Clear": unbounded is a named cut state,
+         not the absence of a window. -->
+    <button id="btn-reset-window" type="button">Reset to unbounded</button>
+  </div>
+
   <!-- Main layout: graph canvas + sidebar (shadow panel + detail panel). -->
   <div id="main" hidden>
     <div id="cy"></div>

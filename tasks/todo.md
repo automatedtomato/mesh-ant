@@ -98,7 +98,7 @@ Deferred items resolved (v3.1.0, 2026-03-25): #95 `ClassifyDraftChainOptions`, #
 
 ### v4.x — Interactive CLI + Web UI time series (parent: #172)
 
-- [ ] **#180 — Web UI time series controls** — time window picker/slider; independent of MCP/explore
+- [x] **#180 — Web UI time series controls** — `datetime-local` From/To picker; T1–T4 documented; `TestHandleShadow_WithTimeWindow` added; `time-window-controls-v1.md`
 - [ ] **#181 — explore-v1.md decision record** (ANT gate) — mutable session observer, AnalysisSession design, SuggestionMeta, AnalysisTrace
 - [ ] **#182 — AnalysisSession types + meshant explore REPL skeleton** — `explore.NewSession`; `AnalysisTurn`; cut/quit/help commands
 - [ ] **#183 — explore commands batch 1** — articulate, shadow, window/tag filters
