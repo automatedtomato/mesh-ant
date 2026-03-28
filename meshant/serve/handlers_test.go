@@ -390,6 +390,45 @@ func TestHandleShadow_NoShadow_EmptyArray(t *testing.T) {
 	}
 }
 
+// TestHandleShadow_WithTimeWindow verifies that the shadow handler applies the
+// time window to alice's cut. With from=2026-01-02, only alice's second trace
+// passes the filter (element-b → element-c). Element-a (from alice's first
+// trace, 2026-01-01) drops into alice's shadow alongside bob's elements,
+// so the shadow set is larger than in the unbounded case.
+//
+// This test closes the cut-consistency gap identified in the #180 QA review:
+// the articulate and shadow endpoints must both apply the time window so the
+// two parallel fetches in loadGraph() produce a consistent cut.
+func TestHandleShadow_WithTimeWindow(t *testing.T) {
+	srv := testServer(t)
+	// from=2026-01-02 excludes alice's trace 1 (2026-01-01).
+	// alice's windowed cut sees only element-b and element-c.
+	// Shadow must include element-a (now outside the window) + bob's elements.
+	rr := doGET(srv, "/shadow?observer=alice&from=2026-01-02T00:00:00Z")
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	env := decodeEnvelope(t, rr)
+	cut := cutField(t, env)
+
+	if cut["observer"] != "alice" {
+		t.Errorf("cut.observer should be 'alice', got %v", cut["observer"])
+	}
+	if cut["from"] == nil {
+		t.Errorf("cut.from should be populated when ?from= is given")
+	}
+
+	data, ok := env["data"].([]interface{})
+	if !ok {
+		t.Fatalf("data should be an array, got %T: %v", env["data"], env["data"])
+	}
+	// Without a time window, alice's shadow is bob's 3 elements (x, y, z).
+	// With from=2026-01-02, element-a drops into shadow too — expect >= 4 elements.
+	if len(data) < 4 {
+		t.Errorf("shadow data should have >= 4 elements with from filter (element-a now in shadow), got %d", len(data))
+	}
+}
+
 // --- /traces tests ---
 
 func TestHandleTraces_MissingObserver_400(t *testing.T) {

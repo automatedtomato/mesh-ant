@@ -172,6 +172,87 @@ body {
   color: #fff;
 }
 
+/* === Time window picker === */
+/* Sits directly below the cut header; uses a slightly lighter dark shade to
+   visually group it with the cut metadata bar while remaining distinct.
+   Hidden until the observer is committed (observer gate pattern). */
+#time-window-picker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 16px;
+  background: #34495e;
+  color: #bdc3c7;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.time-window-label {
+  font-weight: 600;
+  color: #95a5a6;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+.time-window-field-label {
+  color: #95a5a6;
+  white-space: nowrap;
+}
+
+/* datetime-local inputs: dark background to match the cut header context. */
+#time-from,
+#time-to {
+  padding: 3px 7px;
+  font-size: 12px;
+  background: #2c3e50;
+  color: #ecf0f1;
+  border: 1px solid #7f8c8d;
+  border-radius: 3px;
+  outline: none;
+  /* Override browser default color scheme for date inputs */
+  color-scheme: dark;
+}
+
+#time-from:focus,
+#time-to:focus {
+  border-color: #2980b9;
+}
+
+/* Apply button: primary action, matches cut-header export button style. */
+#btn-apply-window {
+  padding: 4px 10px;
+  background: transparent;
+  color: #bdc3c7;
+  border: 1px solid #7f8c8d;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.15s, color 0.15s;
+}
+
+#btn-apply-window:hover {
+  background: #3d5166;
+  color: #fff;
+}
+
+/* Reset button: de-emphasised; a named cut state, not a destructive action. */
+#btn-reset-window {
+  padding: 4px 8px;
+  background: transparent;
+  color: #7f8c8d;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  text-decoration: underline;
+  transition: color 0.15s;
+}
+
+#btn-reset-window:hover {
+  color: #bdc3c7;
+}
+
 /* === Main layout === */
 #main {
   display: flex;
