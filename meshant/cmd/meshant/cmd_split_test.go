@@ -322,7 +322,7 @@ func TestCmdSplit_helpFlag(t *testing.T) {
 func TestRun_Split_dispatch(t *testing.T) {
 	var buf bytes.Buffer
 	// run() with "split" and "--help" should not return an "unknown command" error.
-	err := run(&buf, []string{"split", "--help"})
+	err := run(strings.NewReader(""), &buf, []string{"split", "--help"})
 	// flag.ErrHelp is acceptable; "unknown command" is not.
 	if err != nil && strings.Contains(err.Error(), "unknown command") {
 		t.Errorf("run([\"split\", ...]) should dispatch to cmdSplit, not return unknown command: %v", err)

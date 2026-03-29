@@ -9,7 +9,8 @@
 //
 // Usage:
 //
-//	meshant <command> [flags] <file.json>
+//	meshant [<traces.json>]          — interactive analysis session (REPL)
+//	meshant <command> [flags] ...   — one-shot analytical subcommand
 package main
 
 import (
@@ -179,7 +180,7 @@ func confirmOutput(w io.Writer, outputPath string) error {
 }
 
 func main() {
-	if err := run(os.Stdout, os.Args[1:]); err != nil {
+	if err := run(os.Stdin, os.Stdout, os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -187,9 +188,14 @@ func main() {
 
 // run is the testable CLI entry point; dispatches to the appropriate
 // subcommand handler based on args[0].
-func run(w io.Writer, args []string) error {
+//
+// No args and unrecognised args both route to the interactive REPL (cmdExplore).
+// An unrecognised args[0] is treated as a trace file path: meshant traces.json
+// opens the REPL pre-loaded with that file.
+func run(in io.Reader, w io.Writer, args []string) error {
 	if len(args) == 0 {
-		return errors.New(usage())
+		// No args: enter the interactive REPL with no substrate loaded.
+		return cmdExplore(in, w, args)
 	}
 	switch args[0] {
 	case "summarize":
@@ -221,17 +227,17 @@ func run(w io.Writer, args []string) error {
 	case "chain-diff":
 		return cmdChainDiff(w, args[1:])
 	case "review":
-		// os.Stdin is passed so interactive prompts can read from the terminal;
+		// in is passed so interactive prompts can read from the terminal;
 		// tests inject a strings.Reader instead.
-		return cmdReview(w, os.Stdin, args[1:])
+		return cmdReview(w, in, args[1:])
 	case "extract":
 		// nil client: real AnthropicClient is constructed from env at runtime;
 		// tests inject a mock.
 		return cmdExtract(w, nil, args[1:])
 	case "assist":
-		// nil client + os.Stdin: real client from env, interactive input from
+		// nil client + in: real client from env, interactive input from
 		// terminal; tests inject mock client and strings.Reader.
-		return cmdAssist(w, nil, os.Stdin, args[1:])
+		return cmdAssist(w, nil, in, args[1:])
 	case "critique":
 		// nil client: real AnthropicClient from env; tests inject a mock.
 		return cmdCritique(w, nil, args[1:])
@@ -251,7 +257,16 @@ func run(w io.Writer, args []string) error {
 	case "mcp":
 		return cmdMcp(w, args[1:])
 	default:
-		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage())
+		// Help flags are surfaced as the full usage text rather than silently
+		// routing to the REPL — meshant --help or -h should show the subcommand
+		// list, not explore-session flag help.
+		if args[0] == "--help" || args[0] == "-h" {
+			return errors.New(usage())
+		}
+		// Any other unrecognised first argument (including flag-valued ones like
+		// --db) is forwarded to cmdExplore, which owns its own flag set and will
+		// return an appropriate error for unknown flags or invalid combinations.
+		return cmdExplore(in, w, args)
 	}
 }
 
@@ -260,7 +275,10 @@ func usage() string {
 	return `meshant — trace-first network analysis
 
 Usage:
-  meshant <command> [flags] <file.json>
+  meshant                           start interactive session (no substrate)
+  meshant <traces.json>             start interactive session, substrate from file
+  meshant --db bolt://... [file]    start interactive session, substrate from db
+  meshant <command> [flags] ...     run a one-shot analytical command
 
 Commands:
   summarize   load traces and print mesh summary

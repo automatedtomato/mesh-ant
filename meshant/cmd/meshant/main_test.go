@@ -97,26 +97,60 @@ func TestCmdValidate_MissingArg(t *testing.T) {
 
 // --- Group 3: run() dispatch ---
 
-// TestRun_NoArgs verifies that run() returns an error when called with an
-// empty argument slice (no subcommand).
+// TestRun_NoArgs verifies that run() with no arguments starts the interactive
+// REPL (cmdExplore) and exits cleanly on EOF — no error returned.
+// Prior to v4.x, no args returned a usage error. The behaviour changed
+// when meshant adopted the "bare meshant = REPL" pattern.
 func TestRun_NoArgs(t *testing.T) {
 	var buf bytes.Buffer
-	err := run(&buf, []string{})
-	if err == nil {
-		t.Error("run() with no args: want non-nil error, got nil")
+	err := run(strings.NewReader(""), &buf, []string{})
+	if err != nil {
+		t.Errorf("run() with no args: want nil (REPL exits on EOF), got %v", err)
+	}
+	// The REPL prints the nil-substrate intro message; verify the specific branch.
+	if !strings.Contains(buf.String(), "no trace substrate loaded") {
+		t.Errorf("run() with no args: expected nil-substrate message, got: %q", buf.String())
 	}
 }
 
-// TestRun_UnknownCommand verifies that run() returns an error containing
-// "unknown command" when the first argument is not a known subcommand.
-func TestRun_UnknownCommand(t *testing.T) {
+// TestRun_UnrecognisedArgRoutesToREPL verifies that run() routes an unrecognised
+// first argument to cmdExplore (treated as a trace file path) rather than returning
+// a usage error. The session opens and exits cleanly on EOF — the JSONFileStore is
+// lazy (no error at open time, only on Query).
+func TestRun_UnrecognisedArgRoutesToREPL(t *testing.T) {
 	var buf bytes.Buffer
-	err := run(&buf, []string{"badcmd"})
-	if err == nil {
-		t.Fatal("run() with unknown command: want non-nil error, got nil")
+	err := run(strings.NewReader(""), &buf, []string{"badcmd"})
+	// The session opens and exits via EOF; no error expected.
+	if err != nil {
+		t.Errorf("run() with unrecognised arg: want nil (REPL opens), got %v", err)
 	}
-	if !strings.Contains(err.Error(), "unknown command") {
-		t.Errorf("run() error = %q; want it to contain \"unknown command\"", err.Error())
+}
+
+// TestRun_FlagLikeArgReturnsUsage verifies that a flag-like first argument
+// (e.g. --help, -h) returns the top-level usage text rather than silently
+// opening the REPL — consistent with prior CLI behaviour.
+func TestRun_FlagLikeArgReturnsUsage(t *testing.T) {
+	var buf bytes.Buffer
+	err := run(strings.NewReader(""), &buf, []string{"--help"})
+	if err == nil {
+		t.Fatal("run([\"--help\"]) should return an error with usage text, got nil")
+	}
+	if !strings.Contains(err.Error(), "meshant") {
+		t.Errorf("run([\"--help\"]) error should contain usage text, got: %q", err.Error())
+	}
+}
+
+// TestRun_ExploreDBAndFileMutuallyExclusive verifies that passing both --db and
+// a file path to the REPL returns an error. The mutual-exclusion check at
+// cmd_explore.go line 52 must not be silently removed.
+func TestRun_ExploreDBAndFileMutuallyExclusive(t *testing.T) {
+	var buf bytes.Buffer
+	err := run(strings.NewReader(""), &buf, []string{"--db", "bolt://localhost:7687", "traces.json"})
+	if err == nil {
+		t.Fatal("run() with --db and file: want non-nil error, got nil")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("error should mention mutual exclusion, got: %q", err.Error())
 	}
 }
 
@@ -126,7 +160,7 @@ func TestRun_UnknownCommand(t *testing.T) {
 // loader pipeline.
 func TestRun_Summarize_Integration(t *testing.T) {
 	var buf bytes.Buffer
-	err := run(&buf, []string{"summarize", "../../../data/examples/evacuation_order.json"})
+	err := run(strings.NewReader(""), &buf, []string{"summarize", "../../../data/examples/evacuation_order.json"})
 	if err != nil {
 		t.Fatalf("run([\"summarize\", path]) returned unexpected error: %v", err)
 	}
@@ -150,7 +184,7 @@ func TestCmdValidate_BadPath(t *testing.T) {
 // message without returning an error.
 func TestRun_Validate_Integration(t *testing.T) {
 	var buf bytes.Buffer
-	err := run(&buf, []string{"validate", "../../../data/examples/evacuation_order.json"})
+	err := run(strings.NewReader(""), &buf, []string{"validate", "../../../data/examples/evacuation_order.json"})
 	if err != nil {
 		t.Fatalf("run([\"validate\", path]) returned unexpected error: %v", err)
 	}
@@ -1025,7 +1059,7 @@ func TestCmdFollow_Output(t *testing.T) {
 // TestRun_Follow verifies that run() dispatches "follow" to cmdFollow.
 func TestRun_Follow(t *testing.T) {
 	var buf bytes.Buffer
-	err := run(&buf, []string{
+	err := run(strings.NewReader(""), &buf, []string{
 		"follow",
 		"--observer", "meteorological-analyst",
 		"--element", "buoy-array-atlantic-sector-7",
@@ -2303,7 +2337,7 @@ func TestCmdShadow_OutputToFile(t *testing.T) {
 // to cmdShadow, producing non-empty output.
 func TestCmdShadow_RunDispatch(t *testing.T) {
 	var buf bytes.Buffer
-	err := run(&buf, []string{
+	err := run(strings.NewReader(""), &buf, []string{
 		"shadow",
 		"--observer", "meteorological-analyst",
 		evacuationDataset,
@@ -2478,7 +2512,7 @@ func TestCmdGaps_SameObserver(t *testing.T) {
 // cmdGaps, producing non-empty output.
 func TestCmdGaps_RunDispatch(t *testing.T) {
 	var buf bytes.Buffer
-	err := run(&buf, []string{
+	err := run(strings.NewReader(""), &buf, []string{
 		"gaps",
 		"--observer-a", "meteorological-analyst",
 		"--observer-b", "coastal-resident",
@@ -2544,7 +2578,7 @@ func TestCmdBottleneck_MissingPath(t *testing.T) {
 // "bottleneck" to cmdBottleneck, producing non-empty output.
 func TestCmdBottleneck_RunDispatch(t *testing.T) {
 	var buf bytes.Buffer
-	err := run(&buf, []string{
+	err := run(strings.NewReader(""), &buf, []string{
 		"bottleneck",
 		"--observer", "meteorological-analyst",
 		evacuationDataset,
@@ -2970,7 +3004,7 @@ func TestCmdReview_EOFInput(t *testing.T) {
 // cmdReview (missing path argument) not from the dispatcher.
 func TestRun_ReviewDispatch(t *testing.T) {
 	var buf bytes.Buffer
-	err := run(&buf, []string{"review"})
+	err := run(strings.NewReader(""), &buf, []string{"review"})
 	if err == nil {
 		t.Fatal("run([\"review\"]) with no path: want non-nil error, got nil")
 	}
@@ -3567,7 +3601,7 @@ func TestCmdChainDiff_CyclicDerivation(t *testing.T) {
 // reaches the command (error comes from cmdPromoteSession, not the router).
 func TestRun_PromoteSession_dispatch(t *testing.T) {
 	var buf bytes.Buffer
-	err := run(&buf, []string{"promote-session", "--observer", "analyst-alice"})
+	err := run(strings.NewReader(""), &buf, []string{"promote-session", "--observer", "analyst-alice"})
 	if err == nil {
 		t.Fatal("run([\"promote-session\"]) with no --session-file: want error, got nil")
 	}
