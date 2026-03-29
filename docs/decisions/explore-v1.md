@@ -228,6 +228,17 @@ Follows `meshant/review/session.go` as the reference pattern:
 The CLI (`cmd_explore.go`) wires `os.Stdin` and `os.Stdout` and calls `session.Run`.
 Nothing else touches the terminal.
 
+**D7a: No `meshant explore` subcommand (amended during #182 implementation).**
+The REPL is entered by running `meshant` directly, not `meshant explore`:
+
+- `meshant` — starts the REPL with no trace substrate
+- `meshant <traces.json>` — starts the REPL pre-loaded with the given file
+
+Any first argument that does not match a known subcommand is routed to the REPL
+and treated as a file path. The `run()` dispatcher in `main.go` accepts `in io.Reader`
+explicitly (signature: `run(in io.Reader, w io.Writer, args []string) error`) so the
+REPL dispatch path is testable without `os.Stdin`.
+
 ---
 
 ## Command set
@@ -328,7 +339,7 @@ Modified:
 
 | File | Change | Issue |
 |------|--------|-------|
-| `meshant/cmd/meshant/main.go` | Add `"explore"` case + usage line | #182 |
+| `meshant/cmd/meshant/main.go` | `len(args)==0` and `default:` → `cmdExplore`; `run()` gains `in io.Reader` param | #182 |
 
 ---
 
