@@ -30,11 +30,10 @@ func testStoreInternal(t *testing.T) store.TraceStore {
 // by modifying returned tag elements.
 //
 // This test sets s.tags directly (white-box access) before recording a turn,
-// so the Tags branch in both recordTurn and Turns() is exercised. The test
-// will be superseded by a black-box equivalent when the `tags` command is
-// wired in #183 — at that point this internal test may be removed.
-//
-// TODO(#183): replace with black-box test once `tags` command is implemented.
+// so the Tags branch in both recordTurn and Turns() is exercised independently
+// of any particular command. Black-box equivalents (TestRun_Tags_Set,
+// TestTurns_ReturnsCopy) exist in explore_test.go; this test is retained
+// because it exercises recordTurn directly without routing through cmdTags.
 func TestTurns_TagsDeepCopy(t *testing.T) {
 	s := NewSession(testStoreInternal(t), "analyst-1")
 

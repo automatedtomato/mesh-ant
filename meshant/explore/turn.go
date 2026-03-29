@@ -29,7 +29,7 @@ import (
 // Reading is interface{} in v1. Concrete types depend on the command:
 //   - cut:         nil (cut changes state; it is not itself a mesh reading)
 //   - articulate:  graph.MeshGraph
-//   - shadow:      []graph.ShadowElement
+//   - shadow:      graph.ShadowSummary
 //   - follow:      graph.TranslationChain
 //   - bottleneck:  []graph.BottleneckElement
 //   - diff:        graph.GraphDiff
