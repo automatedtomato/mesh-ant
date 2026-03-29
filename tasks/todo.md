@@ -100,7 +100,7 @@ Deferred items resolved (v3.1.0, 2026-03-25): #95 `ClassifyDraftChainOptions`, #
 
 - [x] **#180 — Web UI time series controls** — `datetime-local` From/To picker; T1–T4 documented; `TestHandleShadow_WithTimeWindow` added; `time-window-controls-v1.md`
 - [x] **#181 — explore-v1.md decision record** (ANT gate) — mutable session observer, AnalysisSession design, SuggestionMeta, AnalysisTrace; `Reading` not `Result`; T172.1–T172.6; ANT gate ALIGNED
-- [ ] **#182 — AnalysisSession types + meshant explore REPL skeleton** — `explore.NewSession`; `AnalysisTurn`; cut/quit/help commands
+- [x] **#182 — AnalysisSession types + meshant explore REPL skeleton** — `meshant/explore/` package; `AnalysisSession`, `AnalysisTurn`, `SuggestionMeta`; cut/quit/help; `meshant` (no args) enters REPL; D7a amends explore-v1.md; 95.8% coverage; PR #194
 - [ ] **#183 — explore commands batch 1** — articulate, shadow, window/tag filters
 - [ ] **#184 — explore commands batch 2** — diff, gaps, follow, bottleneck
 - [ ] **#185 — suggest command with SuggestionMeta** (ANT gate) — LLM suggestions with named provenance
