@@ -9,13 +9,44 @@ package explore_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/automatedtomato/mesh-ant/meshant/explore"
+	"github.com/automatedtomato/mesh-ant/meshant/graph"
+	"github.com/automatedtomato/mesh-ant/meshant/schema"
 	"github.com/automatedtomato/mesh-ant/meshant/store"
 )
+
+// baseTime is the fixed timestamp used in test trace construction.
+var baseTime = time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC)
+
+// newValidTrace returns a minimal Trace that passes schema.Validate().
+// Used by testStoreWithTraces to build pre-populated test stores.
+func newValidTrace(id, whatChanged, observer string) schema.Trace {
+	return schema.Trace{
+		ID:          id,
+		Timestamp:   baseTime,
+		WhatChanged: whatChanged,
+		Observer:    observer,
+	}
+}
+
+// testStoreWithTraces builds a JSONFileStore pre-populated with the given
+// traces by storing them into a temp-dir-backed file.
+func testStoreWithTraces(t *testing.T, traces []schema.Trace) store.TraceStore {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "traces.json")
+	ts := store.NewJSONFileStore(path)
+	t.Cleanup(func() { _ = ts.Close() })
+	if err := ts.Store(context.Background(), traces); err != nil {
+		t.Fatalf("testStoreWithTraces: %v", err)
+	}
+	return ts
+}
 
 // testStore returns a JSONFileStore backed by a temp file with no traces.
 // The store is closed automatically when the test ends via t.Cleanup.
@@ -295,5 +326,526 @@ func TestTurns_ReturnsCopy(t *testing.T) {
 	copy2 := s.Turns()
 	if copy2[0].Command == "mutated" {
 		t.Error("Turns() returned a reference to internal state; mutation propagated")
+	}
+}
+
+// === window command ===
+
+func TestRun_Window_Set(t *testing.T) {
+	// window <from> <to> sets the session time window; a subsequent cut
+	// turn snapshots the non-zero window.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\ncut alice\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) == 0 {
+		t.Fatal("expected at least one turn (the cut)")
+	}
+	if turns[0].Window.IsZero() {
+		t.Error("Turn.Window should be non-zero after window command before cut")
+	}
+}
+
+func TestRun_Window_Clear(t *testing.T) {
+	// window clear resets the window; the next cut turn captures zero window.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\nwindow clear\ncut alice\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) == 0 {
+		t.Fatal("expected at least one turn")
+	}
+	if !turns[0].Window.IsZero() {
+		t.Errorf("Turn.Window = %+v after 'window clear'; want zero", turns[0].Window)
+	}
+}
+
+func TestRun_Window_BareClears(t *testing.T) {
+	// bare 'window' (no args) clears the window.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\nwindow\ncut alice\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) == 0 {
+		t.Fatal("expected at least one turn")
+	}
+	if !turns[0].Window.IsZero() {
+		t.Errorf("Turn.Window = %+v after bare 'window'; want zero", turns[0].Window)
+	}
+}
+
+func TestRun_Window_InvalidFrom(t *testing.T) {
+	// Invalid from value prints an inline error; window unchanged; session continues.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "window not-a-date 2026-12-31T23:59:59Z\ncut alice\nquit\n")
+
+	if !strings.Contains(out, "invalid") {
+		t.Errorf("expected 'invalid' in output for bad from value, got:\n%s", out)
+	}
+	// Window was not set — the cut turn should have zero window.
+	turns := s.Turns()
+	if len(turns) == 0 {
+		t.Fatal("expected at least one turn (the cut)")
+	}
+	if !turns[0].Window.IsZero() {
+		t.Errorf("Turn.Window = %+v after failed window set; want zero", turns[0].Window)
+	}
+}
+
+func TestRun_Window_InvalidTo(t *testing.T) {
+	// Invalid to value prints an inline error; window unchanged.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "window 2026-01-01T00:00:00Z not-a-date\nquit\n")
+
+	if !strings.Contains(out, "invalid") {
+		t.Errorf("expected 'invalid' in output for bad to value, got:\n%s", out)
+	}
+}
+
+func TestRun_Window_Inverted(t *testing.T) {
+	// End before Start: TimeWindow.Validate() fires; inline error printed; window unchanged.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "window 2026-12-31T00:00:00Z 2026-01-01T00:00:00Z\ncut alice\nquit\n")
+
+	// Validate() error message contains "before" describing the inverted bounds.
+	if !strings.Contains(out, "before") && !strings.Contains(out, "inverted") {
+		t.Errorf("expected window validation error in output, got:\n%s", out)
+	}
+	turns := s.Turns()
+	if len(turns) == 0 {
+		t.Fatal("expected at least one turn (the cut)")
+	}
+	if !turns[0].Window.IsZero() {
+		t.Errorf("Turn.Window = %+v after inverted window; want zero", turns[0].Window)
+	}
+}
+
+func TestRun_Window_WrongArgCount(t *testing.T) {
+	// One argument that is not "clear" is a usage error.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "window 2026-01-01T00:00:00Z\nquit\n")
+
+	if !strings.Contains(out, "usage") && !strings.Contains(out, "window") {
+		t.Errorf("expected usage hint in output for wrong arg count, got:\n%s", out)
+	}
+}
+
+func TestRun_Window_NoTurnRecorded(t *testing.T) {
+	// window command does not record a turn — it is a filter setter, not an analytical act.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\nquit\n")
+
+	if len(s.Turns()) != 0 {
+		t.Errorf("Turns() = %d after window command, want 0", len(s.Turns()))
+	}
+}
+
+func TestRun_Window_PrintsConfirmation(t *testing.T) {
+	// window command prints a confirmation showing the active bounds.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\nquit\n")
+
+	if !strings.Contains(out, "2026") {
+		t.Errorf("window confirmation should contain year '2026', got:\n%s", out)
+	}
+}
+
+// === tags command ===
+
+func TestRun_Tags_Set(t *testing.T) {
+	// tags <t1> <t2...> sets the session tag filter; the next cut turn snapshots it.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	run(t, s, "tags delay threshold\ncut alice\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) == 0 {
+		t.Fatal("expected at least one turn")
+	}
+	if len(turns[0].Tags) != 2 {
+		t.Fatalf("Turn.Tags = %v, want 2 elements", turns[0].Tags)
+	}
+	if turns[0].Tags[0] != "delay" || turns[0].Tags[1] != "threshold" {
+		t.Errorf("Turn.Tags = %v, want [delay threshold]", turns[0].Tags)
+	}
+}
+
+func TestRun_Tags_Replace(t *testing.T) {
+	// A second tags command replaces (not appends) the tag filter.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	run(t, s, "tags delay\ntags amplification\ncut alice\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) == 0 {
+		t.Fatal("expected at least one turn")
+	}
+	if len(turns[0].Tags) != 1 || turns[0].Tags[0] != "amplification" {
+		t.Errorf("Turn.Tags = %v, want [amplification] (replace, not append)", turns[0].Tags)
+	}
+}
+
+func TestRun_Tags_Clear(t *testing.T) {
+	// tags clear resets the filter to nil.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	run(t, s, "tags delay\ntags clear\ncut alice\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) == 0 {
+		t.Fatal("expected at least one turn")
+	}
+	if turns[0].Tags != nil {
+		t.Errorf("Turn.Tags = %v after 'tags clear', want nil", turns[0].Tags)
+	}
+}
+
+func TestRun_Tags_BareClears(t *testing.T) {
+	// bare 'tags' (no args) clears the filter.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	run(t, s, "tags delay\ntags\ncut alice\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) == 0 {
+		t.Fatal("expected at least one turn")
+	}
+	if turns[0].Tags != nil {
+		t.Errorf("Turn.Tags = %v after bare 'tags', want nil", turns[0].Tags)
+	}
+}
+
+func TestRun_Tags_NoTurnRecorded(t *testing.T) {
+	// tags command does not record a turn — it is a filter setter.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	run(t, s, "tags delay threshold\nquit\n")
+
+	if len(s.Turns()) != 0 {
+		t.Errorf("Turns() = %d after tags command, want 0", len(s.Turns()))
+	}
+}
+
+func TestRun_Tags_PrintsConfirmation(t *testing.T) {
+	// tags command prints a confirmation showing the active tags.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "tags delay threshold\nquit\n")
+
+	if !strings.Contains(out, "delay") {
+		t.Errorf("tags confirmation should contain 'delay', got:\n%s", out)
+	}
+	if !strings.Contains(out, "threshold") {
+		t.Errorf("tags confirmation should contain 'threshold', got:\n%s", out)
+	}
+}
+
+// === articulate command ===
+
+func TestRun_Articulate_NilStore(t *testing.T) {
+	// With a nil store, articulate prints an inline error and the session continues.
+	s := explore.NewSession(nil, "alice")
+	out := run(t, s, "cut alice\narticulate\nquit\n")
+
+	if !strings.Contains(out, "no trace substrate") {
+		t.Errorf("expected 'no trace substrate' error, got:\n%s", out)
+	}
+	// The cut turn recorded, but articulate did not add another.
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Articulate_NoObserver(t *testing.T) {
+	// Without a prior cut, articulate prints an inline error about missing observer.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "articulate\nquit\n")
+
+	if !strings.Contains(out, "observer") {
+		t.Errorf("expected 'observer' error, got:\n%s", out)
+	}
+	// No turn recorded for a failed analytical command.
+	if len(s.Turns()) != 0 {
+		t.Errorf("Turns() = %d, want 0", len(s.Turns()))
+	}
+}
+
+func TestRun_Articulate_HappyPath(t *testing.T) {
+	// cut then articulate: output contains the articulation header; turn is recorded.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	out := run(t, s, "cut ops-engineer\narticulate\nquit\n")
+
+	if !strings.Contains(out, "=== Mesh Articulation") {
+		t.Errorf("expected articulation header in output, got:\n%s", out)
+	}
+}
+
+func TestRun_Articulate_RecordsTurn(t *testing.T) {
+	// articulate records a turn with the correct Command and Observer fields.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	run(t, s, "cut ops-engineer\narticulate\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + articulate)", len(turns))
+	}
+	artTurn := turns[1]
+	if artTurn.Command != "articulate" {
+		t.Errorf("Turn.Command = %q, want %q", artTurn.Command, "articulate")
+	}
+	if artTurn.Observer != "ops-engineer" {
+		t.Errorf("Turn.Observer = %q, want %q", artTurn.Observer, "ops-engineer")
+	}
+	if artTurn.ExecutedAt.IsZero() {
+		t.Error("Turn.ExecutedAt should be non-zero")
+	}
+	if artTurn.Reading == nil {
+		t.Error("Turn.Reading should be non-nil (graph.MeshGraph)")
+	}
+}
+
+func TestRun_Articulate_WithWindowAndTags(t *testing.T) {
+	// window and tags set before articulate are snapshotted in the turn.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\ntags delay\ncut ops-engineer\narticulate\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + articulate)", len(turns))
+	}
+	artTurn := turns[1]
+	if artTurn.Window.IsZero() {
+		t.Error("Turn.Window should be non-zero (window was set before articulate)")
+	}
+	if len(artTurn.Tags) != 1 || artTurn.Tags[0] != "delay" {
+		t.Errorf("Turn.Tags = %v, want [delay]", artTurn.Tags)
+	}
+}
+
+// === shadow command ===
+
+func TestRun_Shadow_NilStore(t *testing.T) {
+	// With a nil store, shadow prints an inline error and the session continues.
+	s := explore.NewSession(nil, "alice")
+	out := run(t, s, "cut alice\nshadow\nquit\n")
+
+	if !strings.Contains(out, "no trace substrate") {
+		t.Errorf("expected 'no trace substrate' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Shadow_NoObserver(t *testing.T) {
+	// Without a prior cut, shadow prints an inline error about missing observer.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "shadow\nquit\n")
+
+	if !strings.Contains(out, "observer") {
+		t.Errorf("expected 'observer' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 0 {
+		t.Errorf("Turns() = %d, want 0", len(s.Turns()))
+	}
+}
+
+func TestRun_Shadow_HappyPath(t *testing.T) {
+	// cut then shadow: output contains the shadow summary header; turn is recorded.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	out := run(t, s, "cut ops-engineer\nshadow\nquit\n")
+
+	if !strings.Contains(out, "=== Shadow Summary") {
+		t.Errorf("expected shadow summary header in output, got:\n%s", out)
+	}
+}
+
+func TestRun_Shadow_RecordsTurn(t *testing.T) {
+	// shadow records a turn with the correct Command and Reading fields.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	run(t, s, "cut ops-engineer\nshadow\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + shadow)", len(turns))
+	}
+	shadowTurn := turns[1]
+	if shadowTurn.Command != "shadow" {
+		t.Errorf("Turn.Command = %q, want %q", shadowTurn.Command, "shadow")
+	}
+	if shadowTurn.Observer != "ops-engineer" {
+		t.Errorf("Turn.Observer = %q, want %q", shadowTurn.Observer, "ops-engineer")
+	}
+	if shadowTurn.Reading == nil {
+		t.Error("Turn.Reading should be non-nil (graph.ShadowSummary)")
+	}
+}
+
+// === articulate — filter application ===
+
+func TestRun_Articulate_WindowFilterApplied(t *testing.T) {
+	// window filter is passed to graph.Articulate — not merely snapshotted.
+	// Trace 1 falls inside the window; trace 2 falls outside. The articulation
+	// must include only 1 of the 2 traces; MeshGraph.Cut.TracesIncluded == 1.
+	inside := schema.Trace{
+		ID:          "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee03",
+		Timestamp:   time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		WhatChanged: "relay A routed packet",
+		Observer:    "ops-engineer",
+	}
+	outside := schema.Trace{
+		ID:          "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee04",
+		Timestamp:   time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC), // before window start
+		WhatChanged: "relay B dropped packet",
+		Observer:    "ops-engineer",
+	}
+	s := explore.NewSession(testStoreWithTraces(t, []schema.Trace{inside, outside}), "analyst-1")
+	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\ncut ops-engineer\narticulate\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + articulate)", len(turns))
+	}
+	g, ok := turns[1].Reading.(graph.MeshGraph)
+	if !ok {
+		t.Fatalf("Turn.Reading type = %T, want graph.MeshGraph", turns[1].Reading)
+	}
+	// Only the in-window trace should be included; the other should be shadowed.
+	if g.Cut.TracesIncluded != 1 {
+		t.Errorf("Cut.TracesIncluded = %d, want 1 (only the in-window trace)", g.Cut.TracesIncluded)
+	}
+}
+
+func TestRun_Articulate_EmptyStore(t *testing.T) {
+	// articulate against a non-nil but empty store is a valid analytical act:
+	// the cut produced zero traces; the graph has no nodes and no shadow.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "cut ops-engineer\narticulate\nquit\n")
+
+	// The articulation header must still appear — an empty graph is a valid reading.
+	if !strings.Contains(out, "=== Mesh Articulation") {
+		t.Errorf("expected articulation header even for empty store, got:\n%s", out)
+	}
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + articulate)", len(turns))
+	}
+	g, ok := turns[1].Reading.(graph.MeshGraph)
+	if !ok {
+		t.Fatalf("Turn.Reading type = %T, want graph.MeshGraph", turns[1].Reading)
+	}
+	if g.Cut.TracesIncluded != 0 {
+		t.Errorf("Cut.TracesIncluded = %d for empty store, want 0", g.Cut.TracesIncluded)
+	}
+}
+
+func TestRun_Shadow_EmptyStore(t *testing.T) {
+	// shadow against an empty store: zero shadow elements; summary header present.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "cut ops-engineer\nshadow\nquit\n")
+
+	if !strings.Contains(out, "=== Shadow Summary") {
+		t.Errorf("expected shadow header even for empty store, got:\n%s", out)
+	}
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + shadow)", len(turns))
+	}
+	ss, ok := turns[1].Reading.(graph.ShadowSummary)
+	if !ok {
+		t.Fatalf("Turn.Reading type = %T, want graph.ShadowSummary", turns[1].Reading)
+	}
+	if ss.TotalShadowed != 0 {
+		t.Errorf("ShadowSummary.TotalShadowed = %d for empty store, want 0", ss.TotalShadowed)
+	}
+}
+
+// === articulate/shadow — query error path ===
+
+// errStore is a minimal TraceStore stub that returns a fixed error on Query.
+// Used exclusively to test the query-error branches in cmdArticulate and
+// cmdShadow, which cannot be reliably triggered with a real JSONFileStore.
+type errStore struct{}
+
+func (e errStore) Store(_ context.Context, _ []schema.Trace) error { return nil }
+func (e errStore) Query(_ context.Context, _ store.QueryOpts) ([]schema.Trace, error) {
+	return nil, fmt.Errorf("stub query error")
+}
+func (e errStore) Get(_ context.Context, _ string) (schema.Trace, bool, error) {
+	return schema.Trace{}, false, nil
+}
+func (e errStore) Close() error { return nil }
+
+func TestRun_Articulate_QueryError(t *testing.T) {
+	// When the store returns a query error, articulate prints an inline error
+	// and the session continues without recording a turn.
+	s := explore.NewSession(errStore{}, "analyst-1")
+	out := run(t, s, "cut ops-engineer\narticulate\nquit\n")
+
+	if !strings.Contains(out, "failed to load traces") {
+		t.Errorf("expected query error message, got:\n%s", out)
+	}
+	// cut recorded one turn; articulate recorded none (it failed).
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Shadow_QueryError(t *testing.T) {
+	// When the store returns a query error, shadow prints an inline error
+	// and the session continues without recording a turn.
+	s := explore.NewSession(errStore{}, "analyst-1")
+	out := run(t, s, "cut ops-engineer\nshadow\nquit\n")
+
+	if !strings.Contains(out, "failed to load traces") {
+		t.Errorf("expected query error message, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+// === tags — "clear" as non-sole argument ===
+
+func TestRun_Tags_ClearWithOtherArgs_TreatedAsLiteral(t *testing.T) {
+	// "tags clear foo" treats "clear" as a literal tag, not a keyword —
+	// the keyword only fires when "clear" is the sole argument.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	run(t, s, "tags clear foo\ncut alice\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) == 0 {
+		t.Fatal("expected at least one turn")
+	}
+	if len(turns[0].Tags) != 2 {
+		t.Fatalf("Turn.Tags = %v, want 2 elements (clear, foo)", turns[0].Tags)
+	}
+	if turns[0].Tags[0] != "clear" || turns[0].Tags[1] != "foo" {
+		t.Errorf("Turn.Tags = %v, want [clear foo]", turns[0].Tags)
+	}
+}
+
+// === help command — updated for batch 1 commands ===
+
+func TestRun_Help_ShowsNewCommands(t *testing.T) {
+	// help output lists all batch-1 commands.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "help\nquit\n")
+
+	for _, keyword := range []string{"articulate", "shadow", "window", "tags"} {
+		if !strings.Contains(out, keyword) {
+			t.Errorf("help output missing %q\nfull output:\n%s", keyword, out)
+		}
 	}
 }

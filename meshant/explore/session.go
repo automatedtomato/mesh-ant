@@ -148,6 +148,14 @@ func (s *AnalysisSession) dispatch(ctx context.Context, line string, out io.Writ
 	switch cmd {
 	case "cut":
 		return s.cmdCut(line, args, out)
+	case "articulate":
+		return s.cmdArticulate(ctx, line, out)
+	case "shadow":
+		return s.cmdShadow(ctx, line, out)
+	case "window":
+		return s.cmdWindow(line, args, out)
+	case "tags":
+		return s.cmdTags(line, args, out)
 	case "help", "h":
 		fmt.Fprint(out, helpText())
 		return nil
@@ -177,22 +185,32 @@ func (s *AnalysisSession) cmdCut(rawLine string, args []string, out io.Writer) e
 	return nil
 }
 
-// helpText returns the help listing for the skeleton command set.
-// Extended in #183–#186 as new commands are added.
+// helpText returns the help listing for the current command set.
+// Extended in #184–#186 as new commands are added.
 func helpText() string {
 	return `Commands:
-  cut <observer>    set the observer position for subsequent turns
-  help  (h)         show this help
-  quit  (q)         end the session; discards unsaved turns
+  cut <observer>           set the observer position for subsequent turns
+  articulate               articulate the mesh graph from the current position
+  shadow                   summarise what the current cut leaves in shadow
+  window <from> <to>       set a time window filter (RFC3339); 'window clear' to reset
+  tags <t1> [t2...]        set tag filters; 'tags clear' to reset
+  help  (h)                show this help
+  quit  (q)                end the session; discards unsaved turns
 `
 }
 
 // recordTurn appends a new AnalysisTurn to the session history.
 //
+// command is the full line as typed by the analyst (e.g. "cut alice",
+// "articulate", "shadow"). This populates Turn.Command and preserves the
+// full invocation in the session record — callers must pass rawLine, not
+// just the verb.
+//
 // Window and Tags are deep-copied so that future changes to s.window / s.tags
 // do not retroactively alter a completed turn's recorded conditions (D3).
 // Reading and Suggestion are stored by reference — their concrete types
-// (graph.MeshGraph, etc.) are immutable values from the analytical engine.
+// (graph.MeshGraph, graph.ShadowSummary, etc.) are immutable values from
+// the analytical engine.
 func (s *AnalysisSession) recordTurn(command string, reading interface{}, suggestion *SuggestionMeta) {
 	// Deep-copy tags: nil input → nil copy (no empty slice created for zero-tag sessions).
 	var tagsCopy []string
