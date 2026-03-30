@@ -19,6 +19,7 @@ import (
 	"io"
 
 	"github.com/automatedtomato/mesh-ant/meshant/explore"
+	"github.com/automatedtomato/mesh-ant/meshant/llm"
 	"github.com/automatedtomato/mesh-ant/meshant/store"
 )
 
@@ -35,13 +36,9 @@ func cmdExplore(in io.Reader, w io.Writer, args []string) error {
 	fs.SetOutput(w)
 
 	var dbURL string
+	var analyst string
 	fs.StringVar(&dbURL, "db", "", "Neo4j bolt URL (e.g. bolt://localhost:7687)")
-	// TODO(#182 deferred): wire --analyst to NewSession so promoted traces carry
-	// a named conductor. Currently analyst is always "", which means every
-	// AnalysisTurn and any promoted AnalysisTrace will have an empty author.
-	// Must be wired by #185 (suggest) at the latest — SuggestionMeta.Analyst must
-	// be non-empty for attributable LLM suggestions. Also required for #186 (save).
-	// See explore-v1.md T2 tension.
+	fs.StringVar(&analyst, "analyst", "", "analyst name (required for `suggest`; sets provenance on all turns)")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -78,7 +75,22 @@ func cmdExplore(in io.Reader, w io.Writer, args []string) error {
 		ts = jfs
 	}
 
-	s := explore.NewSession(ts, "")
+	// Build the LLM suggest client. Optional: when the API key is absent or
+	// analyst is empty, suggest will refuse gracefully with an inline error.
+	// All other REPL commands are unaffected by whether sc is nil.
+	var sc explore.SuggestClient
+	if analyst != "" {
+		lc, lcErr := llm.NewAnthropicClient("claude-haiku-4-5-20251001")
+		if lcErr == nil {
+			sc = lc
+		} else {
+			// Analyst is set but key is absent — warn at startup so the analyst
+			// knows suggest is unavailable before running any commands.
+			fmt.Fprintf(w, "warning: --analyst set but MESHANT_LLM_API_KEY is not configured; 'suggest' command will be unavailable\n")
+		}
+	}
+
+	s := explore.NewSession(ts, analyst, sc)
 
 	if ts == nil {
 		fmt.Fprintln(w, "meshant — no trace substrate loaded")

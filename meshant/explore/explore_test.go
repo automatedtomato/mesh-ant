@@ -73,7 +73,7 @@ func run(t *testing.T, s *explore.AnalysisSession, input string) string {
 
 func TestNewSession(t *testing.T) {
 	ts := testStore(t)
-	s := explore.NewSession(ts, "alice")
+	s := explore.NewSession(ts, "alice", nil)
 
 	if s.Analyst() != "alice" {
 		t.Errorf("Analyst() = %q, want %q", s.Analyst(), "alice")
@@ -88,7 +88,7 @@ func TestNewSession(t *testing.T) {
 
 func TestNewSession_EmptyAnalyst(t *testing.T) {
 	// An empty analyst is permitted — the session works without a named conductor.
-	s := explore.NewSession(testStore(t), "")
+	s := explore.NewSession(testStore(t), "", nil)
 	if s.Analyst() != "" {
 		t.Errorf("Analyst() = %q, want empty string", s.Analyst())
 	}
@@ -97,7 +97,7 @@ func TestNewSession_EmptyAnalyst(t *testing.T) {
 // === Quit and EOF ===
 
 func TestRun_Quit(t *testing.T) {
-	s := explore.NewSession(testStore(t), "alice")
+	s := explore.NewSession(testStore(t), "alice", nil)
 	run(t, s, "quit\n")
 
 	// A bare quit records no turns — no analytical act was performed.
@@ -108,7 +108,7 @@ func TestRun_Quit(t *testing.T) {
 
 func TestRun_QuitAlias(t *testing.T) {
 	// "q" is accepted as an alias for "quit".
-	s := explore.NewSession(testStore(t), "alice")
+	s := explore.NewSession(testStore(t), "alice", nil)
 	run(t, s, "q\n")
 	// A bare 'q' records no turns — same contract as 'quit'.
 	if len(s.Turns()) != 0 {
@@ -119,7 +119,7 @@ func TestRun_QuitAlias(t *testing.T) {
 func TestRun_EOF(t *testing.T) {
 	// EOF on the reader is treated identically to quit — consistent with
 	// the review/session.go pattern; a closed reader is an unrecoverable state.
-	s := explore.NewSession(testStore(t), "alice")
+	s := explore.NewSession(testStore(t), "alice", nil)
 	run(t, s, "")
 	// EOF records no turns and leaves state unchanged.
 	if len(s.Turns()) != 0 {
@@ -132,7 +132,7 @@ func TestRun_EOF(t *testing.T) {
 
 func TestRun_EmptyLines(t *testing.T) {
 	// Empty lines are silently skipped; session continues to quit.
-	s := explore.NewSession(testStore(t), "alice")
+	s := explore.NewSession(testStore(t), "alice", nil)
 	run(t, s, "\n\n\nquit\n")
 	if len(s.Turns()) != 0 {
 		t.Errorf("Turns() = %d after empty lines + quit, want 0", len(s.Turns()))
@@ -142,7 +142,7 @@ func TestRun_EmptyLines(t *testing.T) {
 // === cut command ===
 
 func TestRun_Cut(t *testing.T) {
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "cut on-call-engineer\nquit\n")
 
 	if s.Observer() != "on-call-engineer" {
@@ -174,7 +174,7 @@ func TestRun_Cut(t *testing.T) {
 
 func TestRun_Cut_NoArg(t *testing.T) {
 	// cut without an observer name shows an inline error; observer unchanged.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "cut\nquit\n")
 
 	if s.Observer() != "" {
@@ -191,7 +191,7 @@ func TestRun_Cut_NoArg(t *testing.T) {
 
 func TestRun_MultipleCuts(t *testing.T) {
 	// Each cut records a turn; each turn snapshots the observer that became active.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "cut alice\ncut bob\ncut alice\nquit\n")
 
 	if s.Observer() != "alice" {
@@ -214,7 +214,7 @@ func TestRun_MultipleCuts(t *testing.T) {
 
 func TestRun_Cut_SnapshotsWindow(t *testing.T) {
 	// At session start the window is zero-value; the turn records that.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "cut alice\nquit\n")
 
 	turns := s.Turns()
@@ -228,7 +228,7 @@ func TestRun_Cut_SnapshotsWindow(t *testing.T) {
 
 func TestRun_Cut_SnapshotsTags(t *testing.T) {
 	// At session start tags are nil; the turn records that.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "cut alice\nquit\n")
 
 	turns := s.Turns()
@@ -243,7 +243,7 @@ func TestRun_Cut_SnapshotsTags(t *testing.T) {
 // === help command ===
 
 func TestRun_Help(t *testing.T) {
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "help\nquit\n")
 
 	// help output must mention all skeleton commands.
@@ -256,7 +256,7 @@ func TestRun_Help(t *testing.T) {
 
 func TestRun_HelpAlias(t *testing.T) {
 	// "h" produces the same output as "help" — all skeleton keywords present.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "h\nquit\n")
 	for _, keyword := range []string{"cut", "help", "quit"} {
 		if !strings.Contains(out, keyword) {
@@ -268,7 +268,7 @@ func TestRun_HelpAlias(t *testing.T) {
 // === unknown command ===
 
 func TestRun_UnknownCommand(t *testing.T) {
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "foobar\nquit\n")
 
 	// Unknown command shows an inline error; session continues.
@@ -283,7 +283,7 @@ func TestRun_UnknownCommand(t *testing.T) {
 
 func TestRun_UnknownThenCut(t *testing.T) {
 	// An unknown command does not terminate the session; subsequent commands work.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "foobar\ncut alice\nquit\n")
 
 	if s.Observer() != "alice" {
@@ -298,7 +298,7 @@ func TestRun_UnknownThenCut(t *testing.T) {
 
 func TestAnalysisTurn_SuggestionNilForCut(t *testing.T) {
 	// Suggestion is non-nil only for the 'suggest' command (wired in #185).
-	s := explore.NewSession(testStore(t), "alice")
+	s := explore.NewSession(testStore(t), "alice", nil)
 	run(t, s, "cut on-call-engineer\nquit\n")
 
 	turns := s.Turns()
@@ -314,7 +314,7 @@ func TestAnalysisTurn_SuggestionNilForCut(t *testing.T) {
 
 func TestTurns_ReturnsCopy(t *testing.T) {
 	// Mutations to the slice returned by Turns() must not affect the session.
-	s := explore.NewSession(testStore(t), "alice")
+	s := explore.NewSession(testStore(t), "alice", nil)
 	run(t, s, "cut alice\nquit\n")
 
 	copy1 := s.Turns()
@@ -334,7 +334,7 @@ func TestTurns_ReturnsCopy(t *testing.T) {
 func TestRun_Window_Set(t *testing.T) {
 	// window <from> <to> sets the session time window; a subsequent cut
 	// turn snapshots the non-zero window.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\ncut alice\nquit\n")
 
 	turns := s.Turns()
@@ -348,7 +348,7 @@ func TestRun_Window_Set(t *testing.T) {
 
 func TestRun_Window_Clear(t *testing.T) {
 	// window clear resets the window; the next cut turn captures zero window.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\nwindow clear\ncut alice\nquit\n")
 
 	turns := s.Turns()
@@ -362,7 +362,7 @@ func TestRun_Window_Clear(t *testing.T) {
 
 func TestRun_Window_BareClears(t *testing.T) {
 	// bare 'window' (no args) clears the window.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\nwindow\ncut alice\nquit\n")
 
 	turns := s.Turns()
@@ -376,7 +376,7 @@ func TestRun_Window_BareClears(t *testing.T) {
 
 func TestRun_Window_InvalidFrom(t *testing.T) {
 	// Invalid from value prints an inline error; window unchanged; session continues.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "window not-a-date 2026-12-31T23:59:59Z\ncut alice\nquit\n")
 
 	if !strings.Contains(out, "invalid") {
@@ -394,7 +394,7 @@ func TestRun_Window_InvalidFrom(t *testing.T) {
 
 func TestRun_Window_InvalidTo(t *testing.T) {
 	// Invalid to value prints an inline error; window unchanged.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "window 2026-01-01T00:00:00Z not-a-date\nquit\n")
 
 	if !strings.Contains(out, "invalid") {
@@ -404,7 +404,7 @@ func TestRun_Window_InvalidTo(t *testing.T) {
 
 func TestRun_Window_Inverted(t *testing.T) {
 	// End before Start: TimeWindow.Validate() fires; inline error printed; window unchanged.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "window 2026-12-31T00:00:00Z 2026-01-01T00:00:00Z\ncut alice\nquit\n")
 
 	// Validate() error message contains "before" describing the inverted bounds.
@@ -422,7 +422,7 @@ func TestRun_Window_Inverted(t *testing.T) {
 
 func TestRun_Window_WrongArgCount(t *testing.T) {
 	// One argument that is not "clear" is a usage error.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "window 2026-01-01T00:00:00Z\nquit\n")
 
 	if !strings.Contains(out, "usage") && !strings.Contains(out, "window") {
@@ -432,7 +432,7 @@ func TestRun_Window_WrongArgCount(t *testing.T) {
 
 func TestRun_Window_NoTurnRecorded(t *testing.T) {
 	// window command does not record a turn — it is a filter setter, not an analytical act.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\nquit\n")
 
 	if len(s.Turns()) != 0 {
@@ -442,7 +442,7 @@ func TestRun_Window_NoTurnRecorded(t *testing.T) {
 
 func TestRun_Window_PrintsConfirmation(t *testing.T) {
 	// window command prints a confirmation showing the active bounds.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\nquit\n")
 
 	if !strings.Contains(out, "2026") {
@@ -454,7 +454,7 @@ func TestRun_Window_PrintsConfirmation(t *testing.T) {
 
 func TestRun_Tags_Set(t *testing.T) {
 	// tags <t1> <t2...> sets the session tag filter; the next cut turn snapshots it.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "tags delay threshold\ncut alice\nquit\n")
 
 	turns := s.Turns()
@@ -471,7 +471,7 @@ func TestRun_Tags_Set(t *testing.T) {
 
 func TestRun_Tags_Replace(t *testing.T) {
 	// A second tags command replaces (not appends) the tag filter.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "tags delay\ntags amplification\ncut alice\nquit\n")
 
 	turns := s.Turns()
@@ -485,7 +485,7 @@ func TestRun_Tags_Replace(t *testing.T) {
 
 func TestRun_Tags_Clear(t *testing.T) {
 	// tags clear resets the filter to nil.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "tags delay\ntags clear\ncut alice\nquit\n")
 
 	turns := s.Turns()
@@ -499,7 +499,7 @@ func TestRun_Tags_Clear(t *testing.T) {
 
 func TestRun_Tags_BareClears(t *testing.T) {
 	// bare 'tags' (no args) clears the filter.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "tags delay\ntags\ncut alice\nquit\n")
 
 	turns := s.Turns()
@@ -513,7 +513,7 @@ func TestRun_Tags_BareClears(t *testing.T) {
 
 func TestRun_Tags_NoTurnRecorded(t *testing.T) {
 	// tags command does not record a turn — it is a filter setter.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "tags delay threshold\nquit\n")
 
 	if len(s.Turns()) != 0 {
@@ -523,7 +523,7 @@ func TestRun_Tags_NoTurnRecorded(t *testing.T) {
 
 func TestRun_Tags_PrintsConfirmation(t *testing.T) {
 	// tags command prints a confirmation showing the active tags.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "tags delay threshold\nquit\n")
 
 	if !strings.Contains(out, "delay") {
@@ -538,7 +538,7 @@ func TestRun_Tags_PrintsConfirmation(t *testing.T) {
 
 func TestRun_Articulate_NilStore(t *testing.T) {
 	// With a nil store, articulate prints an inline error and the session continues.
-	s := explore.NewSession(nil, "alice")
+	s := explore.NewSession(nil, "alice", nil)
 	out := run(t, s, "cut alice\narticulate\nquit\n")
 
 	if !strings.Contains(out, "no trace substrate") {
@@ -552,7 +552,7 @@ func TestRun_Articulate_NilStore(t *testing.T) {
 
 func TestRun_Articulate_NoObserver(t *testing.T) {
 	// Without a prior cut, articulate prints an inline error about missing observer.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "articulate\nquit\n")
 
 	if !strings.Contains(out, "observer") {
@@ -570,7 +570,7 @@ func TestRun_Articulate_HappyPath(t *testing.T) {
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\narticulate\nquit\n")
 
 	if !strings.Contains(out, "=== Mesh Articulation") {
@@ -583,7 +583,7 @@ func TestRun_Articulate_RecordsTurn(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	run(t, s, "cut ops-engineer\narticulate\nquit\n")
 
 	turns := s.Turns()
@@ -610,7 +610,7 @@ func TestRun_Articulate_WithWindowAndTags(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\ntags delay\ncut ops-engineer\narticulate\nquit\n")
 
 	turns := s.Turns()
@@ -630,7 +630,7 @@ func TestRun_Articulate_WithWindowAndTags(t *testing.T) {
 
 func TestRun_Shadow_NilStore(t *testing.T) {
 	// With a nil store, shadow prints an inline error and the session continues.
-	s := explore.NewSession(nil, "alice")
+	s := explore.NewSession(nil, "alice", nil)
 	out := run(t, s, "cut alice\nshadow\nquit\n")
 
 	if !strings.Contains(out, "no trace substrate") {
@@ -643,7 +643,7 @@ func TestRun_Shadow_NilStore(t *testing.T) {
 
 func TestRun_Shadow_NoObserver(t *testing.T) {
 	// Without a prior cut, shadow prints an inline error about missing observer.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "shadow\nquit\n")
 
 	if !strings.Contains(out, "observer") {
@@ -660,7 +660,7 @@ func TestRun_Shadow_HappyPath(t *testing.T) {
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\nshadow\nquit\n")
 
 	if !strings.Contains(out, "=== Shadow Summary") {
@@ -673,7 +673,7 @@ func TestRun_Shadow_RecordsTurn(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	run(t, s, "cut ops-engineer\nshadow\nquit\n")
 
 	turns := s.Turns()
@@ -710,7 +710,7 @@ func TestRun_Articulate_WindowFilterApplied(t *testing.T) {
 		WhatChanged: "relay B dropped packet",
 		Observer:    "ops-engineer",
 	}
-	s := explore.NewSession(testStoreWithTraces(t, []schema.Trace{inside, outside}), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, []schema.Trace{inside, outside}), "analyst-1", nil)
 	run(t, s, "window 2026-01-01T00:00:00Z 2026-12-31T23:59:59Z\ncut ops-engineer\narticulate\nquit\n")
 
 	turns := s.Turns()
@@ -730,7 +730,7 @@ func TestRun_Articulate_WindowFilterApplied(t *testing.T) {
 func TestRun_Articulate_EmptyStore(t *testing.T) {
 	// articulate against a non-nil but empty store is a valid analytical act:
 	// the cut produced zero traces; the graph has no nodes and no shadow.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\narticulate\nquit\n")
 
 	// The articulation header must still appear — an empty graph is a valid reading.
@@ -752,7 +752,7 @@ func TestRun_Articulate_EmptyStore(t *testing.T) {
 
 func TestRun_Shadow_EmptyStore(t *testing.T) {
 	// shadow against an empty store: zero shadow elements; summary header present.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\nshadow\nquit\n")
 
 	if !strings.Contains(out, "=== Shadow Summary") {
@@ -790,7 +790,7 @@ func (e errStore) Close() error { return nil }
 func TestRun_Articulate_QueryError(t *testing.T) {
 	// When the store returns a query error, articulate prints an inline error
 	// and the session continues without recording a turn.
-	s := explore.NewSession(errStore{}, "analyst-1")
+	s := explore.NewSession(errStore{}, "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\narticulate\nquit\n")
 
 	if !strings.Contains(out, "failed to load traces") {
@@ -805,7 +805,7 @@ func TestRun_Articulate_QueryError(t *testing.T) {
 func TestRun_Shadow_QueryError(t *testing.T) {
 	// When the store returns a query error, shadow prints an inline error
 	// and the session continues without recording a turn.
-	s := explore.NewSession(errStore{}, "analyst-1")
+	s := explore.NewSession(errStore{}, "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\nshadow\nquit\n")
 
 	if !strings.Contains(out, "failed to load traces") {
@@ -821,7 +821,7 @@ func TestRun_Shadow_QueryError(t *testing.T) {
 func TestRun_Tags_ClearWithOtherArgs_TreatedAsLiteral(t *testing.T) {
 	// "tags clear foo" treats "clear" as a literal tag, not a keyword —
 	// the keyword only fires when "clear" is the sole argument.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "tags clear foo\ncut alice\nquit\n")
 
 	turns := s.Turns()
@@ -840,7 +840,7 @@ func TestRun_Tags_ClearWithOtherArgs_TreatedAsLiteral(t *testing.T) {
 
 func TestRun_Help_ShowsNewCommands(t *testing.T) {
 	// help output lists all batch-1 commands.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "help\nquit\n")
 
 	for _, keyword := range []string{"articulate", "shadow", "window", "tags"} {
@@ -854,7 +854,7 @@ func TestRun_Help_ShowsNewCommands(t *testing.T) {
 
 func TestRun_Follow_NilStore(t *testing.T) {
 	// nil store prints inline error; no turn recorded beyond the cut.
-	s := explore.NewSession(nil, "alice")
+	s := explore.NewSession(nil, "alice", nil)
 	out := run(t, s, "cut alice\nfollow relay-a\nquit\n")
 
 	if !strings.Contains(out, "no trace substrate") {
@@ -867,7 +867,7 @@ func TestRun_Follow_NilStore(t *testing.T) {
 
 func TestRun_Follow_NoObserver(t *testing.T) {
 	// Without a prior cut, follow prints an inline error.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "follow relay-a\nquit\n")
 
 	if !strings.Contains(out, "observer") {
@@ -880,7 +880,7 @@ func TestRun_Follow_NoObserver(t *testing.T) {
 
 func TestRun_Follow_NoElement(t *testing.T) {
 	// Missing element argument prints inline error; session continues.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "cut alice\nfollow\nquit\n")
 
 	if !strings.Contains(out, "element") {
@@ -896,7 +896,7 @@ func TestRun_Follow_HappyPath(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\nfollow relay\nquit\n")
 
 	if !strings.Contains(out, "=== Translation Chain (provisional reading) ===") {
@@ -912,7 +912,7 @@ func TestRun_Follow_RecordsTurn(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	run(t, s, "cut ops-engineer\nfollow relay\nquit\n")
 
 	turns := s.Turns()
@@ -936,7 +936,7 @@ func TestRun_Follow_WithMaxDepth(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	run(t, s, "cut ops-engineer\nfollow relay 2\nquit\n")
 
 	if len(s.Turns()) != 2 {
@@ -950,7 +950,7 @@ func TestRun_Follow_ZeroMaxDepth(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\nfollow relay 0\nquit\n")
 
 	if !strings.Contains(out, "=== Translation Chain (provisional reading) ===") {
@@ -971,7 +971,7 @@ func TestRun_Follow_NegativeMaxDepth(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\nfollow relay -1\nquit\n")
 
 	if !strings.Contains(out, "=== Translation Chain (provisional reading) ===") {
@@ -984,7 +984,7 @@ func TestRun_Follow_NegativeMaxDepth(t *testing.T) {
 
 func TestRun_Follow_InvalidMaxDepth(t *testing.T) {
 	// Non-integer max_depth prints inline error; no turn beyond cut.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "cut alice\nfollow relay abc\nquit\n")
 
 	if !strings.Contains(out, "invalid") || !strings.Contains(out, "max_depth") {
@@ -997,7 +997,7 @@ func TestRun_Follow_InvalidMaxDepth(t *testing.T) {
 
 func TestRun_Follow_QueryError(t *testing.T) {
 	// Store query error prints inline error; no turn beyond cut.
-	s := explore.NewSession(errStore{}, "analyst-1")
+	s := explore.NewSession(errStore{}, "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\nfollow relay\nquit\n")
 
 	if !strings.Contains(out, "failed to load traces") {
@@ -1012,7 +1012,7 @@ func TestRun_Follow_QueryError(t *testing.T) {
 
 func TestRun_Bottleneck_NilStore(t *testing.T) {
 	// nil store prints inline error; no turn beyond cut.
-	s := explore.NewSession(nil, "alice")
+	s := explore.NewSession(nil, "alice", nil)
 	out := run(t, s, "cut alice\nbottleneck\nquit\n")
 
 	if !strings.Contains(out, "no trace substrate") {
@@ -1025,7 +1025,7 @@ func TestRun_Bottleneck_NilStore(t *testing.T) {
 
 func TestRun_Bottleneck_NoObserver(t *testing.T) {
 	// Without a prior cut, bottleneck prints an inline error.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "bottleneck\nquit\n")
 
 	if !strings.Contains(out, "observer") {
@@ -1041,7 +1041,7 @@ func TestRun_Bottleneck_HappyPath(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\nbottleneck\nquit\n")
 
 	// PrintBottleneckNotes always emits this exact header.
@@ -1058,7 +1058,7 @@ func TestRun_Bottleneck_RecordsTurn(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	run(t, s, "cut ops-engineer\nbottleneck\nquit\n")
 
 	turns := s.Turns()
@@ -1079,7 +1079,7 @@ func TestRun_Bottleneck_RecordsTurn(t *testing.T) {
 
 func TestRun_Bottleneck_EmptyStore(t *testing.T) {
 	// bottleneck against an empty store is valid: no notes; turn still recorded.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	run(t, s, "cut ops-engineer\nbottleneck\nquit\n")
 
 	turns := s.Turns()
@@ -1097,7 +1097,7 @@ func TestRun_Bottleneck_EmptyStore(t *testing.T) {
 
 func TestRun_Bottleneck_QueryError(t *testing.T) {
 	// Store query error prints inline error; no turn beyond cut.
-	s := explore.NewSession(errStore{}, "analyst-1")
+	s := explore.NewSession(errStore{}, "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\nbottleneck\nquit\n")
 
 	if !strings.Contains(out, "failed to load traces") {
@@ -1112,7 +1112,7 @@ func TestRun_Bottleneck_QueryError(t *testing.T) {
 
 func TestRun_Diff_NilStore(t *testing.T) {
 	// nil store prints inline error; no turn beyond cut.
-	s := explore.NewSession(nil, "alice")
+	s := explore.NewSession(nil, "alice", nil)
 	out := run(t, s, "cut alice\ndiff bob\nquit\n")
 
 	if !strings.Contains(out, "no trace substrate") {
@@ -1125,7 +1125,7 @@ func TestRun_Diff_NilStore(t *testing.T) {
 
 func TestRun_Diff_NoObserver(t *testing.T) {
 	// Without a prior cut, diff prints an inline error.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "diff bob\nquit\n")
 
 	if !strings.Contains(out, "observer") {
@@ -1138,7 +1138,7 @@ func TestRun_Diff_NoObserver(t *testing.T) {
 
 func TestRun_Diff_NoArg(t *testing.T) {
 	// diff without observer-b prints a usage error; no turn beyond cut.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "cut alice\ndiff\nquit\n")
 
 	if !strings.Contains(out, "observer-b") {
@@ -1155,7 +1155,7 @@ func TestRun_Diff_HappyPath(t *testing.T) {
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\ndiff security-team\nquit\n")
 
 	// PrintDiff always emits this exact header.
@@ -1173,7 +1173,7 @@ func TestRun_Diff_RecordsTurn(t *testing.T) {
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	run(t, s, "cut ops-engineer\ndiff security-team\nquit\n")
 
 	turns := s.Turns()
@@ -1194,7 +1194,7 @@ func TestRun_Diff_RecordsTurn(t *testing.T) {
 
 func TestRun_Diff_QueryError(t *testing.T) {
 	// Store query error prints inline error; no turn beyond cut.
-	s := explore.NewSession(errStore{}, "analyst-1")
+	s := explore.NewSession(errStore{}, "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\ndiff security-team\nquit\n")
 
 	if !strings.Contains(out, "failed to load traces") {
@@ -1212,7 +1212,7 @@ func TestRun_Diff_SameObserver(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\ndiff ops-engineer\nquit\n")
 
 	if !strings.Contains(out, "=== Mesh Diff (situated comparison) ===") {
@@ -1227,7 +1227,7 @@ func TestRun_Diff_SameObserver(t *testing.T) {
 
 func TestRun_Gaps_NilStore(t *testing.T) {
 	// nil store prints inline error; no turn beyond cut.
-	s := explore.NewSession(nil, "alice")
+	s := explore.NewSession(nil, "alice", nil)
 	out := run(t, s, "cut alice\ngaps bob\nquit\n")
 
 	if !strings.Contains(out, "no trace substrate") {
@@ -1240,7 +1240,7 @@ func TestRun_Gaps_NilStore(t *testing.T) {
 
 func TestRun_Gaps_NoObserver(t *testing.T) {
 	// Without a prior cut, gaps prints an inline error.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "gaps bob\nquit\n")
 
 	if !strings.Contains(out, "observer") {
@@ -1253,7 +1253,7 @@ func TestRun_Gaps_NoObserver(t *testing.T) {
 
 func TestRun_Gaps_NoArg(t *testing.T) {
 	// gaps without observer-b prints a usage error; no turn beyond cut.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "cut alice\ngaps\nquit\n")
 
 	if !strings.Contains(out, "observer-b") {
@@ -1270,7 +1270,7 @@ func TestRun_Gaps_HappyPath(t *testing.T) {
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\ngaps security-team\nquit\n")
 
 	// PrintObserverGap always emits this exact header.
@@ -1288,7 +1288,7 @@ func TestRun_Gaps_RecordsTurn(t *testing.T) {
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	run(t, s, "cut ops-engineer\ngaps security-team\nquit\n")
 
 	turns := s.Turns()
@@ -1309,7 +1309,7 @@ func TestRun_Gaps_RecordsTurn(t *testing.T) {
 
 func TestRun_Gaps_QueryError(t *testing.T) {
 	// Store query error prints inline error; no turn beyond cut.
-	s := explore.NewSession(errStore{}, "analyst-1")
+	s := explore.NewSession(errStore{}, "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\ngaps security-team\nquit\n")
 
 	if !strings.Contains(out, "failed to load traces") {
@@ -1327,7 +1327,7 @@ func TestRun_Gaps_SameObserver(t *testing.T) {
 	traces := []schema.Trace{
 		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
 	}
-	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
 	out := run(t, s, "cut ops-engineer\ngaps ops-engineer\nquit\n")
 
 	if !strings.Contains(out, "=== Observer Gap ===") {
@@ -1342,12 +1342,360 @@ func TestRun_Gaps_SameObserver(t *testing.T) {
 
 func TestRun_Help_ShowsBatch2Commands(t *testing.T) {
 	// help output lists all batch-2 commands.
-	s := explore.NewSession(testStore(t), "analyst-1")
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
 	out := run(t, s, "help\nquit\n")
 
 	for _, keyword := range []string{"diff", "gaps", "follow", "bottleneck"} {
 		if !strings.Contains(out, keyword) {
 			t.Errorf("help output missing %q\nfull output:\n%s", keyword, out)
 		}
+	}
+}
+
+// === suggest command ===
+
+// mockSuggestClient is a test double for explore.SuggestClient.
+type mockSuggestClient struct {
+	response string
+	err      error
+	// callCount records how many times Complete was called; used in guard tests
+	// to confirm the LLM is never contacted when a guard fires.
+	callCount  int
+	lastSystem string
+	lastPrompt string
+}
+
+func (m *mockSuggestClient) Complete(_ context.Context, system, prompt string) (string, error) {
+	m.callCount++
+	m.lastSystem = system
+	m.lastPrompt = prompt
+	return m.response, m.err
+}
+
+func TestRun_Suggest_NoClient(t *testing.T) {
+	// suggest with nil client prints inline error; session continues.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", nil)
+	out := run(t, s, "cut ops-engineer\nshadow\nsuggest\nquit\n")
+
+	if !strings.Contains(out, "no LLM client") {
+		t.Errorf("expected 'no LLM client' error, got:\n%s", out)
+	}
+	// shadow + cut recorded, but not suggest (guard fired)
+	if len(s.Turns()) != 2 {
+		t.Errorf("Turns() = %d, want 2 (cut + shadow)", len(s.Turns()))
+	}
+}
+
+func TestRun_Suggest_NoAnalyst(t *testing.T) {
+	// suggest with empty analyst prints attribution error; LLM is not contacted.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	mc := &mockSuggestClient{response: "Try following relay"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "", mc)
+	out := run(t, s, "cut ops-engineer\nshadow\nsuggest\nquit\n")
+
+	if !strings.Contains(out, "analyst not set") {
+		t.Errorf("expected 'analyst not set' error, got:\n%s", out)
+	}
+	if mc.callCount != 0 {
+		t.Errorf("LLM was contacted %d time(s), want 0 (guard should have fired)", mc.callCount)
+	}
+	if len(s.Turns()) != 2 {
+		t.Errorf("Turns() = %d, want 2 (cut + shadow only)", len(s.Turns()))
+	}
+}
+
+func TestRun_Suggest_NilStore(t *testing.T) {
+	// suggest with nil store prints inline error; session continues.
+	mc := &mockSuggestClient{response: "Try following relay"}
+	s := explore.NewSession(nil, "analyst-1", mc)
+	out := run(t, s, "cut alice\nsuggest\nquit\n")
+
+	if !strings.Contains(out, "no trace substrate") {
+		t.Errorf("expected 'no trace substrate' error, got:\n%s", out)
+	}
+}
+
+func TestRun_Suggest_NoObserver(t *testing.T) {
+	// suggest without prior cut prints observer error; session continues.
+	mc := &mockSuggestClient{response: "Try following relay"}
+	s := explore.NewSession(testStore(t), "analyst-1", mc)
+	out := run(t, s, "suggest\nquit\n")
+
+	if !strings.Contains(out, "observer not set") {
+		t.Errorf("expected 'observer not set' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 0 {
+		t.Errorf("Turns() = %d, want 0", len(s.Turns()))
+	}
+}
+
+func TestRun_Suggest_NoPriorReading(t *testing.T) {
+	// suggest after cut but no shadow/bottleneck/gaps prints error; LLM not contacted.
+	mc := &mockSuggestClient{response: "Try following relay"}
+	s := explore.NewSession(testStore(t), "analyst-1", mc)
+	out := run(t, s, "cut alice\nsuggest\nquit\n")
+
+	if !strings.Contains(out, "no prior") {
+		t.Errorf("expected 'no prior' error, got:\n%s", out)
+	}
+	if mc.callCount != 0 {
+		t.Errorf("LLM was contacted %d time(s), want 0 (guard should have fired)", mc.callCount)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Suggest_HappyPath(t *testing.T) {
+	// Full happy path: cut → shadow → suggest. Output contains LLM response;
+	// turn recorded with SuggestionMeta fully populated.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	mc := &mockSuggestClient{response: "Follow element relay for translation chain"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	out := run(t, s, "cut ops-engineer\nshadow\nsuggest\nquit\n")
+
+	// LLM response should appear in output.
+	if !strings.Contains(out, "Follow element relay") {
+		t.Errorf("expected LLM response in output, got:\n%s", out)
+	}
+	// Header should appear.
+	if !strings.Contains(out, "=== Suggestion") {
+		t.Errorf("expected suggestion header in output, got:\n%s", out)
+	}
+
+	turns := s.Turns()
+	if len(turns) != 3 {
+		t.Fatalf("Turns() = %d, want 3 (cut + shadow + suggest)", len(turns))
+	}
+	st := turns[2]
+	if st.Command != "suggest" {
+		t.Errorf("Turn.Command = %q, want %q", st.Command, "suggest")
+	}
+	// Reading carries the LLM response string.
+	reading, ok := st.Reading.(string)
+	if !ok {
+		t.Fatalf("Turn.Reading type = %T, want string", st.Reading)
+	}
+	if reading != "Follow element relay for translation chain" {
+		t.Errorf("Turn.Reading = %q, want LLM response", reading)
+	}
+	// SuggestionMeta must be populated.
+	if st.Suggestion == nil {
+		t.Fatal("Turn.Suggestion = nil, want non-nil SuggestionMeta")
+	}
+	if st.Suggestion.Analyst != "analyst-1" {
+		t.Errorf("Suggestion.Analyst = %q, want %q", st.Suggestion.Analyst, "analyst-1")
+	}
+	if st.Suggestion.Basis != "shadow" {
+		t.Errorf("Suggestion.Basis = %q, want %q", st.Suggestion.Basis, "shadow")
+	}
+	if st.Suggestion.TraceCount != 1 {
+		t.Errorf("Suggestion.TraceCount = %d, want 1 (one trace loaded)", st.Suggestion.TraceCount)
+	}
+	if st.Suggestion.GeneratedAt.IsZero() {
+		t.Error("Suggestion.GeneratedAt is zero")
+	}
+}
+
+func TestRun_Suggest_ExplicitBasis_Shadow(t *testing.T) {
+	// suggest shadow finds the shadow turn even when bottleneck is more recent.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	mc := &mockSuggestClient{response: "Check shadow elements"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	run(t, s, "cut ops-engineer\nshadow\nbottleneck\nsuggest shadow\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 4 {
+		t.Fatalf("Turns() = %d, want 4", len(turns))
+	}
+	if turns[3].Suggestion == nil {
+		t.Fatal("suggest turn has nil Suggestion")
+	}
+	if turns[3].Suggestion.Basis != "shadow" {
+		t.Errorf("Basis = %q, want %q — should use shadow, not more-recent bottleneck", turns[3].Suggestion.Basis, "shadow")
+	}
+}
+
+func TestRun_Suggest_ExplicitBasis_Bottleneck(t *testing.T) {
+	// suggest bottleneck selects the bottleneck turn's reading.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	mc := &mockSuggestClient{response: "Relay is provisionally central"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	run(t, s, "cut ops-engineer\nbottleneck\nsuggest bottleneck\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 3 {
+		t.Fatalf("Turns() = %d, want 3", len(turns))
+	}
+	if turns[2].Suggestion == nil || turns[2].Suggestion.Basis != "bottleneck" {
+		t.Errorf("Basis = %v, want %q", turns[2].Suggestion, "bottleneck")
+	}
+}
+
+func TestRun_Suggest_ExplicitBasis_Gaps(t *testing.T) {
+	// suggest gaps selects the gaps turn's reading.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
+	}
+	mc := &mockSuggestClient{response: "Investigate gap elements"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	run(t, s, "cut ops-engineer\ngaps security-team\nsuggest gaps\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 3 {
+		t.Fatalf("Turns() = %d, want 3", len(turns))
+	}
+	if turns[2].Suggestion == nil || turns[2].Suggestion.Basis != "gaps" {
+		t.Errorf("Basis = %v, want %q", turns[2].Suggestion, "gaps")
+	}
+}
+
+func TestRun_Suggest_AutoDetect_SkipsFollow(t *testing.T) {
+	// Auto-detect skips follow turns (ClassifiedChain is not a valid basis).
+	// With shadow then follow, suggest should pick shadow, not the more-recent follow.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	mc := &mockSuggestClient{response: "Follow the shadow elements"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	run(t, s, "cut ops-engineer\nshadow\nfollow relay\nsuggest\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 4 {
+		t.Fatalf("Turns() = %d, want 4 (cut + shadow + follow + suggest)", len(turns))
+	}
+	if turns[3].Suggestion == nil {
+		t.Fatal("suggest turn has nil Suggestion")
+	}
+	if turns[3].Suggestion.Basis != "shadow" {
+		t.Errorf("Basis = %q, want %q — auto-detect should skip follow and find shadow", turns[3].Suggestion.Basis, "shadow")
+	}
+}
+
+func TestRun_Suggest_InvalidBasis(t *testing.T) {
+	// suggest with unknown basis prints error; no turn recorded.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	mc := &mockSuggestClient{response: "ignored"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	out := run(t, s, "cut ops-engineer\nshadow\nsuggest articulate\nquit\n")
+
+	if !strings.Contains(out, "unknown basis") {
+		t.Errorf("expected 'unknown basis' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 2 {
+		t.Errorf("Turns() = %d, want 2 (cut + shadow)", len(s.Turns()))
+	}
+}
+
+func TestRun_Suggest_LLMError(t *testing.T) {
+	// LLM call failure prints inline error; no turn recorded for the failed suggest.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	mc := &mockSuggestClient{err: fmt.Errorf("API rate limit exceeded")}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	out := run(t, s, "cut ops-engineer\nshadow\nsuggest\nquit\n")
+
+	if !strings.Contains(out, "LLM call failed") {
+		t.Errorf("expected 'LLM call failed' error, got:\n%s", out)
+	}
+	// shadow turn recorded; suggest turn not recorded (LLM failed)
+	if len(s.Turns()) != 2 {
+		t.Errorf("Turns() = %d, want 2 (cut + shadow only)", len(s.Turns()))
+	}
+}
+
+func TestRun_Suggest_AutoDetect_Gaps(t *testing.T) {
+	// suggest with no basis arg auto-detects gaps as the most recent valid reading.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
+	}
+	mc := &mockSuggestClient{response: "Investigate gap elements"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	run(t, s, "cut ops-engineer\nshadow\ngaps security-team\nsuggest\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 4 {
+		t.Fatalf("Turns() = %d, want 4", len(turns))
+	}
+	if turns[3].Suggestion == nil {
+		t.Fatal("suggest turn has nil Suggestion")
+	}
+	// Auto-detect should pick gaps (most recent valid reading)
+	if turns[3].Suggestion.Basis != "gaps" {
+		t.Errorf("Basis = %q, want %q — auto-detect should pick most recent (gaps)", turns[3].Suggestion.Basis, "gaps")
+	}
+}
+
+func TestRun_Suggest_SuggestionMeta_CutUsed(t *testing.T) {
+	// SuggestionMeta.CutUsed carries the correct observer position.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	mc := &mockSuggestClient{response: "Navigate the network"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	run(t, s, "cut ops-engineer\nshadow\nsuggest\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 3 {
+		t.Fatalf("Turns() = %d, want 3", len(turns))
+	}
+	meta := turns[2].Suggestion
+	if meta == nil {
+		t.Fatal("Suggestion is nil")
+	}
+	if meta.CutUsed.Observer != "ops-engineer" {
+		t.Errorf("CutUsed.Observer = %q, want %q", meta.CutUsed.Observer, "ops-engineer")
+	}
+	if meta.CutUsed.Analyst != "analyst-1" {
+		t.Errorf("CutUsed.Analyst = %q, want %q", meta.CutUsed.Analyst, "analyst-1")
+	}
+	if meta.TraceCount != 1 {
+		t.Errorf("TraceCount = %d, want 1", meta.TraceCount)
+	}
+}
+
+func TestRun_Suggest_NoPriorBasis_AfterArticulate(t *testing.T) {
+	// articulate alone is not a valid basis for suggest.
+	// suggest must refuse even after articulate — only shadow/bottleneck/gaps qualify.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	mc := &mockSuggestClient{response: "Should not be called"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	out := run(t, s, "cut ops-engineer\narticulate\nsuggest\nquit\n")
+
+	if !strings.Contains(out, "no prior") {
+		t.Errorf("expected 'no prior' error after articulate-only, got:\n%s", out)
+	}
+	// articulate does not qualify as a basis
+	if len(s.Turns()) != 2 {
+		t.Errorf("Turns() = %d, want 2 (cut + articulate)", len(s.Turns()))
+	}
+}
+
+// === help — batch 3 (suggest) ===
+
+func TestRun_Help_ShowsSuggest(t *testing.T) {
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
+	out := run(t, s, "help\nquit\n")
+
+	if !strings.Contains(out, "suggest") {
+		t.Errorf("help output missing 'suggest'\nfull output:\n%s", out)
 	}
 }
