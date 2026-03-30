@@ -30,10 +30,10 @@ import (
 //   - cut:         nil (cut changes state; it is not itself a mesh reading)
 //   - articulate:  graph.MeshGraph
 //   - shadow:      graph.ShadowSummary
-//   - follow:      graph.TranslationChain
-//   - bottleneck:  []graph.BottleneckElement
+//   - follow:      graph.ClassifiedChain
+//   - bottleneck:  []graph.BottleneckNote
 //   - diff:        graph.GraphDiff
-//   - gaps:        graph.GapsResult
+//   - gaps:        graph.ObserverGap
 //   - summarize:   string
 //   - validate:    string
 //   - help:        string
