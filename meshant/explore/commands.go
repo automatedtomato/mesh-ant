@@ -66,7 +66,7 @@ func (s *AnalysisSession) articulateForSession(ctx context.Context, cmdName stri
 }
 
 // cmdArticulate cuts the mesh graph from the current session observer position
-// and renders the result via graph.PrintArticulation.
+// and renders the reading via graph.PrintArticulation.
 //
 // A turn is recorded only on success. The Reading field carries the full
 // graph.MeshGraph produced by this cut.

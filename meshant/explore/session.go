@@ -89,16 +89,16 @@ func (s *AnalysisSession) Observer() string { return s.observer }
 // by the caller do not propagate back into the session record. This matches
 // the deep-copy discipline applied in recordTurn.
 func (s *AnalysisSession) Turns() []AnalysisTurn {
-	result := make([]AnalysisTurn, len(s.turns))
+	copies := make([]AnalysisTurn, len(s.turns))
 	for i, t := range s.turns {
-		result[i] = t
+		copies[i] = t
 		if len(t.Tags) > 0 {
 			tagsCopy := make([]string, len(t.Tags))
 			copy(tagsCopy, t.Tags)
-			result[i].Tags = tagsCopy
+			copies[i].Tags = tagsCopy
 		}
 	}
-	return result
+	return copies
 }
 
 // Run executes the interactive REPL loop, reading commands from in and writing
@@ -207,7 +207,6 @@ func (s *AnalysisSession) cmdCut(rawLine string, args []string, out io.Writer) e
 }
 
 // helpText returns the help listing for the current command set.
-// Extended in #186 as new commands are added.
 func helpText() string {
 	return `Commands:
   cut <observer>                set the observer position for subsequent turns
@@ -219,8 +218,8 @@ func helpText() string {
   bottleneck                    surface provisionally central elements in the current cut
   suggest [shadow|bottleneck|gaps]  LLM navigational suggestion from a prior reading
   save                          promote this session to the TraceStore as an explore trace
-  window <from> <to>            set a time window filter (RFC3339); 'window clear' to reset
-  tags <t1> [t2...]             set tag filters; 'tags clear' to reset
+  window <from> <to>            set a time window for the cut (RFC3339); 'window clear' to reset
+  tags <t1> [t2...]             set tag constraints for the cut; 'tags clear' to reset
   help  (h)                     show this help
   quit  (q)                     end the session; unsaved sessions are discarded
 `

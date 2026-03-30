@@ -34,20 +34,17 @@ import (
 //   - bottleneck:  []graph.BottleneckNote
 //   - diff:        graph.GraphDiff
 //   - gaps:        graph.ObserverGap
-//   - summarize:   string
-//   - validate:    string
-//   - help:        string
+//   - suggest:     string (the LLM response text)
 //
 // Suggestion is nil for all commands except `suggest`. When non-nil it carries
-// the full LLM provenance for that turn (wired in #185 — stub here for type
-// completeness in the skeleton).
+// the full LLM provenance for that turn.
 type AnalysisTurn struct {
 	Observer   string          // ANT position active when this turn executed
 	Window     graph.TimeWindow // time window active when this turn executed
 	Tags       []string         // tag filters active when this turn executed
 	Command    string          // the command string as typed by the analyst
 	Reading    interface{}     // positioned output — "Reading" not "Result" (see package doc)
-	Suggestion *SuggestionMeta // non-nil only when Command == "suggest" (wired in #185)
+	Suggestion *SuggestionMeta // non-nil only when Command == "suggest"
 	ExecutedAt time.Time
 }
 
@@ -63,8 +60,7 @@ type AnalysisTurn struct {
 // The LLM is a mediator: its output transforms the cut into a navigational
 // suggestion. That mediation must be visible in the session record.
 //
-// Implementation: #185. The type is declared here so that AnalysisTurn
-// compiles in the skeleton.
+// Implemented in suggest.go (#185).
 type SuggestionMeta struct {
 	Analyst     string        // who asked for the suggestion
 	CutUsed     graph.CutMeta // exact cut in effect when suggest was called

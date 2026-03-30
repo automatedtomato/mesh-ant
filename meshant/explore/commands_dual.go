@@ -12,7 +12,7 @@
 // mirrors its contract: print inline error and return false on failure.
 //
 // See docs/decisions/explore-v1.md T172.4 for the known tension around
-// AnalysisTurn.Observer being a single string for dual-observer results.
+// AnalysisTurn.Observer being a single string for dual-observer readings.
 package explore
 
 import (
