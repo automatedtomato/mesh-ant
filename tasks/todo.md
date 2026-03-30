@@ -102,7 +102,7 @@ Deferred items resolved (v3.1.0, 2026-03-25): #95 `ClassifyDraftChainOptions`, #
 - [x] **#181 — explore-v1.md decision record** (ANT gate) — mutable session observer, AnalysisSession design, SuggestionMeta, AnalysisTrace; `Reading` not `Result`; T172.1–T172.6; ANT gate ALIGNED
 - [x] **#182 — AnalysisSession types + meshant explore REPL skeleton** — `meshant/explore/` package; `AnalysisSession`, `AnalysisTurn`, `SuggestionMeta`; cut/quit/help; `meshant` (no args) enters REPL; D7a amends explore-v1.md; 95.8% coverage; PR #194
 - [x] **#183 — explore commands batch 1** — articulate, shadow, window/tag filters; `commands.go`; errStore stub; 96.6% coverage; PR #195
-- [ ] **#184 — explore commands batch 2** — diff, gaps, follow, bottleneck
+- [x] **#184 — explore commands batch 2** — follow, bottleneck, diff, gaps; `commands_dual.go` new file; `articulateForSession`/`articulateDual` helpers; 95.5% coverage; PR #196
 - [ ] **#185 — suggest command with SuggestionMeta** (ANT gate) — LLM suggestions with named provenance
 - [ ] **#186 — AnalysisTrace + TagValueExplore + promote-explore** (ANT gate) — Principle 8 reflexivity for explore sessions
 
