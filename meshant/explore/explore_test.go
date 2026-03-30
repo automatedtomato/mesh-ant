@@ -1502,6 +1502,53 @@ func TestRun_Suggest_HappyPath(t *testing.T) {
 	if st.Suggestion.GeneratedAt.IsZero() {
 		t.Error("Suggestion.GeneratedAt is zero")
 	}
+	// Verify the LLM was actually called (not silently skipped).
+	if mc.callCount != 1 {
+		t.Errorf("LLM callCount = %d, want 1", mc.callCount)
+	}
+}
+
+func TestRun_Suggest_PromptContent(t *testing.T) {
+	// Verifies the observable contract of buildSuggestPrompt:
+	// the observer position, the basis label, and a non-empty system prompt
+	// must be sent to the LLM. A regression that sends blank or wrong context
+	// would be caught here.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	mc := &mockSuggestClient{response: "Navigate the network"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	run(t, s, "cut ops-engineer\nshadow\nsuggest\nquit\n")
+
+	// System prompt must be non-empty (the ANT framing was sent).
+	if mc.lastSystem == "" {
+		t.Error("lastSystem is empty — system prompt was not sent to LLM")
+	}
+	// User prompt must contain the observer position.
+	if !strings.Contains(mc.lastPrompt, "ops-engineer") {
+		t.Errorf("lastPrompt does not contain observer %q\nprompt:\n%s", "ops-engineer", mc.lastPrompt)
+	}
+	// User prompt must contain the basis label.
+	if !strings.Contains(mc.lastPrompt, "shadow") {
+		t.Errorf("lastPrompt does not contain basis label %q\nprompt:\n%s", "shadow", mc.lastPrompt)
+	}
+}
+
+func TestRun_Suggest_PromptContent_Bottleneck(t *testing.T) {
+	// Verify prompt content when basis is bottleneck.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	mc := &mockSuggestClient{response: "Relay is central"}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1", mc)
+	run(t, s, "cut ops-engineer\nbottleneck\nsuggest\nquit\n")
+
+	if !strings.Contains(mc.lastPrompt, "ops-engineer") {
+		t.Errorf("lastPrompt missing observer %q\nprompt:\n%s", "ops-engineer", mc.lastPrompt)
+	}
+	if !strings.Contains(mc.lastPrompt, "bottleneck") {
+		t.Errorf("lastPrompt missing basis label %q\nprompt:\n%s", "bottleneck", mc.lastPrompt)
+	}
 }
 
 func TestRun_Suggest_ExplicitBasis_Shadow(t *testing.T) {
