@@ -171,6 +171,8 @@ func (s *AnalysisSession) dispatch(ctx context.Context, line string, out io.Writ
 		return s.cmdGaps(ctx, line, args, out)
 	case "suggest":
 		return s.cmdSuggest(ctx, line, args, out)
+	case "save":
+		return s.cmdSave(ctx, line, out)
 	case "window":
 		return s.cmdWindow(line, args, out)
 	case "tags":
@@ -216,10 +218,11 @@ func helpText() string {
   follow <element> [depth]      follow a translation chain from the named element
   bottleneck                    surface provisionally central elements in the current cut
   suggest [shadow|bottleneck|gaps]  LLM navigational suggestion from a prior reading
+  save                          promote this session to the TraceStore as an explore trace
   window <from> <to>            set a time window filter (RFC3339); 'window clear' to reset
   tags <t1> [t2...]             set tag filters; 'tags clear' to reset
   help  (h)                     show this help
-  quit  (q)                     end the session; discards unsaved turns
+  quit  (q)                     end the session; unsaved sessions are discarded
 `
 }
 

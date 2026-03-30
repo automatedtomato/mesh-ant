@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1744,5 +1745,269 @@ func TestRun_Help_ShowsSuggest(t *testing.T) {
 
 	if !strings.Contains(out, "suggest") {
 		t.Errorf("help output missing 'suggest'\nfull output:\n%s", out)
+	}
+}
+
+func TestRun_Help_ShowsSave(t *testing.T) {
+	s := explore.NewSession(testStore(t), "analyst-1", nil)
+	out := run(t, s, "help\nquit\n")
+
+	if !strings.Contains(out, "save") {
+		t.Errorf("help output missing 'save'\nfull output:\n%s", out)
+	}
+}
+
+// === save command / Promote ===
+
+// TestRun_Save_NoStore verifies that save refuses gracefully when no store is
+// configured. The session continues after the inline error.
+func TestRun_Save_NoStore(t *testing.T) {
+	s := explore.NewSession(nil, "analyst-1", nil)
+	out := run(t, s, "save\nquit\n")
+
+	if !strings.Contains(out, "no store") {
+		t.Errorf("save with nil store should mention 'no store', got:\n%s", out)
+	}
+}
+
+// TestRun_Save_NoAnalyst verifies that save refuses when the session has no
+// analyst name — an unattributable promotion.
+func TestRun_Save_NoAnalyst(t *testing.T) {
+	ts := testStore(t)
+	s := explore.NewSession(ts, "", nil)
+	out := run(t, s, "save\nquit\n")
+
+	if !strings.Contains(out, "analyst") {
+		t.Errorf("save without analyst should mention 'analyst', got:\n%s", out)
+	}
+}
+
+// TestRun_Save_NoTurns verifies that a session with no analytical turns can
+// still be promoted — it is a valid (empty) observation act.
+func TestRun_Save_NoTurns(t *testing.T) {
+	ts := testStore(t)
+	s := explore.NewSession(ts, "analyst-1", nil)
+	out := run(t, s, "save\nquit\n")
+
+	if !strings.Contains(out, "promoted") {
+		t.Errorf("save should print confirmation, got:\n%s", out)
+	}
+
+	// Verify the promoted trace exists in the store.
+	traces, err := ts.Query(context.Background(), store.QueryOpts{Tags: []string{string(explore.TagValueExplore)}})
+	if err != nil {
+		t.Fatalf("Query() error: %v", err)
+	}
+	if len(traces) != 1 {
+		t.Fatalf("want 1 promoted trace, got %d", len(traces))
+	}
+
+	tr := traces[0]
+	if tr.Observer != "analyst-1" {
+		t.Errorf("promoted trace Observer = %q, want %q", tr.Observer, "analyst-1")
+	}
+	if tr.Mediation != "meshant explore" {
+		t.Errorf("promoted trace Mediation = %q, want %q", tr.Mediation, "meshant explore")
+	}
+	if !strings.Contains(tr.WhatChanged, "0 turns") {
+		t.Errorf("promoted trace WhatChanged should contain '0 turns', got %q", tr.WhatChanged)
+	}
+	if len(tr.Source) != 0 {
+		t.Errorf("promoted trace Source should be empty for no-turn session, got %v", tr.Source)
+	}
+	if len(tr.Target) != 0 {
+		t.Errorf("promoted trace Target should be empty for no-turn session, got %v", tr.Target)
+	}
+}
+
+// TestRun_Save_HappyPath verifies that a session with multiple observers and
+// turns is promoted with the correct field values.
+func TestRun_Save_HappyPath(t *testing.T) {
+	traces := []schema.Trace{
+		newValidTrace("00000000-0000-0000-0000-000000000001", "alpha changed", "alice"),
+		newValidTrace("00000000-0000-0000-0000-000000000002", "beta changed", "alice"),
+		newValidTrace("00000000-0000-0000-0000-000000000003", "gamma changed", "bob"),
+	}
+	ts := testStoreWithTraces(t, traces)
+	s := explore.NewSession(ts, "lead-analyst", nil)
+
+	// 4 analytical turns: cut alice, cut bob (each records a turn), then save.
+	out := run(t, s, "cut alice\ncut bob\nsave\nquit\n")
+
+	if !strings.Contains(out, "promoted") {
+		t.Errorf("save should print confirmation, got:\n%s", out)
+	}
+
+	promoted, err := ts.Query(context.Background(), store.QueryOpts{Tags: []string{string(explore.TagValueExplore)}})
+	if err != nil {
+		t.Fatalf("Query() error: %v", err)
+	}
+	if len(promoted) != 1 {
+		t.Fatalf("want 1 promoted trace, got %d", len(promoted))
+	}
+
+	tr := promoted[0]
+	if tr.Observer != "lead-analyst" {
+		t.Errorf("Observer = %q, want %q", tr.Observer, "lead-analyst")
+	}
+	if tr.Mediation != "meshant explore" {
+		t.Errorf("Mediation = %q, want %q", tr.Mediation, "meshant explore")
+	}
+	if !strings.Contains(tr.WhatChanged, "alice") {
+		t.Errorf("WhatChanged should contain 'alice', got %q", tr.WhatChanged)
+	}
+	if !strings.Contains(tr.WhatChanged, "bob") {
+		t.Errorf("WhatChanged should contain 'bob', got %q", tr.WhatChanged)
+	}
+	// Source should contain both observers in first-appearance order.
+	wantSource := []string{"alice", "bob"}
+	if !reflect.DeepEqual(tr.Source, wantSource) {
+		t.Errorf("Source = %v, want %v", tr.Source, wantSource)
+	}
+	// TagValueExplore must be present.
+	found := false
+	for _, tag := range tr.Tags {
+		if tag == string(explore.TagValueExplore) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Tags = %v, want to contain %q", tr.Tags, string(explore.TagValueExplore))
+	}
+}
+
+// TestRun_Save_FinalTarget verifies that the promoted trace carries the element
+// names from the final articulation turn in its Target field.
+func TestRun_Save_FinalTarget(t *testing.T) {
+	traces := []schema.Trace{
+		{
+			ID:          "00000000-0000-0000-0000-000000000001",
+			Timestamp:   baseTime,
+			WhatChanged: "link formed",
+			Observer:    "alice",
+			Source:      []string{"actor-x"},
+			Target:      []string{"actor-y"},
+		},
+	}
+	ts := testStoreWithTraces(t, traces)
+	s := explore.NewSession(ts, "analyst-1", nil)
+
+	run(t, s, "cut alice\narticulate\nsave\nquit\n")
+
+	promoted, err := ts.Query(context.Background(), store.QueryOpts{Tags: []string{string(explore.TagValueExplore)}})
+	if err != nil {
+		t.Fatalf("Query() error: %v", err)
+	}
+	if len(promoted) != 1 {
+		t.Fatalf("want 1 promoted trace, got %d", len(promoted))
+	}
+
+	tr := promoted[0]
+	// Target should contain the element names from the articulation (actor-x and actor-y).
+	targetSet := make(map[string]bool, len(tr.Target))
+	for _, elem := range tr.Target {
+		targetSet[elem] = true
+	}
+	for _, want := range []string{"actor-x", "actor-y"} {
+		if !targetSet[want] {
+			t.Errorf("Target %v missing element %q from final articulation", tr.Target, want)
+		}
+	}
+}
+
+// TestRun_Save_ObserverDedup verifies that visiting the same observer position
+// multiple times yields a single Source entry for that position.
+func TestRun_Save_ObserverDedup(t *testing.T) {
+	ts := testStore(t)
+	s := explore.NewSession(ts, "analyst-1", nil)
+
+	// alice visited twice — should appear once in Source.
+	run(t, s, "cut alice\ncut alice\nsave\nquit\n")
+
+	promoted, err := ts.Query(context.Background(), store.QueryOpts{Tags: []string{string(explore.TagValueExplore)}})
+	if err != nil {
+		t.Fatalf("Query() error: %v", err)
+	}
+	if len(promoted) != 1 {
+		t.Fatalf("want 1 promoted trace, got %d", len(promoted))
+	}
+
+	tr := promoted[0]
+	aliceCount := 0
+	for _, s := range tr.Source {
+		if s == "alice" {
+			aliceCount++
+		}
+	}
+	if aliceCount != 1 {
+		t.Errorf("Source %v: alice appears %d times, want exactly 1", tr.Source, aliceCount)
+	}
+}
+
+// TestPromote_EmptySession verifies that Promote() called directly with no
+// turns produces a valid trace with 0 turns and empty Source/Target.
+func TestPromote_EmptySession(t *testing.T) {
+	ts := testStore(t)
+	s := explore.NewSession(ts, "analyst-1", nil)
+
+	if err := s.Promote(context.Background()); err != nil {
+		t.Fatalf("Promote() unexpected error: %v", err)
+	}
+
+	promoted, err := ts.Query(context.Background(), store.QueryOpts{Tags: []string{string(explore.TagValueExplore)}})
+	if err != nil {
+		t.Fatalf("Query() error: %v", err)
+	}
+	if len(promoted) != 1 {
+		t.Fatalf("want 1 promoted trace, got %d", len(promoted))
+	}
+
+	tr := promoted[0]
+	if tr.Observer != "analyst-1" {
+		t.Errorf("Observer = %q, want %q", tr.Observer, "analyst-1")
+	}
+	if !strings.Contains(tr.WhatChanged, "0 turns") {
+		t.Errorf("WhatChanged should contain '0 turns', got %q", tr.WhatChanged)
+	}
+	if len(tr.Source) != 0 {
+		t.Errorf("Source should be nil for empty session, got %v", tr.Source)
+	}
+	if len(tr.Target) != 0 {
+		t.Errorf("Target should be nil for empty session, got %v", tr.Target)
+	}
+}
+
+// TestRun_Save_CalledTwice verifies that calling save twice on the same session
+// produces two independent explore traces — each a snapshot of the session state
+// at the time of that save. This supports mid-session saves (D5 in explore-v1.md:
+// "`save` is callable mid-session (a partial record) or at the end").
+//
+// The two traces have different IDs (new UUID per Promote call) and are
+// stored as independent entries — not updates to a prior record.
+func TestRun_Save_CalledTwice(t *testing.T) {
+	ts := testStore(t)
+	s := explore.NewSession(ts, "analyst-1", nil)
+
+	// First save: 1 turn (the cut).
+	out := run(t, s, "cut alice\nsave\ncut bob\nsave\nquit\n")
+
+	// Both saves should report success.
+	if strings.Count(out, "session promoted") != 2 {
+		t.Errorf("expected 2 'session promoted' messages, got:\n%s", out)
+	}
+
+	// Two independent explore traces should be in the store.
+	promoted, err := ts.Query(context.Background(), store.QueryOpts{Tags: []string{string(explore.TagValueExplore)}})
+	if err != nil {
+		t.Fatalf("Query() error: %v", err)
+	}
+	if len(promoted) != 2 {
+		t.Fatalf("want 2 promoted traces (one per save), got %d", len(promoted))
+	}
+
+	// IDs must be distinct — each Promote call generates a new UUID.
+	if promoted[0].ID == promoted[1].ID {
+		t.Errorf("promoted traces share ID %q — expected distinct UUIDs", promoted[0].ID)
 	}
 }
