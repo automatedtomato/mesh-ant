@@ -96,7 +96,9 @@ Deferred items resolved (v3.1.0, 2026-03-25): #95 `ClassifyDraftChainOptions`, #
 - [ ] **Deferred (architect N1)** — `newUUID4` duplicated between `graph/actor.go` and `mcp/tools.go`; extract to `meshant/internal/uuid` if a third consumer appears
 - [x] **Deferred (architect N2)** — `tags` property schema `items: {type: "string"}` — fixed in #177 for all batch-1 tools; `TestMCPServer_ToolsList_TagsHaveItems` asserts it
 
-### v4.x — Interactive CLI + Web UI time series (parent: #172)
+### v4.x — Interactive CLI + Web UI time series (parent: #172) — COMPLETE (2026-03-30)
+
+Per-thread pipeline complete: refactor-clean + ant-theorist ALIGNED across all issues.
 
 - [x] **#180 — Web UI time series controls** — `datetime-local` From/To picker; T1–T4 documented; `TestHandleShadow_WithTimeWindow` added; `time-window-controls-v1.md`
 - [x] **#181 — explore-v1.md decision record** (ANT gate) — mutable session observer, AnalysisSession design, SuggestionMeta, AnalysisTrace; `Reading` not `Result`; T172.1–T172.6; ANT gate ALIGNED
