@@ -35,7 +35,7 @@ func testStoreInternal(t *testing.T) store.TraceStore {
 // TestTurns_ReturnsCopy) exist in explore_test.go; this test is retained
 // because it exercises recordTurn directly without routing through cmdTags.
 func TestTurns_TagsDeepCopy(t *testing.T) {
-	s := NewSession(testStoreInternal(t), "analyst-1")
+	s := NewSession(testStoreInternal(t), "analyst-1", nil)
 
 	// Directly set unexported s.tags to a non-empty slice so recordTurn
 	// records a turn with non-nil Tags, exercising both copy branches.
@@ -73,7 +73,7 @@ func TestTurns_TagsDeepCopy(t *testing.T) {
 // so that a subsequent change to s.tags does not retroactively alter a
 // completed turn's recorded conditions (D3 in explore-v1.md).
 func TestRecordTurn_TagsDeepCopy(t *testing.T) {
-	s := NewSession(testStoreInternal(t), "analyst-1")
+	s := NewSession(testStoreInternal(t), "analyst-1", nil)
 	s.tags = []string{"alpha"}
 
 	// Record a turn with tags = ["alpha"].

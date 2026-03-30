@@ -41,6 +41,9 @@ import (
 // turns is a linear slice in v1. Tree-structured (branching) sessions are deferred
 // to v5 — see T172.3 in explore-v1.md. The field must not bake in a topology that
 // precludes future branching.
+//
+// sc may be nil when no LLM client is configured; in that case the `suggest`
+// command refuses with an inline error (T172.2: suggest is optional).
 type AnalysisSession struct {
 	ts       store.TraceStore // injected; queried live on each turn (D2)
 	analyst  string           // who is conducting the session; stable across turns (D1)
@@ -48,6 +51,7 @@ type AnalysisSession struct {
 	window   graph.TimeWindow // session-level time window; changed by `window` command
 	tags     []string         // session-level tag filters; changed by `tags` command
 	turns    []AnalysisTurn   // ordered linear history; no branching in v1 (T172.3)
+	sc       SuggestClient    // LLM client for `suggest`; nil when not configured (T172.2)
 }
 
 // NewSession creates an AnalysisSession backed by ts, identified by analyst.
@@ -58,10 +62,15 @@ type AnalysisSession struct {
 //
 // analyst may be empty if the caller does not know who is conducting the session;
 // the session still works but promoted traces will carry an empty observer field.
-func NewSession(ts store.TraceStore, analyst string) *AnalysisSession {
+//
+// sc may be nil when no LLM client is configured. All analytical commands work
+// without an LLM client; only `suggest` requires one, and it refuses gracefully
+// with an inline error when sc is nil (T172.2 in explore-v1.md).
+func NewSession(ts store.TraceStore, analyst string, sc SuggestClient) *AnalysisSession {
 	return &AnalysisSession{
 		ts:      ts,
 		analyst: analyst,
+		sc:      sc,
 	}
 }
 
@@ -160,6 +169,8 @@ func (s *AnalysisSession) dispatch(ctx context.Context, line string, out io.Writ
 		return s.cmdDiff(ctx, line, args, out)
 	case "gaps":
 		return s.cmdGaps(ctx, line, args, out)
+	case "suggest":
+		return s.cmdSuggest(ctx, line, args, out)
 	case "window":
 		return s.cmdWindow(line, args, out)
 	case "tags":
@@ -194,20 +205,21 @@ func (s *AnalysisSession) cmdCut(rawLine string, args []string, out io.Writer) e
 }
 
 // helpText returns the help listing for the current command set.
-// Extended in #185–#186 as new commands are added.
+// Extended in #186 as new commands are added.
 func helpText() string {
 	return `Commands:
-  cut <observer>           set the observer position for subsequent turns
-  articulate               articulate the mesh graph from the current position
-  shadow                   summarise what the current cut leaves in shadow
-  diff <observer-b>        compare current cut against observer-b's reading
-  gaps <observer-b>        analyse what each observer sees that the other does not
-  follow <element> [depth] follow a translation chain from the named element
-  bottleneck               surface provisionally central elements in the current cut
-  window <from> <to>       set a time window filter (RFC3339); 'window clear' to reset
-  tags <t1> [t2...]        set tag filters; 'tags clear' to reset
-  help  (h)                show this help
-  quit  (q)                end the session; discards unsaved turns
+  cut <observer>                set the observer position for subsequent turns
+  articulate                    articulate the mesh graph from the current position
+  shadow                        summarise what the current cut leaves in shadow
+  diff <observer-b>             compare current cut against observer-b's reading
+  gaps <observer-b>             analyse what each observer sees that the other does not
+  follow <element> [depth]      follow a translation chain from the named element
+  bottleneck                    surface provisionally central elements in the current cut
+  suggest [shadow|bottleneck|gaps]  LLM navigational suggestion from a prior reading
+  window <from> <to>            set a time window filter (RFC3339); 'window clear' to reset
+  tags <t1> [t2...]             set tag filters; 'tags clear' to reset
+  help  (h)                     show this help
+  quit  (q)                     end the session; discards unsaved turns
 `
 }
 
