@@ -152,6 +152,14 @@ func (s *AnalysisSession) dispatch(ctx context.Context, line string, out io.Writ
 		return s.cmdArticulate(ctx, line, out)
 	case "shadow":
 		return s.cmdShadow(ctx, line, out)
+	case "follow":
+		return s.cmdFollow(ctx, line, args, out)
+	case "bottleneck":
+		return s.cmdBottleneck(ctx, line, out)
+	case "diff":
+		return s.cmdDiff(ctx, line, args, out)
+	case "gaps":
+		return s.cmdGaps(ctx, line, args, out)
 	case "window":
 		return s.cmdWindow(line, args, out)
 	case "tags":
@@ -186,12 +194,16 @@ func (s *AnalysisSession) cmdCut(rawLine string, args []string, out io.Writer) e
 }
 
 // helpText returns the help listing for the current command set.
-// Extended in #184–#186 as new commands are added.
+// Extended in #185–#186 as new commands are added.
 func helpText() string {
 	return `Commands:
   cut <observer>           set the observer position for subsequent turns
   articulate               articulate the mesh graph from the current position
   shadow                   summarise what the current cut leaves in shadow
+  diff <observer-b>        compare current cut against observer-b's reading
+  gaps <observer-b>        analyse what each observer sees that the other does not
+  follow <element> [depth] follow a translation chain from the named element
+  bottleneck               surface provisionally central elements in the current cut
   window <from> <to>       set a time window filter (RFC3339); 'window clear' to reset
   tags <t1> [t2...]        set tag filters; 'tags clear' to reset
   help  (h)                show this help

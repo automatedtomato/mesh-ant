@@ -1,16 +1,19 @@
-// commands.go implements the batch-1 analytical and filter-setter commands
-// for the meshant explore REPL.
+// commands.go implements the single-observer analytical commands and filter-setter
+// commands for the meshant explore REPL.
 //
 // Commands in this file:
 //   - articulate: cuts the mesh graph from the current session position
 //   - shadow:     summarises what the current cut leaves in shadow
+//   - follow:     follows a translation chain from a named element
+//   - bottleneck: surfaces provisionally central elements
 //   - window:     sets or clears the session-level time window filter
 //   - tags:       sets or clears the session-level tag filter
 //
-// Naming note: "articulate" and "shadow" are analytical commands — they query
-// the store, produce a Reading, and record a turn. "window" and "tags" are
-// filter setters — they mutate session state that is snapshotted by subsequent
-// analytical commands, but they do not record turns themselves.
+// Dual-observer commands (diff, gaps) live in commands_dual.go.
+//
+// Shared preamble: articulateForSession performs the nil-store guard, observer
+// guard, full-substrate query, and graph.Articulate call common to all
+// single-observer analytical commands.
 //
 // See docs/decisions/explore-v1.md for the full design rationale, particularly
 // D3 (per-turn positional snapshotting) and T172.6 (live substrate).
@@ -20,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,45 +31,55 @@ import (
 	"github.com/automatedtomato/mesh-ant/meshant/store"
 )
 
+// articulateForSession performs the shared preamble for single-observer
+// analytical commands: nil-store guard, observer guard, full-substrate query,
+// and graph.Articulate with the current session cut conditions.
+//
+// Returns (graph, true, nil) on success. On guard or query failure, prints an
+// inline error to out prefixed with cmdName and returns (zero, false, nil).
+// Returns a non-nil error only for unrecoverable failures (currently none;
+// reserved for future use).
+//
+// The cmdName parameter is used to prefix inline error messages so that the
+// analyst can identify which command failed (e.g. "articulate: no trace
+// substrate loaded" vs "follow: no trace substrate loaded").
+func (s *AnalysisSession) articulateForSession(ctx context.Context, cmdName string, out io.Writer) (graph.MeshGraph, bool, error) {
+	if s.ts == nil {
+		fmt.Fprintf(out, "%s: no trace substrate loaded — open a file with: meshant <file.json>\n", cmdName)
+		return graph.MeshGraph{}, false, nil
+	}
+	if s.observer == "" {
+		fmt.Fprintf(out, "%s: observer not set — use 'cut <observer>' first\n", cmdName)
+		return graph.MeshGraph{}, false, nil
+	}
+	traces, err := s.ts.Query(ctx, store.QueryOpts{})
+	if err != nil {
+		fmt.Fprintf(out, "%s: failed to load traces: %v\n", cmdName, err)
+		return graph.MeshGraph{}, false, nil
+	}
+	g := graph.Articulate(traces, graph.ArticulationOptions{
+		ObserverPositions: []string{s.observer},
+		TimeWindow:        s.window,
+		Tags:              s.tags,
+	})
+	return g, true, nil
+}
+
 // cmdArticulate cuts the mesh graph from the current session observer position
 // and renders the result via graph.PrintArticulation.
-//
-// Guards:
-//   - s.ts == nil: inline error directing the analyst to load a file.
-//   - s.observer == "": inline error directing the analyst to use cut first.
-//   - query error: inline error; session continues.
 //
 // A turn is recorded only on success. The Reading field carries the full
 // graph.MeshGraph produced by this cut.
 func (s *AnalysisSession) cmdArticulate(ctx context.Context, rawLine string, out io.Writer) error {
-	if s.ts == nil {
-		fmt.Fprintf(out, "articulate: no trace substrate loaded — open a file with: meshant <file.json>\n")
-		return nil
+	g, ok, err := s.articulateForSession(ctx, "articulate", out)
+	if err != nil || !ok {
+		return err
 	}
-	if s.observer == "" {
-		fmt.Fprintf(out, "articulate: observer not set — use 'cut <observer>' first\n")
-		return nil
-	}
-
-	traces, err := s.ts.Query(ctx, store.QueryOpts{})
-	if err != nil {
-		fmt.Fprintf(out, "articulate: failed to load traces: %v\n", err)
-		return nil
-	}
-
-	opts := graph.ArticulationOptions{
-		ObserverPositions: []string{s.observer},
-		TimeWindow:        s.window,
-		Tags:              s.tags,
-	}
-	g := graph.Articulate(traces, opts)
-
 	// Print errors from io.Writer are terminal — the analyst cannot recover
 	// from a broken output stream.
 	if err := graph.PrintArticulation(out, g); err != nil {
 		return err
 	}
-
 	s.recordTurn(rawLine, g, nil)
 	return nil
 }
@@ -76,37 +90,77 @@ func (s *AnalysisSession) cmdArticulate(ctx context.Context, rawLine string, out
 // The shadow is not missing data — it is the structured record of what this
 // cut cannot see. The Reading field carries a graph.ShadowSummary so the
 // positional record includes what was excluded, not just what was visible.
-//
-// Guards and error handling follow the same pattern as cmdArticulate.
 func (s *AnalysisSession) cmdShadow(ctx context.Context, rawLine string, out io.Writer) error {
-	if s.ts == nil {
-		fmt.Fprintf(out, "shadow: no trace substrate loaded — open a file with: meshant <file.json>\n")
-		return nil
+	g, ok, err := s.articulateForSession(ctx, "shadow", out)
+	if err != nil || !ok {
+		return err
 	}
-	if s.observer == "" {
-		fmt.Fprintf(out, "shadow: observer not set — use 'cut <observer>' first\n")
-		return nil
-	}
-
-	traces, err := s.ts.Query(ctx, store.QueryOpts{})
-	if err != nil {
-		fmt.Fprintf(out, "shadow: failed to load traces: %v\n", err)
-		return nil
-	}
-
-	opts := graph.ArticulationOptions{
-		ObserverPositions: []string{s.observer},
-		TimeWindow:        s.window,
-		Tags:              s.tags,
-	}
-	g := graph.Articulate(traces, opts)
 	summary := graph.SummariseShadow(g)
-
 	if err := graph.PrintShadowSummary(out, summary); err != nil {
 		return err
 	}
-
 	s.recordTurn(rawLine, summary, nil)
+	return nil
+}
+
+// cmdFollow follows a translation chain from a named element through the
+// current session cut and renders the classified chain via graph.PrintChain.
+//
+// Usage: follow <element> [max_depth]
+//
+// max_depth is optional; 0 means unlimited (the graph engine default).
+// A turn is recorded only on success. The Reading field carries the
+// graph.ClassifiedChain produced by this traversal.
+func (s *AnalysisSession) cmdFollow(ctx context.Context, rawLine string, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintf(out, "follow: element name required — usage: follow <element> [max_depth]\n")
+		return nil
+	}
+	element := args[0]
+
+	// Parse optional max_depth.
+	maxDepth := 0
+	if len(args) >= 2 {
+		d, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Fprintf(out, "follow: invalid max_depth %q: expected integer\n", args[1])
+			return nil
+		}
+		// graph.FollowOptions.MaxDepth: 0 means unlimited; negative values also satisfy
+		// MaxDepth <= 0, so they are treated identically to 0 (unlimited). No guard is
+		// needed — the behaviour is intentional and tested.
+		maxDepth = d
+	}
+
+	g, ok, err := s.articulateForSession(ctx, "follow", out)
+	if err != nil || !ok {
+		return err
+	}
+
+	chain := graph.FollowTranslation(g, element, graph.FollowOptions{MaxDepth: maxDepth})
+	cc := graph.ClassifyChain(chain, graph.ClassifyOptions{})
+	if err := graph.PrintChain(out, cc); err != nil {
+		return err
+	}
+	s.recordTurn(rawLine, cc, nil)
+	return nil
+}
+
+// cmdBottleneck identifies provisionally central elements in the current
+// session cut and renders them via graph.PrintBottleneckNotes.
+//
+// A turn is recorded only on success. The Reading field carries the
+// []graph.BottleneckNote slice produced by this analysis.
+func (s *AnalysisSession) cmdBottleneck(ctx context.Context, rawLine string, out io.Writer) error {
+	g, ok, err := s.articulateForSession(ctx, "bottleneck", out)
+	if err != nil || !ok {
+		return err
+	}
+	notes := graph.IdentifyBottlenecks(g, graph.BottleneckOptions{})
+	if err := graph.PrintBottleneckNotes(out, g, notes); err != nil {
+		return err
+	}
+	s.recordTurn(rawLine, notes, nil)
 	return nil
 }
 

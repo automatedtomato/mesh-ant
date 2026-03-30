@@ -849,3 +849,505 @@ func TestRun_Help_ShowsNewCommands(t *testing.T) {
 		}
 	}
 }
+
+// === follow command ===
+
+func TestRun_Follow_NilStore(t *testing.T) {
+	// nil store prints inline error; no turn recorded beyond the cut.
+	s := explore.NewSession(nil, "alice")
+	out := run(t, s, "cut alice\nfollow relay-a\nquit\n")
+
+	if !strings.Contains(out, "no trace substrate") {
+		t.Errorf("expected 'no trace substrate' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Follow_NoObserver(t *testing.T) {
+	// Without a prior cut, follow prints an inline error.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "follow relay-a\nquit\n")
+
+	if !strings.Contains(out, "observer") {
+		t.Errorf("expected 'observer' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 0 {
+		t.Errorf("Turns() = %d, want 0", len(s.Turns()))
+	}
+}
+
+func TestRun_Follow_NoElement(t *testing.T) {
+	// Missing element argument prints inline error; session continues.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "cut alice\nfollow\nquit\n")
+
+	if !strings.Contains(out, "element") {
+		t.Errorf("expected 'element' in error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Follow_HappyPath(t *testing.T) {
+	// cut then follow: output contains the chain header; turn is recorded.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	out := run(t, s, "cut ops-engineer\nfollow relay\nquit\n")
+
+	if !strings.Contains(out, "=== Translation Chain (provisional reading) ===") {
+		t.Errorf("expected chain header in output, got:\n%s", out)
+	}
+	if len(s.Turns()) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + follow)", len(s.Turns()))
+	}
+}
+
+func TestRun_Follow_RecordsTurn(t *testing.T) {
+	// follow records a turn with the correct Command, Observer, and Reading type.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	run(t, s, "cut ops-engineer\nfollow relay\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + follow)", len(turns))
+	}
+	ft := turns[1]
+	if ft.Command != "follow relay" {
+		t.Errorf("Turn.Command = %q, want %q", ft.Command, "follow relay")
+	}
+	if ft.Observer != "ops-engineer" {
+		t.Errorf("Turn.Observer = %q, want %q", ft.Observer, "ops-engineer")
+	}
+	if _, ok := ft.Reading.(graph.ClassifiedChain); !ok {
+		t.Errorf("Turn.Reading type = %T, want graph.ClassifiedChain", ft.Reading)
+	}
+}
+
+func TestRun_Follow_WithMaxDepth(t *testing.T) {
+	// follow element 2 parses max_depth=2 without error; turn recorded.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	run(t, s, "cut ops-engineer\nfollow relay 2\nquit\n")
+
+	if len(s.Turns()) != 2 {
+		t.Errorf("Turns() = %d after follow with max_depth, want 2", len(s.Turns()))
+	}
+}
+
+func TestRun_Follow_ZeroMaxDepth(t *testing.T) {
+	// follow relay 0 is valid; 0 means unlimited in the graph engine.
+	// The command should complete, produce output, and record a turn.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	out := run(t, s, "cut ops-engineer\nfollow relay 0\nquit\n")
+
+	if !strings.Contains(out, "=== Translation Chain (provisional reading) ===") {
+		t.Errorf("expected chain header in output, got:\n%s", out)
+	}
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + follow)", len(turns))
+	}
+	if turns[1].Command != "follow relay 0" {
+		t.Errorf("Turn.Command = %q, want %q", turns[1].Command, "follow relay 0")
+	}
+}
+
+func TestRun_Follow_NegativeMaxDepth(t *testing.T) {
+	// follow relay -1 is treated as unlimited (graph engine: MaxDepth <= 0 means unlimited).
+	// The command should complete without error and record a turn.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	out := run(t, s, "cut ops-engineer\nfollow relay -1\nquit\n")
+
+	if !strings.Contains(out, "=== Translation Chain (provisional reading) ===") {
+		t.Errorf("expected chain header for negative max_depth (treated as unlimited), got:\n%s", out)
+	}
+	if len(s.Turns()) != 2 {
+		t.Errorf("Turns() = %d, want 2 (negative max_depth treated as unlimited)", len(s.Turns()))
+	}
+}
+
+func TestRun_Follow_InvalidMaxDepth(t *testing.T) {
+	// Non-integer max_depth prints inline error; no turn beyond cut.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "cut alice\nfollow relay abc\nquit\n")
+
+	if !strings.Contains(out, "invalid") || !strings.Contains(out, "max_depth") {
+		t.Errorf("expected 'invalid max_depth' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Follow_QueryError(t *testing.T) {
+	// Store query error prints inline error; no turn beyond cut.
+	s := explore.NewSession(errStore{}, "analyst-1")
+	out := run(t, s, "cut ops-engineer\nfollow relay\nquit\n")
+
+	if !strings.Contains(out, "failed to load traces") {
+		t.Errorf("expected query error message, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+// === bottleneck command ===
+
+func TestRun_Bottleneck_NilStore(t *testing.T) {
+	// nil store prints inline error; no turn beyond cut.
+	s := explore.NewSession(nil, "alice")
+	out := run(t, s, "cut alice\nbottleneck\nquit\n")
+
+	if !strings.Contains(out, "no trace substrate") {
+		t.Errorf("expected 'no trace substrate' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Bottleneck_NoObserver(t *testing.T) {
+	// Without a prior cut, bottleneck prints an inline error.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "bottleneck\nquit\n")
+
+	if !strings.Contains(out, "observer") {
+		t.Errorf("expected 'observer' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 0 {
+		t.Errorf("Turns() = %d, want 0", len(s.Turns()))
+	}
+}
+
+func TestRun_Bottleneck_HappyPath(t *testing.T) {
+	// cut then bottleneck: output produced; turn recorded.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	out := run(t, s, "cut ops-engineer\nbottleneck\nquit\n")
+
+	// PrintBottleneckNotes always emits this exact header.
+	if !strings.Contains(out, "=== Bottleneck Notes (provisional reading from this cut) ===") {
+		t.Errorf("expected bottleneck header in output, got:\n%s", out)
+	}
+	if len(s.Turns()) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + bottleneck)", len(s.Turns()))
+	}
+}
+
+func TestRun_Bottleneck_RecordsTurn(t *testing.T) {
+	// bottleneck records a turn with the correct Command, Observer, Reading type.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	run(t, s, "cut ops-engineer\nbottleneck\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + bottleneck)", len(turns))
+	}
+	bt := turns[1]
+	if bt.Command != "bottleneck" {
+		t.Errorf("Turn.Command = %q, want %q", bt.Command, "bottleneck")
+	}
+	if bt.Observer != "ops-engineer" {
+		t.Errorf("Turn.Observer = %q, want %q", bt.Observer, "ops-engineer")
+	}
+	if _, ok := bt.Reading.([]graph.BottleneckNote); !ok {
+		t.Errorf("Turn.Reading type = %T, want []graph.BottleneckNote", bt.Reading)
+	}
+}
+
+func TestRun_Bottleneck_EmptyStore(t *testing.T) {
+	// bottleneck against an empty store is valid: no notes; turn still recorded.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	run(t, s, "cut ops-engineer\nbottleneck\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2", len(turns))
+	}
+	notes, ok := turns[1].Reading.([]graph.BottleneckNote)
+	if !ok {
+		t.Fatalf("Turn.Reading type = %T, want []graph.BottleneckNote", turns[1].Reading)
+	}
+	if len(notes) != 0 {
+		t.Errorf("notes = %d for empty store, want 0", len(notes))
+	}
+}
+
+func TestRun_Bottleneck_QueryError(t *testing.T) {
+	// Store query error prints inline error; no turn beyond cut.
+	s := explore.NewSession(errStore{}, "analyst-1")
+	out := run(t, s, "cut ops-engineer\nbottleneck\nquit\n")
+
+	if !strings.Contains(out, "failed to load traces") {
+		t.Errorf("expected query error message, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+// === diff command ===
+
+func TestRun_Diff_NilStore(t *testing.T) {
+	// nil store prints inline error; no turn beyond cut.
+	s := explore.NewSession(nil, "alice")
+	out := run(t, s, "cut alice\ndiff bob\nquit\n")
+
+	if !strings.Contains(out, "no trace substrate") {
+		t.Errorf("expected 'no trace substrate' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Diff_NoObserver(t *testing.T) {
+	// Without a prior cut, diff prints an inline error.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "diff bob\nquit\n")
+
+	if !strings.Contains(out, "observer") {
+		t.Errorf("expected 'observer' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 0 {
+		t.Errorf("Turns() = %d, want 0", len(s.Turns()))
+	}
+}
+
+func TestRun_Diff_NoArg(t *testing.T) {
+	// diff without observer-b prints a usage error; no turn beyond cut.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "cut alice\ndiff\nquit\n")
+
+	if !strings.Contains(out, "observer-b") {
+		t.Errorf("expected 'observer-b' in error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Diff_HappyPath(t *testing.T) {
+	// cut obs-a then diff obs-b: output contains diff header; turn recorded.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	out := run(t, s, "cut ops-engineer\ndiff security-team\nquit\n")
+
+	// PrintDiff always emits this exact header.
+	if !strings.Contains(out, "=== Mesh Diff (situated comparison) ===") {
+		t.Errorf("expected diff header in output, got:\n%s", out)
+	}
+	if len(s.Turns()) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + diff)", len(s.Turns()))
+	}
+}
+
+func TestRun_Diff_RecordsTurn(t *testing.T) {
+	// diff records a turn with correct Command, Observer, and Reading type.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	run(t, s, "cut ops-engineer\ndiff security-team\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2", len(turns))
+	}
+	dt := turns[1]
+	if dt.Command != "diff security-team" {
+		t.Errorf("Turn.Command = %q, want %q", dt.Command, "diff security-team")
+	}
+	if dt.Observer != "ops-engineer" {
+		t.Errorf("Turn.Observer = %q, want %q", dt.Observer, "ops-engineer")
+	}
+	if _, ok := dt.Reading.(graph.GraphDiff); !ok {
+		t.Errorf("Turn.Reading type = %T, want graph.GraphDiff", dt.Reading)
+	}
+}
+
+func TestRun_Diff_QueryError(t *testing.T) {
+	// Store query error prints inline error; no turn beyond cut.
+	s := explore.NewSession(errStore{}, "analyst-1")
+	out := run(t, s, "cut ops-engineer\ndiff security-team\nquit\n")
+
+	if !strings.Contains(out, "failed to load traces") {
+		t.Errorf("expected query error message, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Diff_SameObserver(t *testing.T) {
+	// diff when observer A == observer B produces a zero-diff (no error).
+	// The command should complete and record a turn.
+	// Note: a same-observer guard ("diff: observer-b must differ") is deferred to v2.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	out := run(t, s, "cut ops-engineer\ndiff ops-engineer\nquit\n")
+
+	if !strings.Contains(out, "=== Mesh Diff (situated comparison) ===") {
+		t.Errorf("expected diff header even for same-observer diff, got:\n%s", out)
+	}
+	if len(s.Turns()) != 2 {
+		t.Errorf("Turns() = %d, want 2 (cut + diff)", len(s.Turns()))
+	}
+}
+
+// === gaps command ===
+
+func TestRun_Gaps_NilStore(t *testing.T) {
+	// nil store prints inline error; no turn beyond cut.
+	s := explore.NewSession(nil, "alice")
+	out := run(t, s, "cut alice\ngaps bob\nquit\n")
+
+	if !strings.Contains(out, "no trace substrate") {
+		t.Errorf("expected 'no trace substrate' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Gaps_NoObserver(t *testing.T) {
+	// Without a prior cut, gaps prints an inline error.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "gaps bob\nquit\n")
+
+	if !strings.Contains(out, "observer") {
+		t.Errorf("expected 'observer' error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 0 {
+		t.Errorf("Turns() = %d, want 0", len(s.Turns()))
+	}
+}
+
+func TestRun_Gaps_NoArg(t *testing.T) {
+	// gaps without observer-b prints a usage error; no turn beyond cut.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "cut alice\ngaps\nquit\n")
+
+	if !strings.Contains(out, "observer-b") {
+		t.Errorf("expected 'observer-b' in error, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Gaps_HappyPath(t *testing.T) {
+	// cut obs-a then gaps obs-b: output contains gap analysis; turn recorded.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	out := run(t, s, "cut ops-engineer\ngaps security-team\nquit\n")
+
+	// PrintObserverGap always emits this exact header.
+	if !strings.Contains(out, "=== Observer Gap ===") {
+		t.Errorf("expected gap header in output, got:\n%s", out)
+	}
+	if len(s.Turns()) != 2 {
+		t.Fatalf("Turns() = %d, want 2 (cut + gaps)", len(s.Turns()))
+	}
+}
+
+func TestRun_Gaps_RecordsTurn(t *testing.T) {
+	// gaps records a turn with correct Command, Observer, and Reading type.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee02", "relay B dropped packet", "security-team"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	run(t, s, "cut ops-engineer\ngaps security-team\nquit\n")
+
+	turns := s.Turns()
+	if len(turns) != 2 {
+		t.Fatalf("Turns() = %d, want 2", len(turns))
+	}
+	gt := turns[1]
+	if gt.Command != "gaps security-team" {
+		t.Errorf("Turn.Command = %q, want %q", gt.Command, "gaps security-team")
+	}
+	if gt.Observer != "ops-engineer" {
+		t.Errorf("Turn.Observer = %q, want %q", gt.Observer, "ops-engineer")
+	}
+	if _, ok := gt.Reading.(graph.ObserverGap); !ok {
+		t.Errorf("Turn.Reading type = %T, want graph.ObserverGap", gt.Reading)
+	}
+}
+
+func TestRun_Gaps_QueryError(t *testing.T) {
+	// Store query error prints inline error; no turn beyond cut.
+	s := explore.NewSession(errStore{}, "analyst-1")
+	out := run(t, s, "cut ops-engineer\ngaps security-team\nquit\n")
+
+	if !strings.Contains(out, "failed to load traces") {
+		t.Errorf("expected query error message, got:\n%s", out)
+	}
+	if len(s.Turns()) != 1 {
+		t.Errorf("Turns() = %d, want 1 (only the cut)", len(s.Turns()))
+	}
+}
+
+func TestRun_Gaps_SameObserver(t *testing.T) {
+	// gaps when observer A == observer B produces an empty-gap result (no error).
+	// The command should complete and record a turn.
+	// Note: a same-observer guard is deferred to v2.
+	traces := []schema.Trace{
+		newValidTrace("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01", "relay A routed packet", "ops-engineer"),
+	}
+	s := explore.NewSession(testStoreWithTraces(t, traces), "analyst-1")
+	out := run(t, s, "cut ops-engineer\ngaps ops-engineer\nquit\n")
+
+	if !strings.Contains(out, "=== Observer Gap ===") {
+		t.Errorf("expected gap header even for same-observer gaps, got:\n%s", out)
+	}
+	if len(s.Turns()) != 2 {
+		t.Errorf("Turns() = %d, want 2 (cut + gaps)", len(s.Turns()))
+	}
+}
+
+// === help — batch 2 commands ===
+
+func TestRun_Help_ShowsBatch2Commands(t *testing.T) {
+	// help output lists all batch-2 commands.
+	s := explore.NewSession(testStore(t), "analyst-1")
+	out := run(t, s, "help\nquit\n")
+
+	for _, keyword := range []string{"diff", "gaps", "follow", "bottleneck"} {
+		if !strings.Contains(out, keyword) {
+			t.Errorf("help output missing %q\nfull output:\n%s", keyword, out)
+		}
+	}
+}
